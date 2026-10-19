@@ -19,12 +19,12 @@ rules: `backend/CLAUDE.md`, `web/CLAUDE.md`.
 Dockerfile           one image: builds web/, then the API serving it, the jobs, the migrations
 docker-compose.yml   what operators run: secrets (first start), db (Postgres 17), msaving, caddy (profile https),
                      updater (profile updater: git pull + rebuild)
-VERSION              this checkout's version; bumped in the release PR, must match the tag
+VERSION              this checkout's version; bumped in the release PR, the release workflow tags it
 docker-compose.dev.yml  development only: publishes the database for backend/scripts/dev.sh
 .env.example         every optional setting
 backend/             see backend/CLAUDE.md
 web/                 see web/CLAUDE.md
-.github/workflows/   ci.yml (backend tests, web lint/test/build, image build), release.yml (v* tag on main: a GitHub release)
+.github/workflows/   ci.yml (backend tests, web lint/test/build, image build), release.yml (run by hand on main: tag and GitHub release)
 ```
 
 ## Commands
@@ -53,5 +53,5 @@ Faster loops: `backend/CLAUDE.md` (pytest, uvicorn --reload) and `web/CLAUDE.md`
 ## Branches and releases
 
 Feature branches from `dev`; `dev` and `main` are protected (PR with passing CI). A release: a PR into `main`
-that bumps `VERSION`, then a `vX.Y.Z` tag on `main`, which makes the GitHub release (servers check it for
-updates; operators `git pull`). Never push tags from a laptop.
+that bumps `VERSION`, then Actions -> Release -> Run workflow on `main`, which tags `vX.Y.Z` and makes the GitHub
+release (servers check it for updates; operators `git pull`). Never push tags from a laptop.
