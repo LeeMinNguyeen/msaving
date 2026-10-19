@@ -7,7 +7,8 @@
 # Then open http://localhost:8080 and create the admin account with the setup
 # code. Everything is optional in a .env file next to this one (see
 # .env.example): the port, HTTPS with your own domain, your own database.
-# There are no published images: the server is built here, from this folder.
+# There are no published images: the server is built here, from this folder
+# (the first build takes a few minutes).
 #
 # Update:  git pull && docker compose up -d --build   (takes a backup first)
 # Guide:   https://msaving.leminhnguyen.com/docs/
