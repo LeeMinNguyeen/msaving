@@ -8,18 +8,16 @@ import { useTranslation } from 'react-i18next'
 import { Centered } from '../components/Centered'
 import { useErrorText } from '../components/errors'
 import { currentLanguage } from '../i18n'
-import { ApiError, send } from '../lib/api'
-import { supabase } from '../lib/supabase'
-import { AgreeToPolicy } from './UpdatedPolicy'
+import { signOut } from '../auth/signOut'
+import { send } from '../lib/api'
 
-// Screen 12: a closed account sees only this until it's restored or purged.
-export function AccountClosing({ requestedAt, needsConsent }: { requestedAt: string; needsConsent: boolean }) {
+// A closed account sees only this until it's restored or purged.
+export function AccountClosing({ requestedAt }: { requestedAt: string }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
   const qc = useQueryClient()
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
-  const [mustAgree, setMustAgree] = useState(needsConsent)
   const deletesOn = new Date(new Date(requestedAt).getTime() + 30 * 24 * 3600 * 1000)
   const date = new Intl.DateTimeFormat(currentLanguage() === 'vi' ? 'vi-VN' : 'en-GB', { dateStyle: 'long' }).format(deletesOn)
 
@@ -30,8 +28,7 @@ export function AccountClosing({ requestedAt, needsConsent }: { requestedAt: str
       await send('POST', '/v1/me/restore')
       await qc.invalidateQueries()
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'consent_outdated') setMustAgree(true)
-      else setError(err)
+      setError(err)
     } finally {
       setBusy(false)
     }
@@ -43,15 +40,8 @@ export function AccountClosing({ requestedAt, needsConsent }: { requestedAt: str
         <Typography variant="h5">{t('closing.title')}</Typography>
         <Typography>{t('closing.body', { date })}</Typography>
         {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
-        {mustAgree ? (
-          <>
-            <Alert severity="info">{t('closing.needsConsent')}</Alert>
-            <AgreeToPolicy onAgreed={() => { setMustAgree(false); void restore() }} />
-          </>
-        ) : (
-          <Button variant="contained" size="large" loading={busy} onClick={restore}>{t('closing.restore')}</Button>
-        )}
-        <Button color="inherit" onClick={() => supabase.auth.signOut()}>{t('auth.signOut')}</Button>
+        <Button variant="contained" size="large" loading={busy} onClick={restore}>{t('closing.restore')}</Button>
+        <Button color="inherit" onClick={() => signOut()}>{t('auth.signOut')}</Button>
       </Stack>
     </Centered>
   )

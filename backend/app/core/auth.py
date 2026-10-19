@@ -1,38 +1,28 @@
-"""Verifies the Supabase access token on every request.
+"""Checks the session token on every request.
 
-Checks the signature against the project's published signing keys (asymmetric
-only: a shared secret would let anyone who holds it mint tokens), the expiry,
-the audience and the issuer, then returns the user's id. That id becomes
-app.user_id for the request's database transaction (see db.py), and row-level
-security does the rest.
+Clients sign in through /v1/auth (app/api/routes/v1/sign_in.py) and get a
+random token, which they send as `Authorization: Bearer <token>`. The
+database keeps only its SHA-256 (sessions); session_user_id() returns the
+user, or null for an unknown, expired or ended session, or a disabled
+account. That id becomes app.user_id for the request's database transaction
+(see db.py), and row-level security does the rest.
 """
 from dataclasses import dataclass
 from uuid import UUID
 
-import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import text
 
-from app.core.settings import settings
+from app.core.sign_in import token_hash
 
-AUDIENCE = "authenticated"                  # Supabase's audience for signed-in users
-ISSUER = f"{settings.supabase_url}/auth/v1"
-ALGORITHMS = ["ES256", "RS256"]             # never HS256
-
-# Keys are cached; an unknown key id (after a key rotation) triggers one refetch.
-jwks = jwt.PyJWKClient(settings.supabase_jwks_url, cache_keys=True, lifespan=600)
 bearer = HTTPBearer(auto_error=False)
 
 
 @dataclass(frozen=True)
 class Caller:
     id: UUID
-    # Supabase only issues tokens after the email link is clicked (confirmations
-    # are on), so this is a confirmed address. The users row copies it from
-    # here, never from what the user types.
-    email: str | None
-    # How this sign-in was made: aal2 = with the second factor.
-    aal: str = "aal1"
+    token_sha256: bytes      # this session, for signing out it alone or every other one
 
 
 def _unauthorized() -> HTTPException:
@@ -40,17 +30,17 @@ def _unauthorized() -> HTTPException:
 
 
 def caller_from_token(token: str) -> Caller:
-    try:
-        key = jwks.get_signing_key_from_jwt(token)
-        claims = jwt.decode(token, key.key, algorithms=ALGORITHMS, audience=AUDIENCE, issuer=ISSUER,
-                            options={"require": ["exp", "sub", "aud", "iss"]})
-        return Caller(id=UUID(claims["sub"]), email=claims.get("email") or None, aal=claims.get("aal") or "aal1")
-    except (jwt.PyJWTError, ValueError):
-        raise _unauthorized() from None
+    from app.core.db import SessionLocal      # not at import: the tests set DATABASE_URL first
+    digest = token_hash(token)
+    with SessionLocal() as s, s.begin():
+        user_id = s.execute(text("select session_user_id(:h)"), {"h": digest}).scalar()
+    if user_id is None:
+        raise _unauthorized()
+    return Caller(id=user_id, token_sha256=digest)
 
 
 def current_caller(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> Caller:
-    if creds is None or creds.scheme.lower() != "bearer":
+    if creds is None or creds.scheme.lower() != "bearer" or not creds.credentials:
         raise _unauthorized()
     return caller_from_token(creds.credentials)
 

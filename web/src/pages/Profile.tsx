@@ -7,7 +7,6 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
-import Link from '@mui/material/Link'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -18,11 +17,11 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../components/errors'
 import { TimezonePicker } from '../components/TimezonePicker'
-import { config } from '../config'
 import { languages, setLanguage, type Language } from '../i18n'
-import { api, download, send, type ConsentStatus, type Me, type Profile as ProfileT } from '../lib/api'
+import { api, download, send, type Me, type Profile as ProfileT } from '../lib/api'
 import { keys, useMe } from '../lib/queries'
-import { supabase } from '../lib/supabase'
+import { newAccountBody } from '../auth/forms'
+import { PasswordFields } from '../components/AccountForm'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -33,11 +32,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-// Screen 10: profile, two-step verification, devices, export, consent, delete.
+// Profile and security: profile, password, two-step verification, devices, export, delete.
 export function Profile() {
   const { t } = useTranslation()
   const me = useMe()
-  if (!me.data?.profile) return null
+  if (!me.data) return null
   return (
     <Stack spacing={2} sx={{ maxWidth: 720 }}>
       <Typography variant="h5">{t('profile.title')}</Typography>
@@ -78,7 +77,6 @@ function ProfileForm({ profile }: { profile: ProfileT }) {
   return (
     <Section title={t('profile.profile')}>
       <Stack component="form" spacing={2} onSubmit={save}>
-        <TextField label={t('profile.email')} value={profile.email} disabled />
         <TextField label={t('profile.username')} required value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())}
           helperText={t('welcome.usernameHint')} slotProps={{ htmlInput: { pattern: '[a-z0-9][a-z0-9_.]{2,29}', autoCapitalize: 'none' } }} />
         <TextField label={t('profile.displayName')} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
@@ -94,86 +92,154 @@ function ProfileForm({ profile }: { profile: ProfileT }) {
   )
 }
 
+type TwoFactorState = { enabled: boolean; recovery_codes_left: number }
+type Enrolment = { secret: string; uri: string; qr: string }
+
 function Security() {
   const { t } = useTranslation()
   const errorText = useErrorText()
-  const factors = useQuery({ queryKey: ['mfa-factors'], queryFn: async () => (await supabase.auth.mfa.listFactors()).data })
   const qc = useQueryClient()
-  const [enroll, setEnroll] = useState<{ id: string; qr: string; secret: string } | null>(null)
+  const twoFactor = useQuery({ queryKey: ['two-factor'], queryFn: () => api<TwoFactorState>('/v1/auth/two-factor') })
+  const [enroll, setEnroll] = useState<Enrolment | null>(null)
+  const [recovery, setRecovery] = useState<string[] | null>(null)
   const [code, setCode] = useState('')
+  const [confirm, setConfirm] = useState<'off' | 'codes' | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [notice, setNotice] = useState('')
-  const [confirmOff, setConfirmOff] = useState(false)
   const [busy, setBusy] = useState(false)
-  const verified = factors.data?.totp ?? []
 
-  async function start() {
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true)
     setError(null)
-    // A setup that was never finished leaves an unverified factor: clear it first.
-    for (const f of factors.data?.all ?? []) if (f.status !== 'verified') await supabase.auth.mfa.unenroll({ factorId: f.id })
-    const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: `MSaving ${new Date().toISOString().slice(0, 10)}` })
-    if (error) return setError(error)
-    const qr = data.totp.qr_code.startsWith('data:') ? data.totp.qr_code : `data:image/svg+xml;utf-8,${encodeURIComponent(data.totp.qr_code)}`
-    setEnroll({ id: data.id, qr, secret: data.totp.secret })
+    setNotice('')
+    try {
+      await fn()
+    } catch (err) {
+      setError(err)
+    } finally {
+      setBusy(false)
+    }
   }
+  const refresh = () => qc.invalidateQueries({ queryKey: ['two-factor'] })
 
-  async function finish(e: FormEvent) {
+  const finish = (e: FormEvent) => {
     e.preventDefault()
     if (!enroll) return
-    setBusy(true)
-    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: enroll.id, code })
-    setBusy(false)
-    if (error) return setError(error)
-    setEnroll(null)
-    setCode('')
-    await qc.invalidateQueries({ queryKey: ['mfa-factors'] })
+    void run(async () => {
+      const r = await send<{ recovery_codes: string[] }>('POST', '/v1/auth/two-factor/enable', { secret: enroll.secret, code })
+      setEnroll(null)
+      setCode('')
+      setRecovery(r.recovery_codes)
+      await refresh()
+    })
   }
 
-  async function turnOff() {
-    setConfirmOff(false)
-    for (const f of verified) {
-      const { error } = await supabase.auth.mfa.unenroll({ factorId: f.id })
-      if (error) return setError(error)
+  // Turning it off and new recovery codes both need a current code.
+  const withCode = () => run(async () => {
+    if (confirm === 'off') {
+      await send('POST', '/v1/auth/two-factor/disable', { code })
+    } else {
+      setRecovery((await send<{ recovery_codes: string[] }>('POST', '/v1/auth/two-factor/recovery-codes', { code })).recovery_codes)
     }
-    await supabase.auth.refreshSession()
-    await qc.invalidateQueries({ queryKey: ['mfa-factors'] })
+    setConfirm(null)
+    setCode('')
+    await refresh()
+  })
+
+  const changePassword = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const form = e.currentTarget
+    void run(async () => {
+      const { password } = newAccountBody(form)
+      await send('POST', '/v1/auth/password', { current_password: String(new FormData(form).get('current')), new_password: password })
+      form.reset()
+      setNotice(t('profile.passwordChanged'))
+    })
   }
 
-  async function signOutOthers() {
-    setNotice('')
-    const { error } = await supabase.auth.signOut({ scope: 'others' })
-    if (error) setError(error)
-    else setNotice(t('profile.signedOutOthers'))
-  }
+  const codeField = (
+    <TextField label={t('mfa.codeLabel')} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+      slotProps={{ htmlInput: { inputMode: 'numeric', autoComplete: 'one-time-code' } }} />
+  )
+  const on = twoFactor.data?.enabled ?? false
 
   return (
     <Section title={t('profile.security')}>
+      <Typography variant="subtitle1">{t('profile.password')}</Typography>
+      <Stack component="form" spacing={2} onSubmit={changePassword}>
+        <TextField name="current" label={t('profile.currentPassword')} type="password" required autoComplete="current-password" />
+        <PasswordFields label={t('reset.newPassword')} />
+        <Button type="submit" variant="outlined" loading={busy} sx={{ alignSelf: 'start' }}>{t('profile.changePassword')}</Button>
+      </Stack>
+      <Divider />
       <Typography variant="subtitle1">{t('mfa.title')}</Typography>
-      <Typography color="text.secondary">{t(verified.length ? 'mfa.enabled' : 'mfa.disabled')}</Typography>
-      {!enroll && !verified.length && <Button variant="outlined" onClick={start} sx={{ alignSelf: 'start' }}>{t('mfa.enable')}</Button>}
-      {!enroll && verified.length > 0 && <Button color="error" onClick={() => setConfirmOff(true)} sx={{ alignSelf: 'start' }}>{t('mfa.disable')}</Button>}
+      <Typography color="text.secondary">
+        {on ? t('mfa.enabled') : t('mfa.disabled')}
+        {on && ' ' + t('mfa.codesLeft', { count: twoFactor.data?.recovery_codes_left ?? 0 })}
+      </Typography>
+      {!enroll && !on && (
+        <Button variant="outlined" sx={{ alignSelf: 'start' }}
+          onClick={() => run(async () => setEnroll(await send<Enrolment>('POST', '/v1/auth/two-factor/setup')))}>
+          {t('mfa.enable')}
+        </Button>
+      )}
+      {!enroll && on && (
+        <Stack direction="row" spacing={1}>
+          <Button onClick={() => { setCode(''); setConfirm('codes') }}>{t('mfa.newCodes')}</Button>
+          <Button color="error" onClick={() => { setCode(''); setConfirm('off') }}>{t('mfa.disable')}</Button>
+        </Stack>
+      )}
       {enroll && (
         <Stack component="form" spacing={2} onSubmit={finish}>
           <Typography>{t('mfa.setupStep1')}</Typography>
           <Box component="img" src={enroll.qr} alt="QR" sx={{ width: 180, height: 180, bgcolor: '#fff', p: 1, borderRadius: 1 }} />
           <TextField label={t('mfa.secret')} value={enroll.secret} slotProps={{ htmlInput: { readOnly: true } }} />
           <Typography>{t('mfa.setupStep2')}</Typography>
-          <TextField label={t('mfa.codeLabel')} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            slotProps={{ htmlInput: { inputMode: 'numeric', autoComplete: 'one-time-code' } }} />
+          {codeField}
           <Button type="submit" variant="contained" loading={busy} disabled={code.length !== 6} sx={{ alignSelf: 'start' }}>{t('mfa.verify')}</Button>
         </Stack>
       )}
       <Divider />
       <Typography variant="subtitle1">{t('profile.devices')}</Typography>
       <Typography color="text.secondary">{t('profile.devicesHint')}</Typography>
-      <Button variant="outlined" onClick={signOutOthers} sx={{ alignSelf: 'start' }}>{t('profile.signOutOthers')}</Button>
+      <Button variant="outlined" sx={{ alignSelf: 'start' }}
+        onClick={() => run(async () => { await send('POST', '/v1/auth/sign-out-others'); setNotice(t('profile.signedOutOthers')) })}>
+        {t('profile.signOutOthers')}
+      </Button>
       {notice && <Alert severity="success">{notice}</Alert>}
       {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
-      <Dialog open={confirmOff} onClose={() => setConfirmOff(false)}>
-        <DialogContent><DialogContentText>{t('mfa.disableConfirm')}</DialogContentText></DialogContent>
+
+      <Dialog open={!!confirm} onClose={() => setConfirm(null)} fullWidth maxWidth="xs">
+        <DialogTitle>{t(confirm === 'off' ? 'mfa.disable' : 'mfa.newCodes')}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <DialogContentText>{t(confirm === 'off' ? 'mfa.disableConfirm' : 'mfa.newCodesConfirm')}</DialogContentText>
+            {codeField}
+            {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
+          </Stack>
+        </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmOff(false)}>{t('common.cancel')}</Button>
-          <Button color="error" variant="contained" onClick={turnOff}>{t('mfa.disable')}</Button>
+          <Button onClick={() => setConfirm(null)}>{t('common.cancel')}</Button>
+          <Button color={confirm === 'off' ? 'error' : 'primary'} variant="contained" loading={busy} disabled={code.length !== 6}
+            onClick={withCode}>
+            {t(confirm === 'off' ? 'mfa.disable' : 'mfa.newCodes')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!recovery} fullWidth maxWidth="xs">
+        <DialogTitle>{t('mfa.recoveryTitle')}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            <DialogContentText>{t('mfa.recoveryBody')}</DialogContentText>
+            <Box component="pre" sx={{ m: 0, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, columns: 2, fontSize: 16 }}>
+              {recovery?.join('\n')}
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => navigator.clipboard?.writeText(recovery?.join('\n') ?? '')}>{t('common.copy')}</Button>
+          <Button variant="contained" onClick={() => setRecovery(null)}>{t('mfa.recoverySaved')}</Button>
         </DialogActions>
       </Dialog>
     </Section>
@@ -184,8 +250,7 @@ function YourData({ profile }: { profile: ProfileT }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
   const qc = useQueryClient()
-  const consent = useQuery({ queryKey: ['consent'], queryFn: () => api<ConsentStatus>('/v1/me/consent') })
-  const [confirm, setConfirm] = useState<'withdraw' | 'delete' | null>(null)
+  const [confirm, setConfirm] = useState(false)
   const [typed, setTyped] = useState('')
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
@@ -201,9 +266,9 @@ function YourData({ profile }: { profile: ProfileT }) {
       setBusy(false)
     }
   }
-  const close = (path: string) => run(async () => {
-    await send('POST', path)
-    setConfirm(null)
+  const close = () => run(async () => {
+    await send('POST', '/v1/me/delete')
+    setConfirm(false)
     await qc.invalidateQueries({ queryKey: keys.me })
   })
 
@@ -214,33 +279,23 @@ function YourData({ profile }: { profile: ProfileT }) {
         {t('profile.export')}
       </Button>
       <Divider />
-      <Typography variant="subtitle1">{t('profile.privacy')}</Typography>
-      {consent.data?.agreed_version && (
-        <Typography color="text.secondary">
-          {t('profile.policyAgreed', { version: consent.data.agreed_version })}{' '}
-          {consent.data.current_path && <Link href={`${config.siteUrl}${consent.data.current_path}`} target="_blank" rel="noopener">{t('profile.viewPolicy')}</Link>}
-        </Typography>
-      )}
-      <Button color="error" onClick={() => setConfirm('withdraw')} sx={{ alignSelf: 'start' }}>{t('profile.withdraw')}</Button>
-      <Divider />
       <Typography variant="subtitle1">{t('profile.deleteTitle')}</Typography>
       <Typography color="text.secondary">{t('profile.deleteHint')}</Typography>
-      <Button color="error" variant="outlined" onClick={() => { setTyped(''); setConfirm('delete') }} sx={{ alignSelf: 'start' }}>{t('profile.delete')}</Button>
+      <Button color="error" variant="outlined" onClick={() => { setTyped(''); setConfirm(true) }} sx={{ alignSelf: 'start' }}>{t('profile.delete')}</Button>
       {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
-      <Dialog open={!!confirm} onClose={() => setConfirm(null)} fullWidth maxWidth="xs">
-        <DialogTitle>{t(confirm === 'delete' ? 'profile.deleteTitle' : 'profile.withdraw')}</DialogTitle>
+      <Dialog open={confirm} onClose={() => setConfirm(false)} fullWidth maxWidth="xs">
+        <DialogTitle>{t('profile.deleteTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2}>
-            <DialogContentText>{t(confirm === 'delete' ? 'profile.deleteHint' : 'profile.withdrawConfirm')}</DialogContentText>
-            {confirm === 'delete' && <TextField label={t('profile.deleteConfirmLabel')} value={typed} onChange={(e) => setTyped(e.target.value)} />}
+            <DialogContentText>{t('profile.deleteHint')}</DialogContentText>
+            <TextField label={t('profile.deleteConfirmLabel')} value={typed} onChange={(e) => setTyped(e.target.value)} />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirm(null)}>{t('common.cancel')}</Button>
+          <Button onClick={() => setConfirm(false)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" loading={busy}
-            disabled={confirm === 'delete' && typed.trim().toLowerCase() !== profile.username}
-            onClick={() => close(confirm === 'delete' ? '/v1/me/delete' : '/v1/me/consent/withdraw')}>
-            {t(confirm === 'delete' ? 'profile.delete' : 'profile.withdraw')}
+            disabled={typed.trim().toLowerCase() !== profile.username} onClick={close}>
+            {t('profile.delete')}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,139 +1,56 @@
-"""Nightly database backup: one pg_dump of what a restore needs, kept about 6 days.
+r"""Nightly database backup: one pg_dump of what a restore needs, kept about 6 days.
 
-Why: production runs on Supabase Free during the hobbyist test, and Free has
-no managed backups (Supabase backs up Pro, Team and Enterprise projects only,
-and asks Free projects to export their data themselves). This job is that
-export. Production moves to Pro, with its daily backups, before public launch.
-
-Daily job (python -m app.jobs.backup), a Cloud Run job started by Cloud Scheduler after
-the purge job (python -m app.jobs.account_deletion):
+Run by the scheduler after the purge job, and by app/launch.py before an
+update applies new migrations:
     1. pg_dump, custom format, to a local temporary file;
     2. pg_restore --list reads it back, and it must hold the app's tables;
     3. it is copied into BACKUP_DIR as msaving-<UTC time>.dump.partial, then
        renamed, so a run that fails never leaves a file that looks complete;
     4. once the new dump is in place, dumps older than 5 days 12 hours (by the
        time in their name) are deleted.
-Any failure exits non-zero: a failed execution is the alert (set a Cloud
-Monitoring alert on this job's failed executions). The log line counts the
-tables dumped per schema; in production, auth must not be 0.
+Any failure exits non-zero and is printed in the server's log.
 
-What is dumped:
-- public: the whole app, schema and data: tables, functions, triggers,
-  row-level security policies and grants. A restore runs no migrations.
-- auth: Supabase Auth's tables. Only their rows are restored (a new project
-  already has the tables), so logins, password hashes and two-factor secrets
-  come back with the accounts; without them nobody could sign in again.
-- supabase_migrations: the Supabase CLI's list of applied migrations, so CI's
-  `supabase db push` carries on from the restored version.
-A schema that doesn't exist is skipped (plain Postgres in the tests has no
-auth). No dump holds Supabase's settings (Auth, API, SMTP), roles and their
-passwords, or files in Supabase Storage (unused here).
+What is dumped: the schemas public (the whole app: tables, data, functions,
+triggers, row-level security policies and grants) and msaving (the list of
+applied migrations). Not the roles or their passwords, which live outside
+any one database.
 
-Connection and role: BACKUP_DATABASE_URL, a secret, is the project's Session
-pooler string (port 5432, user postgres.<project ref>, sslmode=require) for
-the `postgres` role. The pooler because Free's direct connection is IPv6 only
-(the IPv4 add-on is Pro and up) and the pooler takes IPv4; session mode
-because pg_dump needs one session, which transaction mode (port 6543) doesn't
-keep. `postgres` because pg_dump must see every row: it turns row-level
-security off and stops with an error if the role can't bypass it. Every user
-data table has row-level security and the app's own logins deliberately can't
-bypass it (no BYPASSRLS); Supabase's postgres role can, and can read Supabase
-Auth's tables. It is the strongest login the project has, so its URL is only in
-Secret Manager, readable only by this job's service account, and the job only
-reads. The URL is parsed as libpq parses it, and pg_dump gets the password as
+Connection: BACKUP_DATABASE_URL, the database owner (pg_dump must see every
+row, and the app's own logins deliberately can't bypass row-level security).
+The URL is parsed as libpq parses it, and pg_dump gets the password as
 PGPASSWORD, never on its command line; no message prints the URL or password.
 Percent-encode a password holding @, /, ? or # (libpq splits at the first @
-and stops at /; the job refuses all four raw). Use a pg_dump (PG_DUMP, else PATH) of the server's
-major version (`select version()`): an older one refuses to dump, and a newer
-one can write settings that an older server rejects on restore.
+and stops at /; the job refuses all four raw). Use a pg_dump (PG_DUMP, else
+PATH) of the server's major version: the image has PostgreSQL 17's.
 
-Where dumps go: BACKUP_DIR is a Cloud Storage bucket in asia-southeast1,
-mounted into the job as a Cloud Run volume. Its own bucket, not PURGE_LOG's
-(that one keeps versions). The privacy policy says an account leaves backups
-within 7 days of its purge:
-- Step 4 deletes dumps older than 5 days 12 hours. The last dump holding a
-  purged account is the last one taken before the purge, so it goes about 5
-  days after the purge when this job runs after the purge job, and about 6
-  if the purge ran late. Old dumps are deleted only after a good new one
-  exists, so a failing job keeps what's there.
-- A lifecycle rule deleting objects 6 days old ({"rule": [{"action": {"type":
-  "Delete"}, "condition": {"age": 6}}]}) is the backstop while the job is
-  failing, leftover .partial files included. Cloud Storage runs lifecycle
-  rules asynchronously with no promised delay, so the alert on failed runs
-  is what keeps the 7 days then.
-- Object versioning off (the default) and soft delete off
-  (`gcloud storage buckets update gs://BUCKET --clear-soft-delete`). Either one
-  keeps deleted dumps, restorable, past the 7 days: soft delete keeps every
-  deleted object 7 more days by default, including what the lifecycle rule
-  deletes and the full .partial copy each night's rename deletes.
-- Access: uniform bucket-level access and public access prevention on. Only
-  the job's service account writes (roles/storage.objectUser on this bucket:
-  the mount needs to list, a rename is a copy plus a delete, and step 4
-  deletes). Only the
-  project owner reads, to restore. Encrypted at rest by Google by default.
-Cloud Run's local disk is memory: give the job memory for twice the dump.
+Where dumps go: BACKUP_DIR, the `backups` volume in docker-compose.yml. A
+backup on the same disk doesn't survive that disk: copying dumps to another
+machine is the operator's job (the setup guide shows how). Dumps hold
+password hashes and two-factor secrets: keep copies private.
 
-Restore (manual, by the project owner). Supabase documents restoring into a
-new project only, so restore into a new one and switch the app over. DUMP is
-the dump file, NEW_DB_URL the new project's Session pooler URL as postgres.
-Use pg_restore and psql from one Postgres install of the server's major
-version. tests/test_backup.py runs the `$` lines on plain Postgres; do one
-test restore into a scratch Supabase project before the hobbyist test (pause
-the development project first, since Free allows two active projects, and
-delete the scratch project afterwards).
-    1. Pause the Cloud Scheduler jobs and take the app offline.
-    2. Download the newest good dump: gcloud storage cp gs://BUCKET/msaving-<time>.dump .
-    3. Create a Supabase project in the same region. Free allows two active
-       projects (development and production use both), so pause the old
-       production project first; paused projects don't count. Set what no
-       dump holds:
-       Auth settings (site URL, redirect URLs, SMTP, email confirmation,
-       two-factor, rate limits), the Data API off, and any extension the
-       migrations use that isn't on by default.
-    4. Create the app's roles, which live outside the database: every
-       `create role` in supabase/migrations (today app_user, ai_reader,
-       fx_updater, account_purger and billing_webhook, all nologin), then one
-       login per role with a new password (msaving-docs, Environments).
-    5. The app, schema and data, and the CLI's migration list. First take
-       back what a new project grants Supabase's API roles on every new
-       object in public, as the lock migration does: restored objects are
-       created as postgres and would pick those grants up, so anon could call
-       the purge functions. Left out of the restore: what the new project
-       already has (schema public, Supabase's own entries), and auth, which
-       is step 6:
-       $ psql -v ON_ERROR_STOP=1 --command='alter default privileges in schema public revoke all on tables from anon, authenticated' --command='alter default privileges in schema public revoke all on sequences from anon, authenticated' --command='alter default privileges in schema public revoke all on functions from anon, authenticated' --command='alter default privileges revoke execute on functions from public' "$NEW_DB_URL"
-       $ pg_restore --list "$DUMP" | grep -v -E ' SCHEMA - public | COMMENT - SCHEMA public | auth | supabase_admin$' > app.list
-       $ pg_restore --no-owner --single-transaction --exit-on-error --use-list=app.list --dbname="$NEW_DB_URL" "$DUMP"
-    6. Logins: Supabase Auth's rows into the new project's auth tables, except
-       its own migration list. As in Supabase's restore guide, triggers and
-       foreign key checks are off while they load:
-       $ pg_restore --list "$DUMP" | grep -E ' (TABLE DATA|SEQUENCE SET) auth ' | grep -v ' schema_migrations ' > auth.list
-       $ pg_restore --use-list=auth.list --file=auth.sql "$DUMP"
-       $ psql --single-transaction -v ON_ERROR_STOP=1 --command='set session_replication_role = replica' --file=auth.sql "$NEW_DB_URL"
-    7. Point the environment at the new project: the login URLs and
-       BACKUP_DATABASE_URL in Secret Manager, SUPABASE_URL and the service
-       key, the API's token checks, and the web app's Supabase settings.
-    8. Before anyone signs in, redo the purges made since the dump, which
-       brought those accounts back with their logins: run the purge Cloud Run
-       job once with its arguments changed to `-m app.jobs.account_deletion --repurge`
-       (gcloud run jobs execute PURGE_JOB --args=... --wait), after step 7
-       pointed its secrets at the new project. Run it there, not from a
-       laptop: it appends to PURGE_LOG, and only the bucket's copy is the one
-       the daily purge reads.
-       It reads every purged id from PURGE_LOG (kept outside the database, so
-       the restore didn't roll it back), purges again the accounts that are
-       back (repurge_accounts skips ids still purged), then deletes the Supabase
-       Auth login of every id in the log (404 counts as gone). If a login
-       can't be deleted it exits with an error, and the daily purge retries it.
-    9. Re-apply what users did to their accounts after the dump, from the
-       API's account event log in Cloud Logging (msaving-docs, Deleting an
-       account): closures, consent withdrawals, and restores (set users.deletion_requested_at to null for
-       those ids, or the purge would delete accounts their owners kept).
-   10. Delete DUMP and auth.sql (they hold password hashes and two-factor
-       secrets) and the .list files, reopen the app, resume the scheduler jobs.
-       Once the new project works, delete the old production project within
-       7 days: paused, it still holds every account, including ones purged
-       later, which would break the privacy policy's 7-day promise.
+Restore (by the operator; the setup guide has the same steps as docker
+commands). DUMP is the dump file, NEW_DB_URL an empty database on the same
+or a new server, as its owner. tests/test_backup.py runs the `$` lines.
+    1. Stop the server (docker compose stop msaving).
+    2. What lives outside the dump: functions made later aren't executable by
+       everyone (the baseline's lock-down), and the roles the app's grants
+       name, if this server doesn't have them yet (a new server). Their logins
+       and passwords are made when the server starts:
+       $ psql -v ON_ERROR_STOP=1 --command='alter default privileges revoke execute on functions from public' "$NEW_DB_URL"
+       $ psql -v ON_ERROR_STOP=1 "$NEW_DB_URL" <<< "select format('create role %I nologin', r) from unnest(array['app_user', 'account_purger', 'fx_updater']) r where not exists (select 1 from pg_roles where rolname = r) \gexec"
+    3. The app, its data and the list of applied migrations, leaving out the
+       schema public itself, which every database already has:
+       $ pg_restore --list "$DUMP" | grep -v -E ' (SCHEMA|COMMENT) - (SCHEMA )?public ' > msaving.list
+       $ pg_restore --no-owner --single-transaction --exit-on-error --use-list=msaving.list --dbname="$NEW_DB_URL" "$DUMP"
+    4. Start the server. Before anyone uses it, redo the purges made since the
+       dump, which brought those accounts back:
+           docker compose exec msaving python -m app.admin repurge
+       It reads every purged id from PURGE_LOG (in the backups volume, outside
+       the database, so the restore didn't roll it back) and purges again the
+       accounts that are back.
+    5. Accounts closed or restored after the dump: the server's log has an
+       account_event line for each (app/core/events.py). Close or restore them
+       again by hand if it matters.
 """
 import contextlib
 import os
@@ -149,8 +66,8 @@ from psycopg import Error as PsycopgError
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 # Each is dumped if it exists; see the docstring for why.
-SCHEMAS = ("public", "auth", "supabase_migrations")
-KEEP = timedelta(days=5, hours=12)        # see the docstring: the 7-day promise
+SCHEMAS = ("public", "msaving")
+KEEP = timedelta(days=5, hours=12)        # about 6 days, counting the newest
 DUMP_NAME = re.compile(r"msaving-(\d{8}T\d{6}Z)\.dump(\.partial)?")
 
 
@@ -217,7 +134,7 @@ def run_backup(database_url: str, backup_dir: str) -> tuple[str, dict[str, int],
     """Writes one dump into backup_dir, then prunes. Returns its path, its table count per schema
     and the names of the old dumps deleted."""
     if not os.path.isdir(backup_dir):
-        raise BackupError(f"BACKUP_DIR {backup_dir} is not a directory: is the bucket mounted?")
+        raise BackupError(f"BACKUP_DIR {backup_dir} is not a directory: is the volume mounted?")
     pg_dump, pg_restore = _tools()
     dsn, password = _split(database_url)
     env = dict(os.environ, PGAPPNAME="msaving-backup")
@@ -237,10 +154,12 @@ def run_backup(database_url: str, backup_dir: str) -> tuple[str, dict[str, int],
         final = os.path.join(backup_dir, name)
         partial = final + ".partial"
         try:
-            with open(local, "rb") as src, open(partial, "wb") as dst:
+            # Owner-only: a dump holds password hashes and two-factor secrets.
+            fd = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with open(local, "rb") as src, os.fdopen(fd, "wb") as dst:
                 shutil.copyfileobj(src, dst)
                 dst.flush()
-                os.fsync(dst.fileno())              # on a Cloud Storage volume, the upload happens here
+                os.fsync(dst.fileno())
             if os.path.getsize(partial) != os.path.getsize(local):
                 raise BackupError("the copy in BACKUP_DIR is incomplete")
             os.replace(partial, final)

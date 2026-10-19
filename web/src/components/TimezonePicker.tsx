@@ -14,7 +14,8 @@ type Props = { label: string; value: string | null; onChange: (tz: string | null
 export function TimezonePicker({ label, value, onChange, disabled }: Props) {
   return (
     <Autocomplete
-      options={zones}
+      // The server stores canonical names (Asia/Ho_Chi_Minh), which some browsers list under an old alias.
+      options={value && !zones.includes(value) ? [value, ...zones] : zones}
       value={value}
       onChange={(_, v) => onChange(v)}
       autoHighlight

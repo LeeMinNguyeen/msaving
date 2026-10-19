@@ -1,5 +1,6 @@
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
 import AddIcon from '@mui/icons-material/Add'
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 import CategoryIcon from '@mui/icons-material/CategoryOutlined'
 import DashboardIcon from '@mui/icons-material/SpaceDashboardOutlined'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
@@ -29,7 +30,7 @@ import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import type { Book, Transaction } from '../lib/api'
 import { useBooks, useMe } from '../lib/queries'
-import { supabase } from '../lib/supabase'
+import { signOut } from '../auth/signOut'
 import { TxnContext } from './txnContext'
 import { TxnDialog, type TxnDefaults } from './TxnDialog'
 
@@ -64,7 +65,7 @@ function BookSwitcher({ book }: { book: Book }) {
   )
 }
 
-// Desktop first (msaving-docs, Decisions): a fixed sidebar with the book switcher
+// Desktop first (a project decision): a fixed sidebar with the book switcher
 // and the book's pages. Phones keep a working top bar until the mobile app is
 // in the stores (see StoreRedirect).
 export function Shell({ book, children }: { book: Book; children: ReactNode }) {
@@ -94,6 +95,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
     { to: `/books/${book.id}/accounts`, label: t('accounts.title'), icon: <AccountBalanceWalletIcon /> },
     { to: `/books/${book.id}/categories`, label: t('nav.categories'), icon: <CategoryIcon /> },
     { to: `/books/${book.id}/settings`, label: t('book.settings'), icon: <SettingsIcon /> },
+    ...(me.data?.profile.is_admin ? [{ to: `/books/${book.id}/admin`, label: t('nav.admin'), icon: <AdminPanelSettingsIcon /> }] : []),
   ]
 
   if (!desktop) {
@@ -161,10 +163,10 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
           <ListItemButton component={RouterLink} to={`/books/${book.id}/profile`} selected={pathname.endsWith('/profile')}
             sx={{ borderRadius: 1, px: 1, flex: 1, minWidth: 0 }}>
             <ListItemIcon sx={{ minWidth: 32 }}><PersonIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary={me.data?.profile?.username} slotProps={{ primary: { noWrap: true, variant: 'body2' } }} />
+            <ListItemText primary={me.data?.profile.username} slotProps={{ primary: { noWrap: true, variant: 'body2' } }} />
           </ListItemButton>
           <Tooltip title={t('auth.signOut')}>
-            <IconButton size="small" onClick={() => supabase.auth.signOut()} aria-label={t('auth.signOut')}>
+            <IconButton size="small" onClick={() => signOut()} aria-label={t('auth.signOut')}>
               <LogoutIcon fontSize="small" />
             </IconButton>
           </Tooltip>

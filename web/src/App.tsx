@@ -7,20 +7,16 @@ import { useSession } from './auth/useSession'
 import { useErrorText } from './components/errors'
 import { Shell } from './components/Shell'
 import { setLanguage } from './i18n'
-import { ApiError } from './lib/api'
-import { useBooks, useMe } from './lib/queries'
-import { useQueryClient } from '@tanstack/react-query'
-import { Centered } from './components/Centered'
-import { MfaChallenge } from './components/MfaChallenge'
+import { useBooks, useInstance, useMe } from './lib/queries'
 import { AccountClosing } from './pages/AccountClosing'
-import { UpdatedPolicy } from './pages/UpdatedPolicy'
+import { Admin } from './pages/Admin'
 import { Profile } from './pages/Profile'
 import { Accounts } from './pages/Accounts'
 import { BookSettings } from './pages/BookSettings'
 import { Categories } from './pages/Categories'
-import { ChooseUsername } from './pages/ChooseUsername'
 import { CreateBook } from './pages/CreateBook'
 import { Dashboard } from './pages/Dashboard'
+import { Join, Reset, Setup } from './pages/Join'
 import { SignIn } from './pages/SignIn'
 import { Transactions } from './pages/Transactions'
 
@@ -41,28 +37,20 @@ function Failed({ error }: { error: unknown }) {
   )
 }
 
-// Signed in, confirmed email, and an account (username + consent). Otherwise
-// show the step that's missing.
+// Signed in, with an open account. Otherwise sign-in, or the closing screen.
 function RequireAccount() {
-  const session = useSession()
-  const me = useMe(!!session)
-  const qc = useQueryClient()
-  const language = me.data?.profile?.language
+  const signedIn = useSession()
+  const me = useMe(signedIn)
+  const language = me.data?.profile.language
   useEffect(() => {
     if (language) setLanguage(language) // the saved language wins once signed in
   }, [language])
 
-  if (session === undefined) return <Loading />
-  if (session === null) return <Navigate to="/sign-in" replace />
+  if (!signedIn) return <Navigate to="/sign-in" replace />
   if (me.isPending) return <Loading />
-  if (me.isError && me.error instanceof ApiError && me.error.code === 'mfa_required') {
-    return <Centered><MfaChallenge onDone={() => qc.invalidateQueries()} /></Centered>
-  }
   if (me.isError) return <Failed error={me.error} />
   const profile = me.data.profile
-  if (!profile) return <ChooseUsername />
-  if (profile.deletion_requested_at) return <AccountClosing requestedAt={profile.deletion_requested_at} needsConsent={me.data.needs_consent} />
-  if (me.data.needs_consent) return <UpdatedPolicy />
+  if (profile.deletion_requested_at) return <AccountClosing requestedAt={profile.deletion_requested_at} />
   return <Outlet />
 }
 
@@ -75,7 +63,7 @@ function Home() {
   return <Navigate to={first ? `/books/${first.id}` : '/books/new'} replace />
 }
 
-type Page = 'dashboard' | 'transactions' | 'accounts' | 'categories' | 'settings' | 'profile'
+type Page = 'dashboard' | 'transactions' | 'accounts' | 'categories' | 'settings' | 'profile' | 'admin'
 
 function InBook({ page }: { page: Page }) {
   const { bookId } = useParams()
@@ -91,20 +79,27 @@ function InBook({ page }: { page: Page }) {
     categories: <Categories book={book} />,
     settings: <BookSettings key={book.version} book={book} />,
     profile: <Profile />,
+    admin: <Admin />,
   }
   const content = pages[page]
   return <Shell book={book}>{content}</Shell>
 }
 
-function PublicOnly() {
-  const session = useSession()
-  if (session === undefined) return <Loading />
-  if (session) return <Navigate to="/" replace />
-  return <SignIn />
+// Screens for people not signed in. A server with no admin yet shows only setup.
+function PublicOnly({ page }: { page: 'sign-in' | 'join' | 'reset' }) {
+  const signedIn = useSession()
+  const instance = useInstance()
+  if (signedIn && page !== 'reset') return <Navigate to="/" replace />
+  if (instance.isPending) return <Loading />
+  if (instance.isError) return <Failed error={instance.error} />
+  if (instance.data.setup_needed) return <Setup />
+  return { 'sign-in': <SignIn />, join: <Join />, reset: <Reset /> }[page]
 }
 
 const router = createBrowserRouter([
-  { path: '/sign-in', element: <PublicOnly /> },
+  { path: '/sign-in', element: <PublicOnly page="sign-in" /> },
+  { path: '/join', element: <PublicOnly page="join" /> },
+  { path: '/reset', element: <PublicOnly page="reset" /> },
   {
     element: <RequireAccount />,
     children: [
@@ -116,6 +111,7 @@ const router = createBrowserRouter([
       { path: '/books/:bookId/categories', element: <InBook page="categories" /> },
       { path: '/books/:bookId/profile', element: <InBook page="profile" /> },
       { path: '/books/:bookId/settings', element: <InBook page="settings" /> },
+      { path: '/books/:bookId/admin', element: <InBook page="admin" /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

@@ -1,111 +1,55 @@
-import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
-import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
+import { Link as RouterLink } from 'react-router'
+import { useSignedInForm } from '../auth/forms'
 import { Centered } from '../components/Centered'
-import { useErrorText } from '../components/errors'
-import { LanguagePicker } from '../components/LanguagePicker'
-import { config } from '../config'
-import { currentLanguage } from '../i18n'
-import { usePolicy } from '../lib/queries'
-import { supabase } from '../lib/supabase'
-
-type Mode = 'signIn' | 'signUp' | 'checkEmail'
-
-// Screen 1. Two-factor sign-in and the Turnstile CAPTCHA come with milestone 6
-// and the hosted setup.
+import { FormError, PublicHeader } from '../components/AccountForm'
+import { ApiError, send, type Token } from '../lib/api'
+import { useInstance } from '../lib/queries'
+// Sign in: username, password, and the authenticator's code (or a recovery
+// code) once the server says two-factor is on.
 export function SignIn() {
   const { t } = useTranslation()
-  const errorText = useErrorText()
-  const navigate = useNavigate()
-  const policy = usePolicy()
-  const [mode, setMode] = useState<Mode>('signIn')
-  const [email, setEmail] = useState('')
-  const [error, setError] = useState<unknown>(null)
-  const [busy, setBusy] = useState(false)
+  const instance = useInstance()
+  const [needsCode, setNeedsCode] = useState(false)
+  const { submit, error, busy } = useSignedInForm()
 
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const password = String(new FormData(e.currentTarget).get('password'))
-    setBusy(true)
-    setError(null)
-    const { error } =
-      mode === 'signUp'
-        ? await supabase.auth.signUp({
-            email,
-            password,
-            // Auth emails use this language; the confirmation link opens the app.
-            options: { data: { language: currentLanguage() }, emailRedirectTo: window.location.origin },
-          })
-        : await supabase.auth.signInWithPassword({ email, password })
-    setBusy(false)
-    if (error) setError(error)
-    else if (mode === 'signUp') setMode('checkEmail')
-    else navigate('/', { replace: true })
+  async function signIn(form: HTMLFormElement) {
+    const f = new FormData(form)
+    try {
+      return await send<Token>('POST', '/v1/auth/sign-in', {
+        username: String(f.get('username')).trim(), password: String(f.get('password')),
+        code: needsCode ? String(f.get('code') ?? '').trim() : null,
+      })
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'code_required') setNeedsCode(true)
+      throw err
+    }
   }
 
-  if (mode === 'checkEmail') {
-    return (
-      <Centered>
-        <Stack spacing={2}>
-          <Typography variant="h5">{t('auth.checkEmailTitle')}</Typography>
-          <Typography>{t('auth.checkEmailBody', { email })}</Typography>
-          <Button onClick={() => setMode('signIn')}>{t('auth.signIn')}</Button>
-        </Stack>
-      </Centered>
-    )
-  }
-
-  const signUp = mode === 'signUp'
   return (
     <Centered>
-      <Stack component="form" spacing={2} onSubmit={submit}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h5">{t(signUp ? 'auth.signUpTitle' : 'auth.signInTitle')}</Typography>
-          <LanguagePicker />
-        </Stack>
-        <TextField
-          label={t('auth.email')}
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <TextField
-          name="password"
-          label={t('auth.password')}
-          type="password"
-          autoComplete={signUp ? 'new-password' : 'current-password'}
-          required
-          helperText={signUp ? t('auth.passwordHint') : undefined}
-          slotProps={{ htmlInput: { minLength: signUp ? 10 : undefined } }}
-        />
-        {signUp && (
-          <Typography variant="body2" color="text.secondary">
-            {t('auth.emailUse')}{' '}
-            <Link href={policy.data ? `${config.siteUrl}${policy.data.path}` : undefined} target="_blank" rel="noopener">
-              {t('auth.privacyLink')}
-            </Link>
-          </Typography>
+      <Stack component="form" spacing={2} onSubmit={(e) => submit(e, signIn)}>
+        <PublicHeader title={t('auth.signInTitle')} />
+        <TextField name="username" label={t('auth.username')} required autoComplete="username"
+          slotProps={{ htmlInput: { autoCapitalize: 'none' } }} />
+        <TextField name="password" label={t('auth.password')} type="password" required autoComplete="current-password" />
+        {needsCode && (
+          <TextField name="code" label={t('mfa.codeOrRecovery')} required autoFocus
+            slotProps={{ htmlInput: { autoComplete: 'one-time-code', autoCapitalize: 'characters' } }} />
         )}
-        {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
-        <Button type="submit" variant="contained" size="large" loading={busy}>
-          {t(signUp ? 'auth.signUp' : 'auth.signIn')}
-        </Button>
-        <Button
-          onClick={() => {
-            setMode(signUp ? 'signIn' : 'signUp')
-            setError(null)
-          }}
-        >
-          {t(signUp ? 'auth.toSignIn' : 'auth.toSignUp')}
-        </Button>
+        {error instanceof ApiError && error.code === 'code_required' ? null : <FormError error={error} />}
+        <Button type="submit" variant="contained" size="large" loading={busy}>{t('auth.signIn')}</Button>
+        <Typography variant="body2" color="text.secondary">
+          {instance.data?.signup === 'open'
+            ? <>{t('auth.noAccount')} <Button component={RouterLink} to="/join" size="small">{t('auth.toSignUp')}</Button></>
+            : t('auth.inviteOnly')}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">{t('auth.forgotPassword')}</Typography>
       </Stack>
     </Centered>
   )
