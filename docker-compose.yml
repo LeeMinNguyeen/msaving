@@ -127,7 +127,9 @@ services:
             # The running services but this one (compose here would mount this
             # container's /project, not the folder on the host). Not the
             # others: a database left off with --scale db=0 stays off.
-            if HOME=/tmp su-exec "$$owner" git pull --ff-only > /tmp/update.log 2>&1 \
+            if ! su-exec "$$owner" git symbolic-ref -q HEAD > /dev/null; then
+              echo "failed $$(date -u +%FT%TZ): this folder is on a fixed version, not a branch (git checkout main)" > /updates/status
+            elif HOME=/tmp su-exec "$$owner" git pull --ff-only > /tmp/update.log 2>&1 \
               && services=$$(docker compose ps --services --status running | grep -vx updater) \
               && docker compose up -d --build --no-deps $$services >> /tmp/update.log 2>&1; then
               echo "done $$(date -u +%FT%TZ)" > /updates/status
