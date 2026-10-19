@@ -72,6 +72,20 @@ def test_bad_tokens_are_refused(client, bad):
     assert (r.status_code, r.json()) == (401, {"detail": "not_signed_in"})
 
 
+def test_only_this_servers_web_app_and_any_phone(client):
+    """A browser on another site (or a copy of the web app hosted elsewhere) is refused;
+    the server's own web app and the mobile app (no Origin) get through."""
+    u = signed_up(client)
+    other = client.get("/v1/me", headers={**auth(u), "Origin": "https://copy-of-msaving.example"})
+    assert (other.status_code, other.json()) == (403, {"detail": "origin_not_allowed"})
+    assert client.post("/v1/auth/sign-in", headers={"Origin": "null"}, json={"username": "x", "password": "y"}).status_code == 403
+    assert client.get("/v1/me", headers={**auth(u), "Origin": "http://testserver"}).status_code == 200        # its own web app
+    behind_proxy = {**auth(u), "Origin": "https://money.example.com", "X-Forwarded-Host": "money.example.com"}
+    assert client.get("/v1/me", headers=behind_proxy).status_code == 200
+    assert client.get("/v1/me", headers=auth(u)).status_code == 200                                         # a phone
+    assert client.get("/", headers={"Origin": "https://elsewhere.example"}).status_code in (200, 404)       # pages aren't API calls
+
+
 def test_no_cors_by_default(client):
     preflight = {"Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "authorization"}
     r = client.options("/v1/me", headers={"Origin": "http://evil.test", **preflight})
@@ -447,3 +461,16 @@ def test_close_and_restore(client, capsys):
     assert events(capsys) == ["account_closed", "account_restored"]
     refused = client.post("/v1/me/restore", headers=auth(u))               # nothing to restore
     assert (refused.status_code, refused.json()) == (409, {"detail": "not_restorable"})
+
+
+def test_timezone_aliases_become_names_the_database_knows(client, database):
+    """Windows browsers report Asia/Saigon, which the postgres image doesn't know (the Overview failed on it)."""
+    u = signed_up(client)
+    bid = str(uuid.uuid4())
+    r = client.post("/v1/books", headers=auth(u), json={"id": bid, "name": "B", "base_currency": "VND", "timezone": "Asia/Saigon"})
+    assert r.status_code == 201 and r.json()["timezone"] == "Asia/Ho_Chi_Minh"
+    assert client.get(f"/v1/books/{bid}/dashboard", headers=auth(u)).status_code == 200
+    assert client.patch("/v1/me", headers=auth(u), json={"timezone": "Asia/Calcutta"}).json()["profile"]["timezone"] == "Asia/Kolkata"
+    assert client.patch("/v1/me", headers=auth(u), json={"timezone": "Mars/Olympus"}).status_code == 422
+    with database.connect() as c, pytest.raises(Exception, match="invalid_timezone"):
+        c.execute(text("update books set timezone = 'Asia/Saigon' where id = :b"), {"b": bid})

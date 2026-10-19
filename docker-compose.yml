@@ -53,9 +53,12 @@ services:
       ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-}
       OXR_APP_ID: ${OXR_APP_ID:-}
       JOBS_HOUR: ${JOBS_HOUR:-19}
+      MSAVING_PINNED: ${MSAVING_VERSION:-latest}
+      UPDATE_CHECK: ${UPDATE_CHECK:-on}
     volumes:
       - secrets:/secrets
       - backups:/backups
+      - updates:/updates
     depends_on:
       secrets:
         condition: service_completed_successfully
@@ -83,8 +86,43 @@ services:
       - msaving
     restart: unless-stopped
 
+  # Optional one-click updates from the web app's Server admin page. In .env:
+  #   COMPOSE_PROFILES=updater        (or https,updater)
+  # This helper can control Docker on this machine (root-level access), so
+  # it's off unless you turn it on. It does one thing: when the admin presses
+  # Update, it pulls the msaving image and restarts that one container.
+  # Without it, the admin page shows the two commands to run instead.
+  updater:
+    image: docker:29-cli
+    profiles: ["updater"]
+    working_dir: /project
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/project:ro
+      - updates:/updates
+    command:
+      - sh
+      - -c
+      - |
+        chown 10001 /updates
+        while true; do
+          touch /updates/updater_alive
+          if [ -f /updates/requested ]; then
+            rm -f /updates/requested
+            echo "running $$(date -u +%FT%TZ)" > /updates/status
+            if docker compose pull msaving > /tmp/update.log 2>&1 && docker compose up -d --no-deps msaving >> /tmp/update.log 2>&1; then
+              echo "done $$(date -u +%FT%TZ)" > /updates/status
+            else
+              echo "failed $$(date -u +%FT%TZ): $$(tail -n 3 /tmp/update.log | tr '\n' ' ')" > /updates/status
+            fi
+          fi
+          sleep 5
+        done
+    restart: unless-stopped
+
 volumes:
   secrets:
   db:
   backups:
+  updates:
   caddy:

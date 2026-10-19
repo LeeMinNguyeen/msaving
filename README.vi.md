@@ -85,7 +85,13 @@ docker compose up -d
 ```
 
 Máy chủ tự sao lưu trước khi thay đổi cơ sở dữ liệu. Để giữ nguyên một phiên bản, đặt `MSAVING_VERSION=1.2.0`
-trong `.env`.
+trong `.env`. Quản trị viên sẽ thấy trên **Quản trị máy chủ** khi có phiên bản mới.
+
+**Cập nhật bằng một nút bấm (tùy chọn).** Thêm `COMPOSE_PROFILES=updater` vào `.env` (`https,updater` nếu dùng
+Caddy) rồi chạy `docker compose up -d`. Khi đó quản trị viên có thể bấm **Cập nhật ngay** trên **Quản trị máy
+chủ**. Việc này chạy một trình trợ giúp nhỏ có quyền điều khiển Docker trên máy, tương đương quyền root: nó chỉ
+tải ảnh MSaving và khởi động lại container đó, nhưng chỉ bật nếu bạn chấp nhận điều này. Cập nhật là tính năng
+của ứng dụng web; ứng dụng di động không làm việc này.
 
 ## Sao lưu
 
@@ -145,6 +151,8 @@ Tất cả đều không bắt buộc, trong tệp `.env` cạnh `docker-compose
 | `ADMIN_DATABASE_URL` | | Cơ sở dữ liệu của bạn thay cho cơ sở dữ liệu có sẵn |
 | `OXR_APP_ID` | | Tỷ giá từ Open Exchange Rates bằng khóa của bạn, thay cho nguồn miễn phí |
 | `JOBS_HOUR` | `19` | Giờ chạy công việc hằng ngày, theo giờ UTC (19 = 02:00 giờ Việt Nam) |
+| `COMPOSE_PROFILES` `updater` | | Cập nhật bằng một nút bấm từ ứng dụng web (xem Cập nhật) |
+| `UPDATE_CHECK` | `on` | `off`: không bao giờ hỏi GitHub có phiên bản mới không |
 
 ## Bảo mật
 
@@ -154,6 +162,8 @@ Tất cả đều không bắt buộc, trong tệp `.env` cạnh `docker-compose
   bằng tài khoản không thể vượt qua nó.
 - Đăng nhập, đăng ký và nhập mã đều bị giới hạn số lần thử. Không phân tích, không theo dõi, không script bên
   thứ ba.
+- Trên trình duyệt, chỉ ứng dụng web của chính máy chủ mới dùng được API: bản sao ứng dụng web ở địa chỉ khác,
+  hay bất kỳ trang web nào khác, đều bị từ chối. Ứng dụng di động kết nối được từ bao nhiêu điện thoại cũng được.
 - Bạn chịu trách nhiệm về máy chủ của mình: cập nhật thường xuyên, dùng HTTPS khi truy cập từ máy khác, và sao
   chép bản sao lưu sang nơi khác.
 

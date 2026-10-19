@@ -1512,6 +1512,25 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- Timezones: only names this database knows. Its timezone data can leave out
+-- old aliases a browser reports (Asia/Saigon); the API turns those into the
+-- canonical name first (app/api/models.py), and this keeps any other unknown
+-- name out, so a dashboard never fails on a stored one.
+-- ---------------------------------------------------------------------------
+create function valid_timezone() returns trigger
+language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
+begin
+  if new.timezone is not null and not exists (select 1 from pg_timezone_names where name = new.timezone) then
+    raise exception 'invalid_timezone: % is not a timezone this server knows', new.timezone;
+  end if;
+  return new;
+end $$;
+create trigger books_valid_timezone before insert or update of timezone on books
+  for each row execute function valid_timezone();
+create trigger users_valid_timezone before insert or update of timezone on users
+  for each row execute function valid_timezone();
+
+-- ---------------------------------------------------------------------------
 -- Lock-down and grants
 --
 -- Postgres lets PUBLIC execute every function by default. Only the app's
@@ -1548,7 +1567,7 @@ grant execute on function current_app_user(), my_book_role(uuid), can_read_book(
   restore_account(), my_account_status(), my_profile(), my_activity(),
   instance_info(), claim_setup(bytea), invite_is_valid(bytea), claim_invite(bytea), sign_in_lookup(text),
   use_recovery_code(uuid, bytea), session_user_id(bytea), use_password_reset(bytea),
-  am_admin(), admin_set_instance(text, text), admin_users(), admin_set_disabled(uuid, boolean),
+  am_admin(), require_admin(), admin_set_instance(text, text), admin_users(), admin_set_disabled(uuid, boolean),
   admin_create_invite(bytea, timestamptz, text), admin_invites(), admin_revoke_invite(uuid),
   admin_create_password_reset(uuid, bytea, timestamptz)
   to app_user;

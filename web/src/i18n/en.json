@@ -121,7 +121,10 @@
     "admin_only": "Only this server's admin can do this.",
     "admin_self": "You can't disable your own account.",
     "password_mismatch": "The two passwords don't match.",
-    "two_factor_off": "Two-step verification is off."
+    "two_factor_off": "Two-step verification is off.",
+    "invalid_timezone": "That timezone isn't one this server knows. Pick another.",
+    "updater_off": "One-click updates are off on this server.",
+    "origin_not_allowed": "This address isn't this server's own web app."
   },
   "nav": {
     "transactions": "Transactions",
@@ -393,6 +396,17 @@
     "disable": "Disable",
     "enable": "Enable",
     "resetReady": "Reset link for {{name}}",
-    "resetReadyBody": "Give this link to them yourself. It works once, for 24 hours, and turns their two-step verification off."
+    "resetReadyBody": "Give this link to them yourself. It works once, for 24 hours, and turns their two-step verification off.",
+    "updates": "Updates",
+    "latest": "newest {{version}}",
+    "updating": "Updating: the server downloads the new version, takes a backup and restarts. This takes about a minute; this page reconnects by itself.",
+    "updateDone": "The last update finished.",
+    "updateFailed": "The last update failed: {{detail}}",
+    "releaseNotes": "What's new",
+    "pinned": "This server is pinned to version {{version}} (MSAVING_VERSION in .env). Change that to update.",
+    "updateNow": "Update now",
+    "updateByHand": "To update, run these on the server, in the folder with docker-compose.yml:",
+    "updaterHint": "For a one-click Update here, add COMPOSE_PROFILES=updater to .env (see the setup guide: it gives a helper control of Docker).",
+    "updateConfirm": "Install version {{version}}? The server takes a backup, then restarts; everyone is offline for about a minute."
   }
 }

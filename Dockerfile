@@ -28,10 +28,10 @@ COPY backend/app ./app
 COPY backend/migrations ./migrations
 COPY --from=web /web/dist ./web
 
-# Not root. The secrets and backups volumes start from these folders, so they
-# belong to this user.
+# Not root. The secrets, backups and updates volumes start from these folders,
+# so they belong to this user.
 RUN useradd --system --uid 10001 msaving \
- && mkdir /secrets /backups && chown msaving /secrets /backups
+ && mkdir /secrets /backups /updates && chown msaving /secrets /backups /updates
 USER msaving
 
 ARG MSAVING_VERSION=dev

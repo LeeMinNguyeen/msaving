@@ -2,6 +2,7 @@
 Run for development: uvicorn app.api.main:app --reload
 """
 import os
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,28 @@ if settings.dev_origin:      # development only: the Vite server on another port
         allow_headers=["Authorization", "Content-Type"],
         expose_headers=["Content-Disposition"],
     )
+
+# Only this server's own web app may call the API from a browser (msaving-docs,
+# How clients find a server). Browsers send Origin; a copy of the web app
+# hosted anywhere else, or any other site, is refused before anything runs.
+# The mobile app sends no Origin, so any number of phones can connect.
+# Behind a reverse proxy the browser's address is in Host (Caddy, Tailscale,
+# Cloudflare Tunnel keep it) or X-Forwarded-Host.
+def own_origin(origin: str, request: Request) -> bool:
+    if settings.dev_origin and origin == settings.dev_origin:
+        return True
+    host = urlsplit(origin).netloc.lower()
+    allowed = {request.headers.get("host", ""), *request.headers.get("x-forwarded-host", "").split(",")}
+    return bool(host) and host in {h.strip().lower() for h in allowed if h.strip()}
+
+
+@app.middleware("http")
+async def own_web_app_only(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if request.url.path.startswith("/v1/") and origin is not None and not own_origin(origin, request):
+        return JSONResponse({"detail": "origin_not_allowed"}, status_code=403, headers={"Cache-Control": "no-store"})
+    return await call_next(request)
+
 
 # The web app's Content-Security-Policy: nothing from anywhere else. MUI's
 # styling (Emotion) adds <style> tags at runtime; QR codes are data: images.

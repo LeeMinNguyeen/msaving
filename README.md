@@ -85,7 +85,13 @@ docker compose up -d
 ```
 
 The server takes a backup before applying any database change. To stay on one version, set
-`MSAVING_VERSION=1.2.0` in `.env`.
+`MSAVING_VERSION=1.2.0` in `.env`. The admin sees on **Server admin** when a new version is out.
+
+**One-click updates (optional).** Add `COMPOSE_PROFILES=updater` to `.env` (`https,updater` with Caddy) and
+run `docker compose up -d`. The admin can then press **Update now** on **Server admin**. This starts a small
+helper that can control Docker on this machine, which is root-level access: it only ever pulls the MSaving
+image and restarts that container, but turn it on only if you're comfortable with that. Updating is a web
+app feature; the mobile app doesn't do it.
 
 ## Backups
 
@@ -145,6 +151,8 @@ All optional, in a `.env` file next to `docker-compose.yml` ([example](.env.exam
 | `ADMIN_DATABASE_URL` | | Your own database instead of the built-in one |
 | `OXR_APP_ID` | | Exchange rates from Open Exchange Rates with your key, instead of the free source |
 | `JOBS_HOUR` | `19` | When the daily jobs run, as an hour in UTC (19 = 02:00 in Vietnam) |
+| `COMPOSE_PROFILES` `updater` | | One-click updates from the web app (see Update) |
+| `UPDATE_CHECK` | `on` | `off`: never ask GitHub whether a new version is out |
 
 ## Security
 
@@ -153,6 +161,8 @@ All optional, in a `.env` file next to `docker-compose.yml` ([example](.env.exam
 - Every account sees only its own books: the database enforces it (row-level security), and the server
   connects with a login that can't get around it.
 - Sign-in, sign-up and codes are rate limited. No analytics, no tracking, no third-party scripts.
+- In a browser, only this server's own web app can use its API: a copy of the web app on another address, or
+  any other website, is refused. The mobile app connects from any number of phones.
 - You are responsible for your server: keep it updated, use HTTPS beyond your own machine, and copy the
   backups elsewhere.
 

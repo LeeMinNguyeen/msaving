@@ -121,7 +121,10 @@
     "admin_only": "Chỉ quản trị viên của máy chủ mới làm được việc này.",
     "admin_self": "Bạn không thể vô hiệu hóa tài khoản của chính mình.",
     "password_mismatch": "Hai mật khẩu không khớp.",
-    "two_factor_off": "Xác minh hai bước đang tắt."
+    "two_factor_off": "Xác minh hai bước đang tắt.",
+    "invalid_timezone": "Máy chủ không nhận múi giờ này. Hãy chọn múi giờ khác.",
+    "updater_off": "Máy chủ này chưa bật cập nhật bằng một nút bấm.",
+    "origin_not_allowed": "Địa chỉ này không phải ứng dụng web của chính máy chủ."
   },
   "nav": {
     "transactions": "Giao dịch",
@@ -393,6 +396,17 @@
     "disable": "Vô hiệu hóa",
     "enable": "Kích hoạt lại",
     "resetReady": "Đường dẫn đặt lại cho {{name}}",
-    "resetReadyBody": "Tự tay gửi đường dẫn này cho họ. Dùng được một lần trong 24 giờ, và sẽ tắt xác minh hai bước của họ."
+    "resetReadyBody": "Tự tay gửi đường dẫn này cho họ. Dùng được một lần trong 24 giờ, và sẽ tắt xác minh hai bước của họ.",
+    "updates": "Cập nhật",
+    "latest": "mới nhất {{version}}",
+    "updating": "Đang cập nhật: máy chủ tải phiên bản mới, sao lưu rồi khởi động lại. Mất khoảng một phút; trang này sẽ tự kết nối lại.",
+    "updateDone": "Lần cập nhật gần nhất đã xong.",
+    "updateFailed": "Lần cập nhật gần nhất bị lỗi: {{detail}}",
+    "releaseNotes": "Có gì mới",
+    "pinned": "Máy chủ đang giữ cố định phiên bản {{version}} (MSAVING_VERSION trong .env). Hãy đổi giá trị đó để cập nhật.",
+    "updateNow": "Cập nhật ngay",
+    "updateByHand": "Để cập nhật, chạy các lệnh sau trên máy chủ, trong thư mục có docker-compose.yml:",
+    "updaterHint": "Để cập nhật bằng một nút bấm tại đây, thêm COMPOSE_PROFILES=updater vào .env (xem hướng dẫn cài đặt: việc này cho một trình trợ giúp quyền điều khiển Docker).",
+    "updateConfirm": "Cài phiên bản {{version}}? Máy chủ sẽ sao lưu rồi khởi động lại; mọi người mất kết nối khoảng một phút."
   }
 }
