@@ -1,5 +1,6 @@
 # The `msaving` image: the API, the built web app and the daily jobs, in one.
-# docker-compose.yml runs it twice: `secrets` (first start only) and `msaving`.
+# Built on the operator's machine (no published images): docker-compose.yml
+# builds it and runs it twice, `secrets` (first start only) and `msaving`.
 #   docker build -t msaving .
 
 # The web app, built once into static files the API serves.
@@ -26,6 +27,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
 COPY backend/migrations ./migrations
+COPY VERSION ./VERSION
 COPY --from=web /web/dist ./web
 
 # Not root. The secrets, backups and updates volumes start from these folders,
@@ -34,8 +36,6 @@ RUN useradd --system --uid 10001 msaving \
  && mkdir /secrets /backups /updates && chown msaving /secrets /backups /updates
 USER msaving
 
-ARG MSAVING_VERSION=dev
-ENV MSAVING_VERSION=$MSAVING_VERSION
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/health', timeout=4)"

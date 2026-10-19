@@ -399,14 +399,13 @@
     "resetReadyBody": "Give this link to them yourself. It works once, for 24 hours, and turns their two-step verification off.",
     "updates": "Updates",
     "latest": "newest {{version}}",
-    "updating": "Updating: the server downloads the new version, takes a backup and restarts. This takes about a minute; this page reconnects by itself.",
+    "updating": "Updating: the server is getting the new version, building it, taking a backup and restarting. This takes a few minutes; this page reconnects by itself.",
     "updateDone": "The last update finished.",
     "updateFailed": "The last update failed: {{detail}}",
     "releaseNotes": "What's new",
-    "pinned": "This server is pinned to version {{version}} (MSAVING_VERSION in .env). Change that to update.",
     "updateNow": "Update now",
-    "updateByHand": "To update, run these on the server, in the folder with docker-compose.yml:",
+    "updateByHand": "To update, run these on the server, in the msaving folder (the one you cloned):",
     "updaterHint": "For a one-click Update here, add COMPOSE_PROFILES=updater to .env (see the setup guide: it gives a helper control of Docker).",
-    "updateConfirm": "Install version {{version}}? The server takes a backup, then restarts; everyone is offline for about a minute."
+    "updateConfirm": "Install version {{version}}? The server builds it, takes a backup, then restarts; everyone is offline for a moment, and the whole update takes a few minutes."
   }
 }
