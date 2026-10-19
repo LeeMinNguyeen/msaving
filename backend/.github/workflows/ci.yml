@@ -1,0 +1,46 @@
+# Tests on every pull request and push to dev. Pushes to staging and main
+# run them through deploy.yml, before anything is deployed.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev]
+  workflow_call:          # the deploy workflow runs the tests first
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      TEST_ADMIN_URL: postgresql+psycopg://postgres@localhost:5432/postgres
+      PGSSLMODE: disable          # the service container has no TLS; hosted databases keep require
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Postgres 17 client tools (pg_dump, pg_restore, psql for the backup tests)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -q && sudo apt-get install -y -q postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q -p no:cacheprovider tests/
+      - name: The image builds
+        run: docker build -q -t msaving-api .

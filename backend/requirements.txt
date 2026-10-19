@@ -1,0 +1,8 @@
+# Runtime dependencies of the API and the jobs (one image for both).
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+SQLAlchemy==2.1.4
+psycopg[binary]==3.3.6
+cryptography==50.0.2
+PyJWT[crypto]==2.15.1
+tzdata==2026.5          # IANA timezones for validation; the slim image has no system copy

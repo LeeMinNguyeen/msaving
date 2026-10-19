@@ -1,0 +1,13 @@
+# The API in a container, for those who'd rather not set up Python.
+#   cp .env.example .env   (fill DATABASE_URL)   then   docker compose up --build
+# The API is then at http://127.0.0.1:8000, using the development environment
+# from .env. With local Supabase (schema work), run uvicorn instead: inside the
+# container 127.0.0.1 is the container itself.
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file: .env
+    environment:
+      PORT: "8000"

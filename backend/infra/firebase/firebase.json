@@ -1,0 +1,7 @@
+{
+  "hosting": {
+    "site": "__API_SITE__",
+    "public": "public",
+    "rewrites": [{ "source": "**", "run": { "serviceId": "api", "region": "asia-southeast1" } }]
+  }
+}

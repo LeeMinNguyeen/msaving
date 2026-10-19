@@ -1,0 +1,97 @@
+import AddIcon from '@mui/icons-material/Add'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import Alert from '@mui/material/Alert'
+import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+import IconButton from '@mui/material/IconButton'
+import List from '@mui/material/List'
+import ListItem from '@mui/material/ListItem'
+import ListItemText from '@mui/material/ListItemText'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
+import Paper from '@mui/material/Paper'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useErrorText } from '../components/errors'
+import { currentLanguage } from '../i18n'
+import { send, type Book, type Contact } from '../lib/api'
+import { formatMoney } from '../lib/money'
+import { useContacts, useCurrencies } from '../lib/queries'
+import { PersonDialog } from './PersonDialog'
+
+// Screen 7's people: who you lent to or borrowed from, and where it stands.
+export function People({ book }: { book: Book }) {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
+  const qc = useQueryClient()
+  const lang = currentLanguage()
+  const contacts = useContacts(book.id, true)
+  const currencies = useCurrencies()
+  const [dialog, setDialog] = useState<Contact | 'new' | null>(null)
+  const [menu, setMenu] = useState<{ el: HTMLElement; person: Contact } | null>(null)
+  const [notice, setNotice] = useState<{ error?: unknown; info?: string }>({})
+  const canEdit = book.role !== 'viewer'
+  const money = (v: number, c: string) => formatMoney(v, c, currencies.data?.get(c)?.minor_unit ?? 0, lang)
+
+  async function act(fn: () => Promise<unknown>) {
+    setMenu(null)
+    setNotice({})
+    try {
+      await fn()
+    } catch (err) {
+      setNotice({ error: err })
+    }
+    await qc.invalidateQueries({ queryKey: ['books', book.id, 'contacts'] })
+  }
+
+  const standing = (p: Contact) => {
+    const parts = p.balances.flatMap((b) => [
+      b.owed_to_you ? t('people.owesYou', { amount: money(b.owed_to_you, b.currency) }) : '',
+      b.you_owe ? t('people.youOwe', { amount: money(b.you_owe, b.currency) }) : '',
+    ]).filter(Boolean)
+    return parts.length ? parts.join(' · ') : t('people.settled')
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', pt: 2 }}>
+        <Typography variant="h6">{t('people.title')}</Typography>
+        {canEdit && <Button startIcon={<AddIcon />} onClick={() => setDialog('new')}>{t('people.add')}</Button>}
+      </Stack>
+      {notice.error ? <Alert severity="error">{errorText(notice.error)}</Alert> : null}
+      {notice.info && <Alert severity="info">{notice.info}</Alert>}
+      {contacts.data?.length === 0 && <Typography color="text.secondary">{t('people.empty')}</Typography>}
+      {!!contacts.data?.length && (
+        <Paper variant="outlined">
+          <List disablePadding>
+            {contacts.data.map((p) => (
+              <ListItem key={p.id} divider sx={{ opacity: p.archived_at ? 0.55 : 1 }}
+                secondaryAction={canEdit && (
+                  <IconButton edge="end" aria-label={t('people.edit')} onClick={(e) => setMenu({ el: e.currentTarget, person: p })}>
+                    <MoreVertIcon />
+                  </IconButton>
+                )}>
+                <ListItemText primary={<Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><span>{p.name}</span>{p.archived_at && <Chip size="small" label={t('cat.archived')} />}</Stack>}
+                  secondary={[standing(p), p.note].filter(Boolean).join(' · ')} />
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
+      <Menu anchorEl={menu?.el} open={!!menu} onClose={() => setMenu(null)}>
+        <MenuItem onClick={() => { setDialog(menu!.person); setMenu(null) }}>{t('people.edit')}</MenuItem>
+        <MenuItem onClick={() => menu && act(() => send('PATCH', `/v1/books/${book.id}/contacts/${menu.person.id}`, { version: menu.person.version, archived: !menu.person.archived_at }))}>
+          {t(menu?.person.archived_at ? 'people.unarchive' : 'people.archive')}
+        </MenuItem>
+        <MenuItem sx={{ color: 'error.main' }} onClick={() => menu && act(async () => {
+          const r = await send<{ archived: boolean }>('DELETE', `/v1/books/${book.id}/contacts/${menu.person.id}?version=${menu.person.version}`)
+          if (r.archived) setNotice({ info: t('people.archivedInstead') })
+        })}>{t('people.delete')}</MenuItem>
+      </Menu>
+      {dialog && <PersonDialog book={book} person={dialog === 'new' ? null : dialog} onClose={() => setDialog(null)} />}
+    </Stack>
+  )
+}

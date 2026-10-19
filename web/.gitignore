@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.local
+.vite/
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+firebase.json
+.firebase/
