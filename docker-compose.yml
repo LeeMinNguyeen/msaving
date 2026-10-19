@@ -1,0 +1,90 @@
+# MSaving: your own spending tracker, for you or a private group.
+#
+#   docker compose up -d
+#   docker compose logs msaving          the setup code, the first time
+#
+# Then open http://localhost:8080 and create the admin account with the setup
+# code. Everything is optional in a .env file next to this one (see
+# .env.example): the port, HTTPS with your own domain, your own database.
+#
+# Update:  docker compose pull && docker compose up -d   (takes a backup first)
+# Guide:   https://github.com/LeeMinNguyeen/msaving#readme
+
+name: msaving
+
+services:
+  # First start only: makes the built-in database's password, in the secrets
+  # volume, before the database first starts. Nothing to type or keep.
+  secrets:
+    image: ghcr.io/leeminnguyeen/msaving:${MSAVING_VERSION:-latest}
+    build: .
+    command: ["python", "-m", "app.launch", "secrets"]
+    volumes:
+      - secrets:/secrets
+    restart: "no"
+
+  # The built-in database. To use your own Postgres (or Supabase) instead, set
+  # ADMIN_DATABASE_URL in .env and start with: docker compose up -d --scale db=0
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD_FILE: /secrets/postgres_password
+    volumes:
+      - db:/var/lib/postgresql/data
+      - secrets:/secrets:ro
+    depends_on:
+      secrets:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # The server: the web app, the API and the daily jobs (purge, backup,
+  # exchange rates). Not reachable from other machines unless BIND says so.
+  msaving:
+    image: ghcr.io/leeminnguyeen/msaving:${MSAVING_VERSION:-latest}
+    build: .
+    ports:
+      - "${BIND:-127.0.0.1}:${PORT:-8080}:8080"
+    environment:
+      ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-}
+      OXR_APP_ID: ${OXR_APP_ID:-}
+      JOBS_HOUR: ${JOBS_HOUR:-19}
+    volumes:
+      - secrets:/secrets
+      - backups:/backups
+    depends_on:
+      secrets:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+
+  # Optional HTTPS with your own domain (needed for the mobile app). In .env:
+  #   COMPOSE_PROFILES=https
+  #   DOMAIN=money.example.com
+  # Point the domain's DNS at this machine and open ports 80 and 443; Caddy
+  # gets and renews the certificate by itself.
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    command: ["caddy", "reverse-proxy", "--from", "${DOMAIN:-localhost}", "--to", "msaving:8080"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy:/data
+    depends_on:
+      - msaving
+    restart: unless-stopped
+
+volumes:
+  secrets:
+  db:
+  backups:
+  caddy:

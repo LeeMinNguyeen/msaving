@@ -2,7 +2,7 @@
 
 Run like tests/test_schema.py (TEST_ADMIN_URL, a superuser), with pg_dump,
 pg_restore and psql of the server's version on PATH. Builds a throwaway
-database from supabase/migrations and seed.sql, runs `python -m app.jobs.backup` on it,
+database with the server's migration runner, runs `python -m app.jobs.backup` on it,
 restores the dump into a second throwaway database with the `$` commands in
 backup.py's docstring, and checks that everything came back. Drops every
 database it creates, and the roles it created that weren't there before.
@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+import psycopg
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
@@ -26,25 +27,13 @@ from sqlalchemy.pool import NullPool
 ROOT = Path(__file__).resolve().parents[1]
 ADMIN_URL = make_url(os.environ["TEST_ADMIN_URL"])
 SOURCE = f"backup_src_{uuid.uuid4().hex[:8]}"
-POLICY = "dev-2026-10-01"      # privacy policy published by supabase/seed.sql
 SECRET = f"pw@{uuid.uuid4().hex[:12]}"
-# The restore commands documented in backup.py: steps 5 (app) and 6 (logins).
+# The restore commands documented in backup.py: steps 2 (outside the dump) and 3 (the app).
 RESTORE = [line.strip()[2:] for line in
            ast.get_docstring(ast.parse((ROOT / "app" / "jobs" / "backup.py").read_text())).splitlines()
            if line.strip().startswith("$ ")]
 # Roles the migrations and this file create, dropped at the end if they're new.
-OUR_ROLES = {"anon", "authenticated", "app_user", "ai_reader", "fx_updater", "account_purger", "billing_webhook"}
-
-# What a new Supabase project already has, cut down: Auth's tables with its own
-# migration list filled in. identities sorts before users in a dump, so loading
-# it needs the foreign key checks off, as on Supabase.
-AUTH_TABLES = """
-create schema auth;
-create table auth.users (id uuid primary key, email text);
-create table auth.identities (id bigserial primary key, user_id uuid not null references auth.users, provider text);
-create table auth.schema_migrations (version text primary key);
-"""
-
+OUR_ROLES = {"app_user", "fx_updater", "account_purger"}
 
 def libpq_url(database, **kw):
     """The test server as a libpq URL, which pg_dump and psql take."""
@@ -68,21 +57,16 @@ def sql(database, *statements, autocommit=True):
 def source():
     roles_before = {r[0] for r in sql(ADMIN_URL.database, "select rolname from pg_roles")}
     sql(ADMIN_URL.database, f'create database "{SOURCE}"')
-    eng = create_engine(ADMIN_URL.set(database=SOURCE), poolclass=NullPool, isolation_level="AUTOCOMMIT")
-    with eng.connect() as c:                        # built as tests/test_schema.py builds its database
-        c.exec_driver_sql("do $$ begin if not exists (select 1 from pg_roles where rolname = 'anon') then"
-                          " create role anon nologin; create role authenticated nologin; end if; end $$")
-        for kind in ("tables", "sequences", "functions"):      # what Supabase grants on new objects
-            c.exec_driver_sql(f"alter default privileges in schema public grant all on {kind} to anon, authenticated")
-        for migration in sorted((ROOT / "supabase" / "migrations").glob("*.sql")):
-            c.connection.driver_connection.execute(migration.read_text())
-        c.connection.driver_connection.execute((ROOT / "supabase" / "seed.sql").read_text())
-    # A user with consent, a book, an account and a transaction, written as that user.
+    from app.jobs import migrate
+    with psycopg.connect(libpq_url(SOURCE), autocommit=True) as conn:
+        for migration in migrate.pending(conn):
+            migrate.apply(conn, migration)
+        conn.execute("update instance_settings set signup = 'open'")
+    # A user, a book, an account and a transaction, written as that user.
     u, b, a, t = (str(uuid.uuid4()) for _ in range(4))
     sql(SOURCE,
         ("select set_config('app.user_id', :u, true)", {"u": u}),
-        ("with u as (insert into users (id, username, email) values (:u, 'backup_user', 'backup@example.com') returning id)"
-         " insert into consents (user_id, purpose, policy_version) select id, 'use_app', :v from u", {"u": u, "v": POLICY}),
+        ("insert into users (id, username) values (:u, 'backup_user')", {"u": u}),
         ("insert into books (id, created_by, name, base_currency, timezone) values (:b, :u, 'Home', 'USD', 'UTC')", {"b": b, "u": u}),
         ("insert into accounts (id, book_id, name, kind, currency) values (:a, :b, 'Checking', 'checking', 'USD')", {"a": a, "b": b}),
         ("insert into transactions (id, book_id, type, occurred_on) values (:t, :b, 'opening_balance', '2026-10-01')", {"t": t, "b": b}),
@@ -99,11 +83,9 @@ def source():
 
 @pytest.fixture
 def target(source):
-    """A new database with what a new Supabase project grants its API roles on every new object in public."""
+    """An empty database to restore into."""
     name = f"backup_dst_{uuid.uuid4().hex[:8]}"
     sql(ADMIN_URL.database, f'create database "{name}"')
-    sql(name, *[f"alter default privileges in schema public grant all on {kind} to anon, authenticated"
-                for kind in ("tables", "sequences", "functions")])
     yield name
     sql(ADMIN_URL.database, f'drop database "{name}" with (force)')
 
@@ -121,6 +103,7 @@ def backup(tmp_path):
     assert r.returncode == 0, r.stderr
     files = os.listdir(bucket)
     assert len(files) == 1 and files[0].startswith("msaving-") and files[0].endswith(".dump"), files
+    assert (bucket / files[0]).stat().st_mode & 0o777 == 0o600            # holds password hashes
     return bucket / files[0], r.stdout
 
 
@@ -158,44 +141,20 @@ def snapshot(database):
 
 
 def test_restore_commands_documented():
-    assert len(RESTORE) == 6 and RESTORE[0].startswith("psql") and RESTORE[2].startswith("pg_restore --no-owner")
-    assert RESTORE[5].startswith("psql")
+    assert len(RESTORE) == 4 and RESTORE[0].startswith("psql") and RESTORE[3].startswith("pg_restore --no-owner")
 
 
 def test_backup_restores_everything(source, target, tmp_path):
     dump, log = backup(tmp_path)
-    assert "0 in auth" in log                       # plain Postgres: no Supabase Auth, still works
-    restore(dump, target, RESTORE[:3], tmp_path)
+    assert "in public" in log and "in msaving" in log
+    restore(dump, target, RESTORE, tmp_path)
     before, after = snapshot(source), snapshot(target)
-    assert before["rows"]["users"] == before["rows"]["consents"] == before["rows"]["transactions"] == 1
-    assert before["rows"]["entries"] == 1 and before["rows"]["policy_versions"] == 1
+    assert before["rows"]["users"] == before["rows"]["transactions"] == before["rows"]["entries"] == 1
     for part in before:
         assert after[part] == before[part], part
-
-
-def test_backup_with_supabase_auth(source, target, tmp_path):
-    """Logins and the CLI's migration list come back too, into tables the new project already has."""
-    users = [(uuid.uuid4(), f"u{i}@example.com") for i in range(3)]
-    sql(source, AUTH_TABLES, "insert into auth.schema_migrations values ('20240101')",
-        *[("insert into auth.users values (:i, :e)", {"i": i, "e": e}) for i, e in users],
-        *[("insert into auth.identities (user_id, provider) values (:i, 'email')", {"i": i}) for i, _ in users],
-        "create schema supabase_migrations",
-        "create table supabase_migrations.schema_migrations (version text primary key, name text)",
-        "insert into supabase_migrations.schema_migrations values ('20261007000000', 'baseline'),"
-        " ('20261007000100', 'lock_supabase_public_roles')")
-    try:
-        sql(target, AUTH_TABLES, "insert into auth.schema_migrations values ('20240101'), ('20250101')")
-        dump, log = backup(tmp_path)
-        assert "3 in auth" in log
-        restore(dump, target, RESTORE, tmp_path)
-        for q in ("select * from auth.users order by 1", "select * from auth.identities order by 1",
-                  "select * from supabase_migrations.schema_migrations order by 1"):
-            assert sql(target, q) == sql(source, q), q
-        assert sql(target, "select version from auth.schema_migrations order by 1") == [("20240101",), ("20250101",)]
-        assert sql(target, "select nextval('auth.identities_id_seq')")[0][0] == 4       # sequence carried over
-        assert snapshot(target)["rows"] == snapshot(source)["rows"]
-    finally:
-        sql(source, "drop schema auth cascade", "drop schema supabase_migrations cascade")
+    # The list of applied migrations came back: the server won't run them again.
+    assert sql(target, "select version from msaving.migrations order by 1") == \
+        sql(source, "select version from msaving.migrations order by 1")
 
 
 def fake_pg_dump(tmp_path, body):

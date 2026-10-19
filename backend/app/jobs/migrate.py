@@ -1,0 +1,79 @@
+"""Brings the database up to date. Run by app/launch.py on every start, before
+the API; safe to repeat.
+
+    1. Applies every file in migrations/ not applied yet, in order, each in
+       its own transaction, recorded in msaving.migrations.
+    2. Creates or updates one login per role the server uses, never superuser
+       or BYPASSRLS:
+           api_login    -> app_user        (the API)
+           purge_login  -> account_purger  (the daily purge)
+           fx_login     -> fx_updater      (the daily exchange rates)
+    3. While the server has no admin, makes a new setup code and prints it:
+       the setup screen asks for it, so only whoever can read the server's log
+       can create the admin account.
+
+Connects as the database's owner (the built-in database's `postgres`, or the
+operator's own Postgres or Supabase owner login).
+"""
+from pathlib import Path
+
+import psycopg
+from psycopg import sql
+
+from app.core.sign_in import new_code
+
+MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
+LOGINS = {"api_login": "app_user", "purge_login": "account_purger", "fx_login": "fx_updater"}
+
+
+def pending(conn: psycopg.Connection) -> list[Path]:
+    conn.execute("create schema if not exists msaving")
+    conn.execute("create table if not exists msaving.migrations"
+                 " (version text primary key, name text not null, applied_at timestamptz not null default now())")
+    done = {r[0] for r in conn.execute("select version from msaving.migrations")}
+    return [f for f in sorted(MIGRATIONS.glob("*.sql")) if f.name.split("_", 1)[0] not in done]
+
+
+def has_data(conn: psycopg.Connection) -> bool:
+    """True once the first migration has run: a backup is worth taking."""
+    return conn.execute("select to_regclass('msaving.migrations') is not null"
+                        " and exists (select 1 from msaving.migrations)").fetchone()[0]
+
+
+def apply(conn: psycopg.Connection, migration: Path) -> None:
+    version, _, name = migration.stem.partition("_")
+    with conn.transaction():
+        conn.execute(migration.read_text())          # no parameters: % stays as written
+        conn.execute("insert into msaving.migrations (version, name) values (%s, %s)", (version, name))
+
+
+def set_logins(conn: psycopg.Connection, passwords: dict[str, str]) -> None:
+    for login, role in LOGINS.items():
+        exists = conn.execute("select 1 from pg_roles where rolname = %s", (login,)).fetchone()
+        verb = sql.SQL("alter") if exists else sql.SQL("create")
+        conn.execute(sql.SQL("{} role {} login nosuperuser nobypassrls password {}").format(
+            verb, sql.Identifier(login), sql.Literal(passwords[login])))
+        conn.execute(sql.SQL("grant {} to {}").format(sql.Identifier(role), sql.Identifier(login)))
+
+
+def new_setup_code(conn: psycopg.Connection) -> str | None:
+    """A fresh setup code while there's no admin, else None."""
+    if not conn.execute("select setup_needed from instance_info()").fetchone()[0]:
+        return None
+    code, digest = new_code(groups=3)
+    conn.execute("update instance_settings set setup_code_sha256 = %s", (digest,))
+    return code
+
+
+def run(admin_url: str, passwords: dict[str, str], before_migrating=None) -> tuple[list[str], str | None]:
+    """Returns (the migrations applied, the setup code if the server needs one).
+    before_migrating(): called once, only when an existing database is about
+    to change (the launcher takes a backup there)."""
+    with psycopg.connect(admin_url, autocommit=True) as conn:
+        todo = pending(conn)
+        if todo and before_migrating and has_data(conn):
+            before_migrating()
+        for migration in todo:
+            apply(conn, migration)
+        set_logins(conn, passwords)
+        return [m.name for m in todo], new_setup_code(conn)

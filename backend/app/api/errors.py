@@ -1,6 +1,6 @@
 """Turns database errors into responses with a code the apps translate.
 
-The database starts every error a user can cause with a code ("plan_limit:
+The database starts every error a user can cause with a code ("owner_required:
 ...", msaving-docs, Languages); the API returns that code as `detail`. The English
 text after it is for developers and stays in the logs.
 """
@@ -18,15 +18,13 @@ log = logging.getLogger(__name__)
 
 # Database error code -> HTTP status.
 CODES = {
-    "consent_required": 403, "consent_outdated": 403, "owner_required": 409, "plan_limit": 403,
-    "currency_locked": 409, "txn_shape": 422, "category_kind": 422, "budget_expense_only": 422,
-    "no_rate": 409, "account_deleted": 403,
+    "owner_required": 409, "currency_locked": 409, "txn_shape": 422, "category_kind": 422,
+    "budget_expense_only": 422, "no_rate": 409, "setup_invalid": 403, "invite_invalid": 403,
+    "invite_required": 403, "reset_invalid": 403, "admin_only": 403, "admin_self": 409, "not_found": 404,
 }
 # Unique constraints a user can run into -> code.
 UNIQUE = {
     "users_username_key": "username_taken",
-    "users_email_key": "email_taken",
-    "users_pkey": "profile_exists",
     "accounts_book_id_name_key": "name_taken",
     "budgets_category_id_period_key": "budget_exists",   # one per category and period
     "contacts_book_id_name_key": "name_taken",

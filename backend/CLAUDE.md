@@ -1,128 +1,99 @@
-# CLAUDE.md: msaving-backend
+# CLAUDE.md: backend
 
-FastAPI API, background jobs and the Supabase database for Project MSaving. Workspace-wide rules are in `~/projects/msaving/CLAUDE.md`.
-
-**msaving-docs is the source of truth** for decisions and how everything works (`~/projects/msaving/msaving-docs`, run `npm run dev` there). A schema or decision change is two PRs: the code (migrations + tests) here, and a paired msaving-docs PR (the decision, the pages it changes, a row in Reference → Requirements and tests). Link them; don't merge this one with the docs PR open.
+The FastAPI API, its own sign-in, the daily jobs and the PostgreSQL schema for MSaving, self-hosted only.
+Monorepo rules: `../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. Decisions and how it all
+works: **msaving-docs** (a schema or decision change is a paired msaving-docs PR).
 
 ## Layout
 
 ```
-supabase/
-  config.toml            local stack settings (Postgres 17, Data API off, confirmed email, TOTP)
-  migrations/            plain SQL, timestamped
-  seed.sql               development only (placeholder privacy policy)
+migrations/              plain SQL, applied in order by app/jobs/migrate.py on every start (msaving.migrations)
 app/
-  core/                  settings.py (env), auth.py (Supabase token check), db.py (per-request session)
-  api/                   main.py (FastAPI app, CORS), deps.py, routes/v1/
-  domain/                transactions, dashboard, export, book_setup, ai_keys
-  jobs/                  fx_update, account_deletion, backup (run as python -m app.jobs.<name>)
-tests/                   conftest.py (throwaway database), test_schema.py, test_api.py, test_backup.py, test_unconfirmed_signups.py
-scripts/local_logins.sh  one login per role on the LOCAL stack only (schema work)
-Dockerfile               one image for the API and every job
-infra/terraform/         Google Cloud for one environment (envs/dev|prod.tfvars); infra/firebase/ the API's Hosting site
-compose.yaml             the API in a container (against development)
-.github/workflows/       ci.yml (tests + image build), deploy.yml (merge to staging/main: tests, supabase db push, Cloud Run, API site)
+  launch.py              the container's entry: secrets, wait for the db, backup + migrate, setup code, API + jobs
+  admin.py               operator commands: reset-password, make-admin, repurge
+  core/                  settings.py (env), sign_in.py (argon2id, TOTP, codes, tokens, rate limits),
+                         auth.py (session token -> user), db.py (per-request session, app.user_id)
+  api/                   main.py (app, web app files, CSP, /v1/instance), deps.py, errors.py, routes/v1/
+                         (sign_in: setup, join, sign-in, 2FA, reset; admin; me; books, accounts, ...)
+  domain/                transactions, dashboard, export, book_setup
+  jobs/                  migrate, scheduler (daily), account_deletion, backup, fx_update
+tests/                   conftest.py (throwaway database), test_schema, test_api, test_sign_in, test_backup
+scripts/dev.sh           the API from source with --reload, against the compose stack's database
 ```
 
-## Run the API
-
-Developers use the **development** environment's database and sign-in; nobody runs the infrastructure
-except for schema work (msaving-docs, Environments).
+## Run and test
 
 ```bash
 source ~/projects/msaving/.venv/bin/activate
 pip install -r requirements-dev.txt
-cp .env.example .env           # untracked; fill DATABASE_URL (dev api_login, Transaction pooler, from the project owner)
-uvicorn app.api.main:app --reload --port 8000 --env-file .env    # or: docker compose up --build
-curl http://127.0.0.1:8000/v1/health
-```
+scripts/dev.sh                       # http://127.0.0.1:8000, reloads on change; web: npm run dev in ../web
 
-Everything you create lands in development's database, shared with the team: made-up data only. Jobs
-(rates, purge, backup) run only in the cloud.
-
-## Schema work: local Supabase
-
-Only whoever is writing a migration. An unmerged migration must never touch the shared database.
-
-```bash
-supabase start                 # Postgres 17 + Auth + Mailpit (emails at http://127.0.0.1:54324)
-# in .env: switch to the "Schema work only" lines at the bottom of .env.example
-scripts/local_logins.sh        # api_login etc. with a local-only password
-python scripts/local_rates.py  # made-up exchange rates, or the real job if OXR_APP_ID is set
-uvicorn app.api.main:app --reload --port 8000 --env-file .env    # not compose: 127.0.0.1 in a container is the container
-supabase db reset              # rebuild from migrations + seed.sql, then rerun local_logins.sh
-```
-
-Point the web app's `.env.local` at local Supabase too while you do this. Switch back when the PR is merged.
-
-## Tests
-
-```bash
-# Postgres 17 superuser, local only
+# Tests: a throwaway Postgres 17, local only
 docker run -d --name pgtest -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:5499:5432 postgres:17
 export TEST_ADMIN_URL="postgresql+psycopg://postgres@localhost:5499/postgres"
-export PGSSLMODE=disable     # the container has no TLS; backup.py asks for TLS unless told otherwise
+export PGSSLMODE=disable
 PATH=/usr/lib/postgresql/17/bin:$PATH python -m pytest -q -p no:cacheprovider tests/
 ```
 
-67 tests are expected to pass. The backup tests need `pg_dump`, `pg_restore` and `psql` of the server's major version on `PATH` (`sudo apt install postgresql-client-17`).
-
-**Never point the tests at a hosted Supabase project**, development included. They create and drop passwordless logins on whatever server they hit.
+71 tests are expected to pass. The backup tests need `pg_dump`, `pg_restore` and `psql` 17 on `PATH`
+(`sudo apt install postgresql-client-17`). `scripts/dev.sh` uses the same database as `docker compose up`;
+`docker compose down -v` resets everything.
 
 ## Migrations
 
-1. `supabase migration new <name>`, write the SQL.
-2. `supabase db reset`, run the tests.
-3. PR into `dev`; CI applies it to development on merge to `staging`, production on merge to `main`.
+1. A new file `migrations/<UTC timestamp>_<name>.sql`, plain SQL.
+2. `docker compose down -v && docker compose up -d --build`, or just run the tests (they apply every file).
+3. PR into `dev`. Servers apply it on their next start, after a backup.
 
 Rules:
-- Never edit a migration that has reached dev or prod; write a new one. Until the first push to dev, the baseline is still edited directly.
+- Never edit a migration that's in a release; write a new one. Until the first release the baseline is edited directly.
 - A new table gets RLS, policies and grants in the same file.
-- Function EXECUTE is revoked from PUBLIC: grant every new function to the logins that call it.
+- Function EXECUTE is revoked from PUBLIC by default: grant every new function to the roles that call it.
 - Every function that reads tables (security definer or trigger) sets `search_path = pg_catalog, public, pg_temp`.
-- Breaking changes go in two steps (add and use the new thing, remove the old in a later migration), because migrations deploy before the API.
-- Migrations create roles, not logins. Logins are created by hand per environment.
+- Breaking changes in two steps (add and use the new thing, remove the old one a release later): an operator may
+  skip versions, and old mobile apps keep calling the API.
+- Migrations create roles (`app_user`, `account_purger`, `fx_updater`), never logins. `migrate.py` makes the
+  logins (`api_login`, `purge_login`, `fx_login`) with passwords from the secrets volume.
 
 ## Security rules (enforced and tested)
 
 - RLS on every table with user data; with no `app.user_id` set, queries return nothing.
-- Per request: verify the Supabase token (signature, expiry, audience), then one transaction with `set_config('app.user_id', <user>, true)` (see `app/core/db.py`).
-- One login per role, no `BYPASSRLS`: `app_user` (API), `ai_reader`, `fx_updater`, `account_purger`, `billing_webhook`. The schema owner is used only by CI migrations. `postgres` only for the backup job.
-- The app can't write `created_by`, `modified_by`, `invited_by`, plan holder or AI payer; the database sets them. Plans change only through the payment webhook.
-- Supabase's browser roles (`anon`, `authenticated`) have no access to any table or function. Supabase Data API off.
-- Random UUIDs for every exposed id; internal sequential ids never returned.
-- Only last 4 digits of card/account numbers; no bank credentials ever.
-- AI keys: AES-256-GCM in the backend, encryption key in Secret Manager, never in the database.
-- CORS allows only `APP_URL`, plus `EXTRA_ALLOWED_ORIGINS` (localhost origins only, enforced in `settings.py`; development only, enforced in Terraform). Rate limits on sign-in, sign-up and confirmation resend are Supabase Auth settings; the API has no rate limiting yet, and username lookup needs one before the hobbyist test (issue #32).
+- Per request: the bearer token's SHA-256 is looked up with `session_user_id()`, then one transaction with
+  `set_config('app.user_id', <user>, true)` (`app/core/db.py`).
+- Logins never superuser or BYPASSRLS. The API gets only `api_login`; the owner's URL goes only to the backup
+  and migrations (`app/launch.py` strips it from the API's environment).
+- Sign-in data (`local_credentials`, `recovery_codes`, `sessions`, `invites`, `password_resets`,
+  `instance_settings`) is reached only through security definer functions or own-row policies. Nobody can set
+  `is_admin` from the app; admin tools check `am_admin()` in the database.
+- Passwords argon2id; session and reset tokens random, stored as SHA-256; invite, setup and recovery codes
+  stored as SHA-256 of their normal form. Never log a token or code (the setup code is the one exception: it's
+  printed for the operator, and only while there's no admin).
+- Rate limits (`app/core/sign_in.py`) on sign-in, sign-up, setup, reset, invite checks and code entry.
+- Random UUIDs for every exposed id; only the last 4 digits of card or account numbers.
+- No CORS (the web app is same-origin); `DEV_ORIGIN` only for development.
 
 ## API conventions
 
-- Routes under `/v1`, additive changes only within a version; a minimum supported app version for mobile later.
+- Routes under `/v1`, additive changes only. `GET /v1/instance` is public and stable: clients check it first.
 - Optimistic concurrency: clients send the `version` they loaded; mismatch returns 409.
-- Routes that write call `db.commit()` themselves before returning: a commit in the dependency's cleanup runs after the response is sent.
+- Routes that write call `db.commit()` themselves before returning (a commit in the dependency's cleanup runs
+  after the response is sent).
 - Never `INSERT ... RETURNING` or `ON CONFLICT` on `books`: both apply the read policy before the creator is a member.
-- Transactions are idempotent on a client-generated id; saving the same id twice does nothing.
+- Transactions are idempotent on a client-generated id.
 - Money in integer minor units; never float.
-- Database errors start with a code (`plan_limit`, `consent_required`, `currency_locked`, `txn_shape`, `owner_required`, `budget_expense_only`, `no_rate`, `consent_outdated`, `category_kind`); the API maps it to a message in the user's language (`users.language`, `vi` default).
-- No URLs in code: read `SITE_URL`, `APP_URL`, `API_URL`.
-- Creating a book calls `book_setup.add_starter_categories()` in the same transaction unless the user unticked it.
-- Deleting a category that has transactions fails on its foreign key: archive it instead and say so in the response.
+- Database errors start with a code (`owner_required`, `invite_invalid`, ...); `app/api/errors.py` maps each to
+  an HTTP status, and the clients translate it. A new code needs both string files in `web/`.
 
 ## Jobs
 
-Cloud Run jobs via Cloud Scheduler (`infra/terraform/run.tf`), `asia-southeast1`, all from the one image: `fx_update.py` (Open Exchange Rates, daily), account purge and unconfirmed sign-ups (`account_deletion.py`, needs `PURGE_LOG`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`), nightly `backup.py` (runs after purge; bucket lifecycle 6 days, versioning and soft delete off). 
-
-## Branches and CI
-
-feature (from `dev`) -> `dev` (deploys nowhere) -> `staging` (development) -> `main` (production). Tests on every PR. On merge to `staging`/`main`: tests, then `supabase db push` (development with `--include-seed`; prod never gets seed.sql), then Cloud Run deploy. If a step fails, nothing after it runs.
-
-## Not built yet
-
-See msaving-docs Product → Status (and Operations → Cloud setup for the manual steps).
+`app/jobs/scheduler.py`, inside the `msaving` container, once a day at `JOBS_HOUR` (UTC) and once at start:
+`account_deletion` (purge after 30 days, expired sessions; ids to `PURGE_LOG` in the backups volume), `backup`
+(pg_dump into `/backups`, about 6 days kept, owner-only files), `fx_update` (open.er-api.com, no key; Open
+Exchange Rates with `OXR_APP_ID`).
 
 ## Don't
 
-- Don't commit `.env` or any secret. Per-environment secrets: login URLs, `BACKUP_DATABASE_URL`, `AI_KEY_ENCRYPTION_KEY`, `OXR_APP_ID`, `SUPABASE_SERVICE_ROLE_KEY`.
-- Don't run `supabase db push` from a laptop or against production.
+- Don't commit `.env`, `.dev/` or any secret.
 - Don't store balances; they are sums of entries.
-- Don't send raw transactions, notes, account names or people to an AI model.
+- Don't add a setting an operator must fill in; give it a safe default.
+- Don't send raw transactions, notes, account names or people to an AI model (when AI is built).

@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type Account, type Book, type Budget, type Category, type Contact, type Currency, type Dashboard, type HistoryEntry, type Me, type Policy, type TxnPage } from './api'
+import { api, type Account, type Book, type Budget, type Category, type Contact, type Currency, type Dashboard, type HistoryEntry, type Instance, type Me, type TxnPage } from './api'
 
 export const keys = {
   me: ['me'] as const,
@@ -10,7 +10,7 @@ export const keys = {
 }
 
 export const useMe = (enabled = true) => useQuery({ queryKey: keys.me, queryFn: () => api<Me>('/v1/me'), enabled })
-export const usePolicy = () => useQuery({ queryKey: ['policy'], queryFn: () => api<Policy>('/v1/policy'), staleTime: Infinity })
+export const useInstance = () => useQuery({ queryKey: ['instance'], queryFn: () => api<Instance>('/v1/instance') })
 export const useBooks = () => useQuery({ queryKey: keys.books, queryFn: () => api<Book[]>('/v1/books') })
 
 export function useCurrencies() {

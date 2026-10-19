@@ -1,43 +1,41 @@
-"""Tests for the FastAPI app: token checks, CORS and /v1/me, against the
-database from conftest.py. Tokens are signed with a key made here; the API is
-pointed at it instead of a real Supabase project's published keys.
+"""Tests for the API, against the database from conftest.py. Users sign up
+through the API itself (open sign-up in the test database; invite-only and
+setup are in test_sign_in.py) and use the session token it returns.
 """
-import os
-import time
 import uuid
-from types import SimpleNamespace
 
-import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import ec
 from sqlalchemy import text
 
-from conftest import POLICY
-
-SUPABASE_URL = "http://supabase.test"
-APP_URL = "http://app.test"
-ISSUER = f"{SUPABASE_URL}/auth/v1"
-KEY = ec.generate_private_key(ec.SECP256R1())
+TOKENS: dict[uuid.UUID, str] = {}
+PASSWORD = "correct horse battery"
 
 
 @pytest.fixture(scope="module")
 def client(database):
-    os.environ.update(SUPABASE_URL=SUPABASE_URL, APP_URL=APP_URL)
     from fastapi.testclient import TestClient
 
     from app.api.main import app
-    from app.core import auth
-    auth.jwks.get_signing_key_from_jwt = lambda token: SimpleNamespace(key=KEY.public_key())
-    return TestClient(app)
+    from app.core import sign_in
+    saved = sign_in.sign_ups_per_ip, sign_in.per_ip
+    sign_in.sign_ups_per_ip = sign_in.per_ip = sign_in.RateLimit(100_000, 60)    # every test signs up from one address
+    yield TestClient(app)
+    sign_in.sign_ups_per_ip, sign_in.per_ip = saved
 
 
-def token(sub, key=KEY, alg="ES256", **claims):
-    body = {"sub": str(sub), "aud": "authenticated", "iss": ISSUER, "exp": int(time.time()) + 300, **claims}
-    return jwt.encode({k: v for k, v in body.items() if v is not None}, key, algorithm=alg)
+def auth(uid):
+    return {"Authorization": f"Bearer {TOKENS[uid]}"}
 
 
-def get_me(client, tok):
-    return client.get("/v1/me", headers={"Authorization": f"Bearer {tok}"})
+def signed_up(client, name=None, language="vi"):
+    name = name or f"u{uuid.uuid4().hex[:10]}"
+    r = client.post("/v1/auth/sign-up", json={"username": name, "password": PASSWORD, "language": language,
+                                              "timezone": "Asia/Ho_Chi_Minh"})
+    assert r.status_code == 201, r.text
+    token = r.json()["token"]
+    uid = uuid.UUID(client.get("/v1/me", headers={"Authorization": f"Bearer {token}"}).json()["id"])
+    TOKENS[uid] = token
+    return uid
 
 
 def test_health_needs_no_token(client):
@@ -46,110 +44,65 @@ def test_health_needs_no_token(client):
     assert r.headers["cache-control"] == "no-store"      # nothing may cache API answers
 
 
-def test_me_without_a_profile_yet(client):
-    uid = uuid.uuid4()
-    r = get_me(client, token(uid))
-    assert r.status_code == 200
-    assert r.json() == {"id": str(uid), "profile": None, "needs_consent": False}
+def test_instance_needs_no_token(client):
+    r = client.get("/v1/instance").json()
+    assert r["api_version"] == 1 and r["signup"] == "open" and r["name"] == "MSaving"
+    assert set(r) == {"name", "server_version", "api_version", "signup", "setup_needed"}
 
 
 def test_me_returns_only_my_profile(client):
-    from app.core import db
-    mine, other = uuid.uuid4(), uuid.uuid4()
-    for uid, name in ((mine, f"me_{mine.hex[:8]}"), (other, f"other_{other.hex[:8]}")):
-        with db.user_session(uid) as s:
-            s.execute(text("with u as (insert into users (id, username, email) values (:i, :n, :e) returning id)"
-                           " insert into consents (user_id, purpose, policy_version) select id, 'use_app', :v from u"),
-                      {"i": uid, "n": name, "e": f"{name}@example.com", "v": POLICY})
-    r = get_me(client, token(mine))
-    assert r.status_code == 200
+    mine, other = signed_up(client, f"me_{uuid.uuid4().hex[:8]}"), signed_up(client)
+    r = client.get("/v1/me", headers=auth(mine))
+    assert r.status_code == 200 and r.json()["id"] == str(mine)
     profile = r.json()["profile"]
-    assert profile["username"] == f"me_{mine.hex[:8]}"
-    assert profile["language"] == "vi" and profile["plan"] == "free"
+    assert profile["username"].startswith("me_") and profile["language"] == "vi" and profile["is_admin"] is False
+    assert set(profile) == {"username", "display_name", "timezone", "language", "created_at", "deletion_requested_at",
+                            "is_admin"}
+    assert client.get("/v1/me", headers=auth(other)).json()["id"] == str(other)
 
 
-@pytest.mark.parametrize("bad", [
-    "no-token", "not-a-jwt", "expired", "wrong-audience", "wrong-issuer", "no-expiry", "other-key", "hs256", "sub-not-uuid",
-])
+@pytest.mark.parametrize("bad", ["no-token", "", "not-a-token", "Basic abc", "a-jwt"])
 def test_bad_tokens_are_refused(client, bad):
-    uid = uuid.uuid4()
-    tok = {
-        "not-a-jwt": "abc.def.ghi",
-        "expired": lambda: token(uid, exp=int(time.time()) - 10),
-        "wrong-audience": lambda: token(uid, aud="anon"),
-        "wrong-issuer": lambda: token(uid, iss="http://evil.test/auth/v1"),
-        "no-expiry": lambda: token(uid, exp=None),
-        "other-key": lambda: token(uid, key=ec.generate_private_key(ec.SECP256R1())),
-        "hs256": lambda: token(uid, key="a-shared-secret-that-is-at-least-32-bytes", alg="HS256"),
-        "sub-not-uuid": lambda: token("someone"),
-    }.get(bad)
-    headers = {} if bad == "no-token" else {"Authorization": f"Bearer {tok() if callable(tok) else tok}"}
+    headers = {
+        "no-token": {},
+        "Basic abc": {"Authorization": "Basic abc"},
+        "a-jwt": {"Authorization": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln"},
+    }.get(bad, {"Authorization": f"Bearer {bad}"})
     r = client.get("/v1/me", headers=headers)
-    assert r.status_code == 401
-    assert r.json() == {"detail": "not_signed_in"}
+    assert (r.status_code, r.json()) == (401, {"detail": "not_signed_in"})
 
 
-def test_cors_allows_only_the_web_app(client):
+def test_no_cors_by_default(client):
     preflight = {"Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "authorization"}
-    ok = client.options("/v1/me", headers={"Origin": APP_URL, **preflight})
-    assert ok.headers.get("access-control-allow-origin") == APP_URL
-    evil = client.options("/v1/me", headers={"Origin": "http://evil.test", **preflight})
-    assert "access-control-allow-origin" not in evil.headers
+    r = client.options("/v1/me", headers={"Origin": "http://evil.test", **preflight})
+    assert "access-control-allow-origin" not in r.headers       # the web app is served from the API's own origin
 
 
-def test_extra_origins_are_localhost_only():
-    from app.core.settings import parse_local_origins
-    assert parse_local_origins("") == ()
-    assert parse_local_origins("http://localhost:5173, http://127.0.0.1:5173/") == (
-        "http://localhost:5173", "http://127.0.0.1:5173")
-    for bad in ("https://localhost:5173", "http://localhost", "http://evil.test:5173",
-                "http://localhost.evil.test:5173", "*", "null"):
-        with pytest.raises(RuntimeError):
-            parse_local_origins(bad)
+def test_unknown_api_paths_are_404_not_the_web_app(client):
+    r = client.get("/v1/nothing-here")
+    assert (r.status_code, r.json()) == (404, {"detail": "not_found"})
 
 
-# ---------------------------------------------------------------- milestone 2: sign-up, books, accounts
-
-def auth(uid, email=None):
-    return {"Authorization": f"Bearer {token(uid, email=email or f'{uid.hex[:12]}@example.com')}"}
-
-
-def signed_up(client, name=None, language="vi"):
-    uid = uuid.uuid4()
-    r = client.post("/v1/me", headers=auth(uid), json={"username": name or f"U{uid.hex[:10]}", "language": language,
-                                                         "timezone": "Asia/Ho_Chi_Minh", "policy_version": POLICY})
-    assert r.status_code == 201, r.text
-    return uid
-
-
-def test_choose_username_creates_the_account_with_consent(client):
-    uid = uuid.uuid4()
-    assert client.get("/v1/policy").json() == {"version": POLICY, "path": f"/privacy/{POLICY}"}      # no sign-in needed
-    body = {"username": "  Nguyin_Test ", "display_name": "N", "timezone": "Asia/Ho_Chi_Minh", "policy_version": POLICY}
-    r = client.post("/v1/me", headers=auth(uid, "real@example.com"), json={**body, "email": "forged@example.com"})
-    assert r.status_code == 201
-    profile = r.json()["profile"]
-    assert (profile["username"], profile["email"], profile["language"]) == ("nguyin_test", "real@example.com", "vi")
-    assert client.post("/v1/me", headers=auth(uid), json=body).json() == {"detail": "profile_exists"}
-    taken = client.post("/v1/me", headers=auth(uuid.uuid4()), json={**body, "username": "NGUYIN_TEST"})
-    assert (taken.status_code, taken.json()) == (409, {"detail": "username_taken"})
+def test_web_app_files_and_routes(client, tmp_path, monkeypatch):
+    from app.core import settings
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<html>app</html>")
+    (tmp_path / "assets" / "a.js").write_text("js")
+    monkeypatch.setattr(settings, "settings", settings.Settings(web_dir=tmp_path, dev_origin=""))
+    import app.api.main as main
+    monkeypatch.setattr(main, "settings", settings.settings)
+    page = client.get("/join?code=X")
+    assert page.text == "<html>app</html>" and "default-src 'self'" in page.headers["content-security-policy"]
+    assert page.headers["referrer-policy"] == "no-referrer"
+    asset = client.get("/assets/a.js")
+    assert asset.text == "js" and "immutable" in asset.headers["cache-control"]
+    assert client.get("/../../etc/passwd").text == "<html>app</html>"        # never outside the web app's folder
 
 
-@pytest.mark.parametrize("change, status, code", [
-    ({"policy_version": "2020-01-01"}, 403, "consent_outdated"),     # not the policy in force
-    ({"username": "-bad"}, 422, "invalid"),
-    ({"username": "ab"}, 422, "invalid"),
-    ({"timezone": "Mars/Base"}, 422, "invalid"),
-    ({"language": "fr"}, 422, "invalid"),
-])
-def test_choose_username_refusals(client, change, status, code):
-    body = {"username": f"u{uuid.uuid4().hex[:10]}", "timezone": "UTC", "policy_version": POLICY, **change}
-    r = client.post("/v1/me", headers=auth(uuid.uuid4()), json=body)
-    assert (r.status_code, r.json()) == (status, {"detail": code})
-
+# ---------------------------------------------------------------- books, accounts
 
 def test_currencies(client):
-    ccy = {c["code"]: c for c in client.get("/v1/currencies", headers=auth(uuid.uuid4())).json()}
+    ccy = {c["code"]: c for c in client.get("/v1/currencies", headers=auth(signed_up(client))).json()}
     assert ccy["VND"]["minor_unit"] == 0 and ccy["KWD"]["minor_unit"] == 3 and len(ccy) == 155
 
 
@@ -466,13 +419,13 @@ def events(capsys):
     return [json.loads(line)["account_event"] for line in capsys.readouterr().out.splitlines() if "account_event" in line]
 
 
-def test_profile_export_and_two_factor(client, database):
+def test_profile_and_export(client):
     u = signed_up(client)
     r = client.patch("/v1/me", headers=auth(u), json={"username": "New_Name_" + u.hex[:6], "language": "en", "display_name": "N"})
     assert (r.json()["profile"]["username"], r.json()["profile"]["language"]) == (f"new_name_{u.hex[:6]}", "en")
     assert client.patch("/v1/me", headers=auth(u), json={"display_name": ""}).json()["profile"]["display_name"] is None
 
-    bid, _ = new_book_with_accounts(client, u)
+    new_book_with_accounts(client, u)
     zipped = client.get("/v1/me/export", headers=auth(u))
     assert zipped.headers["content-type"] == "application/zip" and "attachment" in zipped.headers["content-disposition"]
     import io
@@ -480,19 +433,8 @@ def test_profile_export_and_two_factor(client, database):
     names = zipfile.ZipFile(io.BytesIO(zipped.content)).namelist()
     assert "profile.csv" in names and "transactions.csv" in names
 
-    # Two-factor set up: a password-only token (aal1) gets nothing; aal2 works.
-    with database.connect() as c:
-        c.execute(text("insert into auth.mfa_factors (user_id, status) values (:u, 'verified')"), {"u": u})
-    assert client.get("/v1/books", headers=auth(u)).json() == {"detail": "mfa_required"}
-    aal2 = {"Authorization": f"Bearer {token(u, email='x@example.com', aal='aal2')}"}
-    assert [b["id"] for b in client.get("/v1/books", headers=aal2).json()] == [bid]
-    other = signed_up(client)
-    with database.connect() as c:                         # an unverified factor doesn't count yet
-        c.execute(text("insert into auth.mfa_factors (user_id, status) values (:u, 'unverified')"), {"u": other})
-    assert client.get("/v1/books", headers=auth(other)).status_code == 200
 
-
-def test_close_restore_and_withdraw(client, capsys):
+def test_close_and_restore(client, capsys):
     u = signed_up(client)
     bid, _ = new_book_with_accounts(client, u)
     capsys.readouterr()
@@ -503,34 +445,5 @@ def test_close_restore_and_withdraw(client, capsys):
     assert client.post("/v1/me/restore", headers=auth(u)).json()["deletion_requested_at"] is None
     assert [b["id"] for b in client.get("/v1/books", headers=auth(u)).json()] == [bid]
     assert events(capsys) == ["account_closed", "account_restored"]
-
-    status = client.post("/v1/me/consent/withdraw", headers=auth(u)).json()
-    assert status["deletion_requested_at"] is not None
-    assert events(capsys) == ["consent_withdrawn", "account_closed"]
-    assert client.get("/v1/me", headers=auth(u)).json()["needs_consent"] is True
-    refused = client.post("/v1/me/restore", headers=auth(u))
-    assert (refused.status_code, refused.json()) == (403, {"detail": "consent_outdated"})
-    assert client.post("/v1/me/consent", headers=auth(u), json={"policy_version": POLICY}).json()["needs_consent"] is False
-    assert client.post("/v1/me/restore", headers=auth(u)).json()["deletion_requested_at"] is None
-    assert events(capsys) == ["account_restored"]
-
-
-def test_new_policy_version_needs_consent(client, database):
-    u = signed_up(client)
-    new = "2099-01-01-test"
-    with database.connect() as c:                         # publishing a policy is a migration in real life
-        c.execute(text("insert into policy_versions (version, published_at, path, text_sha256)"
-                       " values (:v, now(), '/privacy/test', repeat('a', 64))"), {"v": new})
-    try:
-        me = client.get("/v1/me", headers=auth(u)).json()
-        assert me["needs_consent"] is True
-        st = client.get("/v1/me/consent", headers=auth(u)).json()
-        assert (st["current_version"], st["agreed_version"], st["needs_consent"]) == (new, POLICY, True)
-        old = client.post("/v1/me/consent", headers=auth(u), json={"policy_version": POLICY})
-        assert (old.status_code, old.json()) == (403, {"detail": "consent_outdated"})
-        assert client.post("/v1/me/consent", headers=auth(u), json={"policy_version": new}).json()["needs_consent"] is False
-        assert client.post("/v1/me/consent", headers=auth(u), json={"policy_version": new}).status_code == 200   # twice is fine
-    finally:
-        with database.connect() as c:
-            c.execute(text("delete from consents where policy_version = :v"), {"v": new})
-            c.execute(text("delete from policy_versions where version = :v"), {"v": new})
+    refused = client.post("/v1/me/restore", headers=auth(u))               # nothing to restore
+    assert (refused.status_code, refused.json()) == (409, {"detail": "not_restorable"})
