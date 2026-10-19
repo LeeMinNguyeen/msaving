@@ -1,5 +1,5 @@
 """Setting up a server, joining, signing in and the admin's tools
-(msaving-docs, Sign-in; Accounts on an instance), plus the migration runner,
+(docs: Sign-in; Accounts on an instance), plus the migration runner,
 the launcher's helpers and the scheduler. Uses the database from conftest.py;
 tests that need a fresh server (setup) build their own.
 """

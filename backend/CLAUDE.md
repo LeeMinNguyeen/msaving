@@ -1,8 +1,9 @@
 # CLAUDE.md: backend
 
 The FastAPI API, its own sign-in, the daily jobs and the PostgreSQL schema for MSaving, self-hosted only.
-Monorepo rules: `../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. Decisions and how it all
-works: **msaving-docs** (a schema or decision change is a paired msaving-docs PR).
+Monorepo rules: `../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. How it all works: the public
+docs (https://msaving.leminhnguyen.com/docs/, source `msaving-landing/src/content/docs/`); a change to documented
+behaviour comes with a docs PR there. Decisions: the private msaving-docs.
 
 ## Layout
 

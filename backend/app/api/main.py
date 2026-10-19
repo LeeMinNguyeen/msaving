@@ -34,8 +34,8 @@ if settings.dev_origin:      # development only: the Vite server on another port
         expose_headers=["Content-Disposition"],
     )
 
-# Only this server's own web app may call the API from a browser (msaving-docs,
-# How clients find a server). Browsers send Origin; a copy of the web app
+# Only this server's own web app may call the API from a browser (docs: Sign-in and accounts,
+# Clients). Browsers send Origin; a copy of the web app
 # hosted anywhere else, or any other site, is refused before anything runs.
 # The mobile app sends no Origin, so any number of phones can connect.
 # Behind a reverse proxy the browser's address is in Host (Caddy, Tailscale,

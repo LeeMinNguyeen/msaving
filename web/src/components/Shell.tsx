@@ -65,7 +65,7 @@ function BookSwitcher({ book }: { book: Book }) {
   )
 }
 
-// Desktop first (msaving-docs, Decisions): a fixed sidebar with the book switcher
+// Desktop first (a project decision): a fixed sidebar with the book switcher
 // and the book's pages. Phones keep a working top bar until the mobile app is
 // in the stores (see StoreRedirect).
 export function Shell({ book, children }: { book: Book; children: ReactNode }) {

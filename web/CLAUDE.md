@@ -1,14 +1,14 @@
 # CLAUDE.md: web
 
 The React web app for MSaving, served by the server itself (same origin as the API). Monorepo rules:
-`../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. Decisions and the screens: **msaving-docs**
-(MVP scope).
+`../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. How it works: the public docs
+(https://msaving.leminhnguyen.com/docs/); decisions and the screens: the private msaving-docs (MVP scope).
 
 ## Stack
 
 React, Vite, TypeScript, TanStack Query, React Router, i18next (react-i18next), Material UI (MUI's default
 theme following the device's light/dark setting), Vitest (with jest-dom matchers), oxlint. npm, Node 22.
-Not decided yet (pick a default, label it, record it in msaving-docs): form library (plain controlled inputs
+Not decided yet (pick a default, label it, record it in msaving-docs Decisions): form library (plain controlled inputs
 and FormData so far).
 
 ## Layout and commands
@@ -56,7 +56,7 @@ layout until the mobile app ships.
 - **Security:** the server sends a strict CSP (scripts `'self'` only; `style-src 'unsafe-inline'` for MUI's
   Emotion; QR codes are `data:` images from the API). No third-party scripts, fonts or analytics. Nothing in
   localStorage but the session token and the language choice.
-- **From the old app** (msaving-docs, The old app): accounts left out of net worth are greyed out but
+- **From the old app** (msaving-docs, The old app, private): accounts left out of net worth are greyed out but
   clickable; category colours from a preset grid; "Add starter categories" on by default; the category picker
   on a transfer lists only transfer categories.
 

@@ -52,7 +52,7 @@ class UpdateProfile(BaseModel):
 
 @router.patch("/me")
 def update_profile(body: UpdateProfile, caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> Me:
-    """Last write wins (msaving-docs, Several devices at once)."""
+    """Last write wins (docs: The ledger, several devices)."""
     n = db.execute(text(
         "update users set username = coalesce(:u, username),"
         " display_name = case when cast(:d as text) is null then display_name when cast(:d as text) = '' then null"

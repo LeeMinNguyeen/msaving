@@ -1,5 +1,5 @@
 """Setting up the server, joining, signing in and sign-in security
-(msaving-docs, Sign-in). No email anywhere.
+(docs: Sign-in). No email anywhere.
 
 - Setup: the first account, with the setup code from the server's log
   (app/jobs/migrate.py). It becomes the admin.

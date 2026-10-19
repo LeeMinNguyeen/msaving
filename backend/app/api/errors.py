@@ -1,7 +1,7 @@
 """Turns database errors into responses with a code the apps translate.
 
 The database starts every error a user can cause with a code ("owner_required:
-...", msaving-docs, Languages); the API returns that code as `detail`. The English
+...", docs: Languages); the API returns that code as `detail`. The English
 text after it is for developers and stays in the logs.
 """
 import logging

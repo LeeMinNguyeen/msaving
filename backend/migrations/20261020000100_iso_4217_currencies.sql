@@ -1,4 +1,4 @@
--- The full ISO 4217 list (msaving-docs, Currencies): every
+-- The full ISO 4217 list (docs: Currencies): every
 -- currency in use, from the maintenance agency's list one published
 -- 2026-09-17 (six-group.com). Left out: fund codes (BOV, CHE, CHW, CLF,
 -- COU, MXV, USN, UYI, UYW), precious metals, SDR and the bond, test and

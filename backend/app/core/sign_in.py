@@ -1,4 +1,4 @@
-"""The building blocks of signing in (msaving-docs, Sign-in): passwords, codes,
+"""The building blocks of signing in (docs: Sign-in): passwords, codes,
 tokens and rate limits. The routes are in app/api/routes/v1/sign_in.py.
 
 - Passwords: argon2id (argon2-cffi's defaults), checked here; the database
@@ -117,7 +117,7 @@ class RateLimit:
             return True
 
 
-# Defaults, not decided (msaving-docs, Sign-in): enough for a person who
+# Defaults, not decided (docs: Sign-in): enough for a person who
 # mistypes, far too few for guessing.
 per_ip = RateLimit(30, 15 * 60)               # sign-in, join, setup, reset, invite checks
 per_username = RateLimit(10, 15 * 60)         # sign-in attempts on one account

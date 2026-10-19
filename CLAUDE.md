@@ -4,10 +4,12 @@ MSaving, a spending tracker people run themselves (self-hosted only): `backend/`
 migrations, tests) and `web/` (React web app), built into one Docker image and run with `docker-compose.yml`.
 `mobile/` (Expo) comes later. Public repo, AGPL-3.0.
 
-The project's decisions and team docs are in **msaving-docs** (private; `~/projects/msaving/msaving-docs` for
-the team). Workspace-wide rules: `~/projects/msaving/CLAUDE.md`. Repo-part rules: `backend/CLAUDE.md`,
-`web/CLAUDE.md`. The README (English) and README.vi.md (Vietnamese) are the public setup guide for
-operators: keep both true when setup, settings, backups or commands change.
+The public documentation (install, operating a server, how it works, the API, contributing) is on the website at
+https://msaving.leminhnguyen.com/docs/, source `msaving-landing/src/content/docs/`. A change here that alters
+documented behaviour (a route, setting, error code, setup step, command) comes with a docs PR there, linked both
+ways. The README and README.vi.md are a short quickstart pointing to it; don't grow them back into a guide. The
+team's decisions are in the private msaving-docs. Workspace-wide rules: `~/projects/msaving/CLAUDE.md`. Repo-part
+rules: `backend/CLAUDE.md`, `web/CLAUDE.md`.
 
 ## Layout
 
@@ -36,7 +38,7 @@ Faster loops: `backend/CLAUDE.md` (pytest, uvicorn --reload) and `web/CLAUDE.md`
 - **Operators run this, not us.** Anything that needs a manual step, an account somewhere, or reading our docs
   is a bug in the setup. `docker compose up -d` must stay the whole install.
 - **One image, one compose file.** New services need a strong reason. Settings are optional with safe defaults,
-  listed in `.env.example` and both READMEs.
+  listed in `.env.example` and the docs' Settings page.
 - **The API only adds within `/v1`.** Mobile apps in the stores will talk to servers several versions apart;
   `/v1/instance` reports `api_version` and `server_version`.
 - **No URL in code.** A server is whatever address it's reached at; clients use their own origin or the address

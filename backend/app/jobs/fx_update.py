@@ -4,10 +4,10 @@ Run once a day by the scheduler with FX_DATABASE_URL pointing at fx_login, a
 member of fx_updater. That role can only write fx_rates; it can't read any
 user data.
 
-Providers (msaving-docs, Exchange rates), both USD-based like fx_rates:
+Providers (docs: Exchange rates), both USD-based like fx_rates:
 - Default, no key: open.er-api.com (ExchangeRate-API's open endpoint), daily,
   about 160 currencies including VND. Its terms are not checked yet
-  (msaving-docs, Open questions).
+  (an open question).
 - With OXR_APP_ID set: Open Exchange Rates, on the operator's own key.
 The provider is behind fetch_rates(), so adding one means changing only that.
 """

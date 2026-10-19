@@ -1,5 +1,5 @@
 """Is there a newer release, and can this server install it by itself?
-(msaving-docs, Updates)
+(docs: Updates)
 
 - The newest release comes from the project's GitHub releases, checked at
   most every 6 hours, only when the admin opens the admin page. UPDATE_CHECK=off

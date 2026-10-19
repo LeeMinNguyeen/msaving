@@ -1,5 +1,5 @@
 """The server's admin: invites, users, password reset links, the server's
-name and whether sign-up is open (msaving-docs, Accounts on an instance).
+name and whether sign-up is open (docs: Accounts on an instance).
 Every database function behind these checks the caller is the admin
 (403 admin_only otherwise).
 
