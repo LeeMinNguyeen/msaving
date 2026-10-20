@@ -33,6 +33,9 @@ def dashboard(db: Session, book_id: UUID, today: date | None = None) -> dict:
     by_month = {r["month"]: r for r in cashflow}
     return {
         "currency": nw["base_currency"] if nw else None,
+        # Where the newest market rates came from: some sources ask for a credit (jobs/fx_update.py).
+        "rates_source": db.execute(text("select source from fx_rates order by as_of desc, fetched_at desc limit 1")).scalar()
+                        if nw else None,
         "net_worth": nw["net_worth"] if nw else 0,
         "net_worth_missing_rates": nw["missing_rates"] if nw else 0,
         "spent_this_month": by_month.get(this_month, {}).get("spent", 0),

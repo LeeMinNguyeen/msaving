@@ -75,6 +75,7 @@ class RecentTxn(BaseModel):
 
 class Dashboard(BaseModel):
     currency: str | None
+    rates_source: str | None             # e.g. open.er-api.com, whose terms ask for a visible credit
     net_worth: int
     net_worth_missing_rates: int
     spent_this_month: int

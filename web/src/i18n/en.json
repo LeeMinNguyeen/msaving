@@ -261,7 +261,8 @@
     "empty": "Add accounts and transactions to see your overview.",
     "budgets": "Budgets",
     "people": "Who owes whom",
-    "emptyViewer": "Nothing in this book yet."
+    "emptyViewer": "Nothing in this book yet.",
+    "ratesBy": "Exchange rates:"
   },
   "budget": {
     "title": "Budgets",
