@@ -22,6 +22,7 @@ import { CurrencyPicker } from '../components/CurrencyPicker'
 import { DateField } from '../components/DateField'
 import { useErrorText } from '../components/errors'
 import { currentLanguage } from '../i18n'
+import { adjustmentFor, detailsPayload, showsLast4 } from '../lib/accounts'
 import {
   accountKinds, api, interestKinds, last4Kinds, liabilityKinds, personKinds, send, type Account, type AccountKind, type Book,
 } from '../lib/api'
@@ -76,7 +77,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
   const withPerson = personKinds.includes(form.kind)
   const card = form.kind === 'credit_card'
   const withInterest = interestKinds.includes(form.kind)
-  const withLast4 = last4Kinds.includes(form.kind) || !!account?.last4
+  const withLast4 = showsLast4(form.kind, account?.last4)
   const parse = (text: string, minor = minorUnit) => (text.trim() === '' ? 0 : parseAmount(text, minor, lang))
   const opening = parse(form.opening)
   const balance = parse(form.balance)
@@ -89,14 +90,14 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
 
   function details() {
     const blank = (text: string, value: number | null) => (text.trim() === '' ? null : value)
-    return {
-      note: form.note.trim() || null,
-      credit_limit: card ? blank(form.creditLimit, creditLimit) : null,
-      annual_fee: card ? blank(form.annualFee, annualFee) : null,
-      statement_day: card && form.statementDay ? Number(form.statementDay) : null,
-      payment_due_day: card && form.dueDay ? Number(form.dueDay) : null,
-      interest_rate_bp: withInterest ? blank(form.interest, interest) : null,
-    }
+    return detailsPayload(form.kind, {
+      note: form.note,
+      creditLimit: blank(form.creditLimit, creditLimit),
+      annualFee: blank(form.annualFee, annualFee),
+      statementDay: form.statementDay,
+      dueDay: form.dueDay,
+      interestBp: blank(form.interest, interest),
+    })
   }
 
   async function submit(e: FormEvent) {
@@ -116,7 +117,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
         // worked out from the balance now, in case someone added a transaction meanwhile.
         if (form.balance !== form.balanceAtStart && balance !== null) {
           const all = await api<Account[]>(`/v1/books/${book.id}/accounts?include_archived=true`)
-          const diff = (owed ? -balance : balance) - (all.find((a) => a.id === account.id)?.balance ?? account.balance)
+          const diff = adjustmentFor(form.kind, balance, all.find((a) => a.id === account.id)?.balance ?? account.balance)
           if (diff !== 0) {
             await send('POST', `/v1/books/${book.id}/transactions`, {
               id: adjustmentId.current, type: 'adjustment', occurred_on: todayIn(book.timezone),

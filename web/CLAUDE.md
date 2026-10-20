@@ -7,7 +7,7 @@ The React web app for MSaving, served by the server itself (same origin as the A
 ## Stack
 
 React, Vite, TypeScript, TanStack Query, React Router, i18next (react-i18next), Material UI (MUI's default
-theme following the device's light/dark setting), Vitest (with jest-dom matchers), oxlint. npm, Node 22.
+theme following the device's light/dark setting), Vitest (with jest-dom matchers and Testing Library), oxlint. npm, Node 22.
 Not decided yet (pick a default, label it, record it in msaving-docs Decisions): form library (plain controlled inputs
 and FormData so far).
 
@@ -22,6 +22,8 @@ src/
   lib/money.ts       format and parse amounts in minor units by language, no floats
   components/        Shell (sidebar, book switcher, admin link), AccountForm (fields before sign-in), pickers, errors
   i18n/              vi.json (default), en.json, i18next setup; strings.test.ts checks the keys match
+  test/              setup (cleanup after each test), fakeApi (answers fetch from a table, records calls),
+                     render (the app's providers; desktop() for the sidebar layout)
   pages/             one file per screen; App.tsx routes (sign-in, join, reset, setup when the server has no admin)
 ```
 
@@ -67,3 +69,6 @@ layout until the mobile app ships.
 - i18next's `<Trans>` drops tags named like HTML void elements (`<link>`, `<br>`, `<img>`...): use names like `<policy>`.
 - Queries that need a session pass `enabled`; the cache is cleared on sign-out (`main.tsx`).
 - Fast refresh: files under `pages/` and `components/` export components only; shared functions go in `auth/` or `lib/`.
+- jsdom can't stand in for a browser everywhere: it lays nothing out, and MUI X's date field behaves differently
+  there. Test such logic directly (`lib/dates.ts`) and check the screen in Chromium (Playwright).
+- A component test per screen change: `*.test.tsx` beside the file, with `renderApp` and `fakeApi`.
