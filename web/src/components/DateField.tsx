@@ -42,8 +42,7 @@ export function DateField({ label, value, onChange, required, size, helperText, 
         setInner(d)
         onChange(isoOf(d))
       }}
-      slotProps={{ textField: { required, size, helperText, fullWidth }, field: { clearable: !required } }}
-      sx={sx}
+      slotProps={{ textField: { required, size, helperText, fullWidth, sx }, field: { clearable: !required } }}
     />
   )
 }

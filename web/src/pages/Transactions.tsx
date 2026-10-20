@@ -126,9 +126,9 @@ export function Transactions({ book }: { book: Book }) {
           <MenuItem value="">{t('filters.allTypes')}</MenuItem>
           {txnTypes.map((ty) => <MenuItem key={ty} value={ty}>{t(`txn.types.${ty}`)}</MenuItem>)}
         </TextField>
-        <Stack direction="row" spacing={1}>
-          <DateField size="small" label={t('filters.from')} value={filters.from ?? ''} onChange={(v) => setFilter('from', v)} sx={{ width: 190 }} />
-          <DateField size="small" label={t('filters.to')} value={filters.to ?? ''} onChange={(v) => setFilter('to', v)} sx={{ width: 190 }} />
+        <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', md: 'auto' } }}>
+          <DateField size="small" label={t('filters.from')} value={filters.from ?? ''} onChange={(v) => setFilter('from', v)} sx={{ flex: 1, minWidth: 0, maxWidth: { md: 190 } }} />
+          <DateField size="small" label={t('filters.to')} value={filters.to ?? ''} onChange={(v) => setFilter('to', v)} sx={{ flex: 1, minWidth: 0, maxWidth: { md: 190 } }} />
         </Stack>
         {filtered && (
           <Button onClick={() => { setSearch(''); setParams({}, { replace: true }) }}>{t('filters.clear')}</Button>
