@@ -4,7 +4,6 @@ Run for development: uvicorn app.api.main:app --reload
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -25,24 +24,14 @@ SERVER_VERSION = updates.current_version()
 app = FastAPI(title="MSaving API", docs_url=None, redoc_url=None, openapi_url="/v1/openapi.json")
 errors.install(app)
 
-if settings.dev_origin:      # development only: the Vite server on another port
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[settings.dev_origin],
-        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
-        expose_headers=["Content-Disposition"],
-    )
-
 # Only this server's own web app may call the API from a browser (docs: Sign-in and accounts,
 # Clients). Browsers send Origin; a copy of the web app
 # hosted anywhere else, or any other site, is refused before anything runs.
 # The mobile app sends no Origin, so any number of phones can connect.
 # Behind a reverse proxy the browser's address is in Host (Caddy, Tailscale,
-# Cloudflare Tunnel keep it) or X-Forwarded-Host.
+# Cloudflare Tunnel keep it) or X-Forwarded-Host, which Vite's proxy also sends in
+# development (web/vite.config.ts).
 def own_origin(origin: str, request: Request) -> bool:
-    if settings.dev_origin and origin == settings.dev_origin:
-        return True
     host = urlsplit(origin).netloc.lower()
     allowed = {request.headers.get("host", ""), *request.headers.get("x-forwarded-host", "").split(",")}
     return bool(host) and host in {h.strip().lower() for h in allowed if h.strip()}

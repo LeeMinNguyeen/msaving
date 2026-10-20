@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../config', () => ({ config: { apiUrl: 'http://api.test' } }))
-
 const { api, ApiError } = await import('./api')
 const { session } = await import('../auth/session')
 
@@ -20,7 +18,7 @@ describe('api', () => {
 
     expect(await api('/v1/me')).toEqual({ id: 'u' })
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('http://api.test/v1/me')
+    expect(url).toBe('/v1/me')                       // same origin: the server that served the app
     expect(new Headers(init.headers).get('Authorization')).toBe('Bearer tok')
   })
 

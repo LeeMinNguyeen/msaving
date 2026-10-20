@@ -5,10 +5,12 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   // The API on this machine (uvicorn on 8000, or the compose stack on 8080 with
-  // MSAVING_API), on the same origin as the app, as the server serves it.
+  // MSAVING_API), on the same origin as the app, as the server serves it. xfwd
+  // sends X-Forwarded-Host, like a reverse proxy: the API only accepts browsers
+  // on its own address, and the proxy changes Host.
   server: {
     host: 'localhost', port: 5173, strictPort: true,
-    proxy: { '/v1': process.env.MSAVING_API ?? 'http://127.0.0.1:8000' },
+    proxy: { '/v1': { target: process.env.MSAVING_API ?? 'http://127.0.0.1:8000', xfwd: true } },
   },
   test: {
     environment: 'jsdom',

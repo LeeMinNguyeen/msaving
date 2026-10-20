@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../lib/api'
 
-// Any error (from the API, from Supabase Auth, or thrown) -> a message in the
+// Any error (from the API, or thrown) -> a message in the
 // user's language. Unknown codes get the generic message.
 function errorCode(err: unknown): string {
   if (err instanceof ApiError) return err.code
