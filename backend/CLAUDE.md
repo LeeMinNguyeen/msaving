@@ -32,7 +32,6 @@ scripts/dev.sh                       # http://127.0.0.1:8000, reloads on change;
 # Tests: a throwaway Postgres 17, local only
 docker run -d --name pgtest -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:5499:5432 postgres:17
 export TEST_ADMIN_URL="postgresql+psycopg://postgres@localhost:5499/postgres"
-export PGSSLMODE=disable
 PATH=/usr/lib/postgresql/17/bin:$PATH python -m pytest -q -p no:cacheprovider tests/
 ```
 

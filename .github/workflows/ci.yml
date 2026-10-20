@@ -27,7 +27,6 @@ jobs:
           --health-interval 2s --health-timeout 5s --health-retries 30
     env:
       TEST_ADMIN_URL: postgresql+psycopg://postgres@localhost:5432/postgres
-      PGSSLMODE: disable          # the service container has no TLS
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

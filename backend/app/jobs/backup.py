@@ -138,7 +138,9 @@ def run_backup(database_url: str, backup_dir: str) -> tuple[str, dict[str, int],
     pg_dump, pg_restore = _tools()
     dsn, password = _split(database_url)
     env = dict(os.environ, PGAPPNAME="msaving-backup")
-    env.setdefault("PGSSLMODE", "require")          # TLS unless the URL says otherwise
+    # TLS as the address says (?sslmode=require for a database across the
+    # internet), else libpq's default like the rest of the server: TLS when the
+    # database offers it. Forcing it failed on a plain local Postgres.
     if password:
         env["PGPASSWORD"] = password
     now = datetime.now(timezone.utc)
