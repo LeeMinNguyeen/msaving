@@ -15,7 +15,7 @@ and FormData so far).
 
 ```
 src/
-  config.ts          build-time settings, all optional: VITE_API_URL (default: same origin), store links
+  config.ts          build-time settings, all optional: the mobile app's store links
   auth/              session.ts (the token, in localStorage), useSession, signOut, forms (new-account form, signed-in submit)
   lib/api.ts         fetch wrapper (bearer token, ApiError with the API's code; a 401 not_signed_in forgets the token) and types
   lib/queries.ts     TanStack Query hooks and keys (useInstance, useMe, ...)

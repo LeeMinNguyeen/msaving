@@ -68,7 +68,7 @@ function BookSwitcher({ book }: { book: Book }) {
 
 // Desktop first (a project decision): a fixed sidebar with the book switcher
 // and the book's pages. Phones keep a working top bar until the mobile app is
-// in the stores (see StoreRedirect).
+// in the stores (main.tsx sends phones there then).
 export function Shell({ book, children }: { book: Book; children: ReactNode }) {
   const [dialog, setDialog] = useState<{ txn: Transaction | null; defaults?: TxnDefaults } | null>(null)
   const openTxn = (txn: Transaction | null, defaults?: TxnDefaults) => setDialog({ txn, defaults })

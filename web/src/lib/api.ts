@@ -1,8 +1,7 @@
 import { session } from '../auth/session'
-import { config } from '../config'
 
 // An error from the API. `code` is what the API sent as `detail` (for example
-// not_signed_in or plan_limit), which the screens translate.
+// not_signed_in or owner_required), which the screens translate.
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
@@ -33,7 +32,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = authHeaders(init.headers)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
-  const res = await fetch(`${config.apiUrl}${path}`, { ...init, headers })
+  const res = await fetch(path, { ...init, headers })
   if (!res.ok) await fail(res)
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
@@ -41,7 +40,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 // A file from the API (the data export): saved by the browser under the name it sends.
 export async function download(path: string): Promise<void> {
-  const res = await fetch(`${config.apiUrl}${path}`, { headers: authHeaders() })
+  const res = await fetch(path, { headers: authHeaders() })
   if (!res.ok) await fail(res)
   const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'export.zip'
   const url = URL.createObjectURL(await res.blob())

@@ -102,7 +102,7 @@ def test_web_app_files_and_routes(client, tmp_path, monkeypatch):
     (tmp_path / "assets").mkdir()
     (tmp_path / "index.html").write_text("<html>app</html>")
     (tmp_path / "assets" / "a.js").write_text("js")
-    monkeypatch.setattr(settings, "settings", settings.Settings(web_dir=tmp_path, dev_origin=""))
+    monkeypatch.setattr(settings, "settings", settings.Settings(web_dir=tmp_path))
     import app.api.main as main
     monkeypatch.setattr(main, "settings", settings.settings)
     page = client.get("/join?code=X")

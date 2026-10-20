@@ -80,19 +80,15 @@
       "lent": "Tiền cho vay",
       "other_asset": "Tài sản khác",
       "other_liability": "Khoản nợ khác"
-    },
-    "openTransactions": "Xem giao dịch"
+    }
   },
   "common": {
-    "loading": "Đang tải…",
     "cancel": "Hủy",
-    "retry": "Thử lại",
     "copy": "Sao chép",
     "done": "Xong"
   },
   "errors": {
     "invalid_credentials": "Sai tên người dùng hoặc mật khẩu.",
-    "weak_password": "Mật khẩu cần ít nhất 10 ký tự.",
     "not_signed_in": "Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.",
     "forbidden": "Bạn không có quyền làm việc này.",
     "not_found": "Không tìm thấy.",
@@ -138,7 +134,6 @@
     "add": "Thêm giao dịch",
     "edit": "Sửa giao dịch",
     "title": "Giao dịch",
-    "type": "Loại",
     "types": {
       "expense": "Chi tiêu",
       "income": "Thu nhập",
@@ -180,7 +175,6 @@
     "otherType": "Loại khác"
   },
   "filters": {
-    "title": "Bộ lọc",
     "allAccounts": "Mọi tài khoản",
     "allCategories": "Mọi danh mục",
     "allTypes": "Mọi loại",
@@ -286,7 +280,6 @@
     "over": "Vượt {{amount}}",
     "notActive": "Chưa đến hoặc đã qua thời gian áp dụng",
     "subcategoriesCount": "Gồm cả các danh mục con.",
-    "expenseOnly": "Chỉ đặt ngân sách cho danh mục chi tiêu.",
     "existing": "Ngân sách hiện có"
   },
   "mfa": {
