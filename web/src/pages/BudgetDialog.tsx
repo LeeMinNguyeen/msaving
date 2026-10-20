@@ -22,6 +22,7 @@ import { todayIn } from '../lib/labels'
 import { formatMoney, parseAmount } from '../lib/money'
 import { useBudgets, useCurrencies, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
+import { DateField } from '../components/DateField'
 
 // A category's budgets: one per period, in the book's currency. Sub-categories count too.
 export function BudgetDialog({ book, category, onClose }: { book: Book; category: Category; onClose: () => void }) {
@@ -112,8 +113,8 @@ export function BudgetDialog({ book, category, onClose }: { book: Book; category
                 <AmountField label={`${t('budget.amount')} (${book.base_currency})`} required value={amount} onChange={setAmount} minorUnit={minor} />
               </Stack>
               <Stack direction="row" spacing={2}>
-                <TextField type="date" label={t('budget.startsOn')} value={startsOn} onChange={(e) => setStartsOn(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-                <TextField type="date" label={t('budget.endsOn')} value={endsOn} onChange={(e) => setEndsOn(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+                <DateField label={t('budget.startsOn')} value={startsOn} onChange={setStartsOn} />
+                <DateField label={t('budget.endsOn')} value={endsOn} onChange={setEndsOn} />
               </Stack>
               <Button type="submit" variant="contained" loading={busy} disabled={!parsed || parsed <= 0} sx={{ alignSelf: 'start' }}>
                 {t('budget.save')}

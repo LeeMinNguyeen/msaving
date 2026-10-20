@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
+import { DatesProvider } from './components/DatesProvider'
 import { config } from './config'
 import { storeUrlFor } from './lib/store'
 import { session } from './auth/session'
@@ -29,7 +30,9 @@ createRoot(document.getElementById('root')!).render(
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <QueryClientProvider client={queryClient}>
-        <App />
+        <DatesProvider>
+          <App />
+        </DatesProvider>
       </QueryClientProvider>
     </ThemeProvider>
   </StrictMode>,

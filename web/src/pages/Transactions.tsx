@@ -29,6 +29,7 @@ import { txnTypes, type Account, type Book, type Transaction } from '../lib/api'
 import { categoryTree } from '../lib/categories'
 import { formatMoney } from '../lib/money'
 import { useAccounts, useCategories, useCurrencies, useTransactions, type TxnFilters } from '../lib/queries'
+import { DateField } from '../components/DateField'
 
 const FILTERS = ['account_id', 'category_id', 'type', 'from', 'to', 'q'] as const
 
@@ -122,10 +123,8 @@ export function Transactions({ book }: { book: Book }) {
           {txnTypes.map((ty) => <MenuItem key={ty} value={ty}>{t(`txn.types.${ty}`)}</MenuItem>)}
         </TextField>
         <Stack direction="row" spacing={1}>
-          <TextField size="small" type="date" label={t('filters.from')} value={filters.from ?? ''} onChange={(e) => setFilter('from', e.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }} />
-          <TextField size="small" type="date" label={t('filters.to')} value={filters.to ?? ''} onChange={(e) => setFilter('to', e.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }} />
+          <DateField size="small" label={t('filters.from')} value={filters.from ?? ''} onChange={(v) => setFilter('from', v)} sx={{ width: 190 }} />
+          <DateField size="small" label={t('filters.to')} value={filters.to ?? ''} onChange={(v) => setFilter('to', v)} sx={{ width: 190 }} />
         </Stack>
         {filtered && (
           <Button onClick={() => { setSearch(''); setParams({}, { replace: true }) }}>{t('filters.clear')}</Button>

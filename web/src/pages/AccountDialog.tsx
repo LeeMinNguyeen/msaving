@@ -23,6 +23,7 @@ import { todayIn } from '../lib/labels'
 import { parseAmount } from '../lib/money'
 import { useContacts, useCurrencies } from '../lib/queries'
 import { newId } from '../lib/uuid'
+import { DateField } from '../components/DateField'
 
 type Props = { book: Book; account: Account | null; onClose: () => void }
 
@@ -144,14 +145,7 @@ export function AccountDialog({ book, account, onClose }: Props) {
                   onChange={setOpening}
                   minorUnit={minorUnit}
                 />
-                <TextField
-                  label={t('accounts.openedOn')}
-                  type="date"
-                  value={openedOn}
-                  onChange={(e) => setOpenedOn(e.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  sx={{ maxWidth: 170 }}
-                />
+                <DateField label={t('accounts.openedOn')} value={openedOn} onChange={setOpenedOn} sx={{ maxWidth: 190 }} />
               </Stack>
             )}
             <TextField

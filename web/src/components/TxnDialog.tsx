@@ -25,6 +25,7 @@ import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { personName } from '../lib/people'
 import { useAccounts, useCategories, useCurrencies, useInvalidateBook } from '../lib/queries'
 import { AmountField } from './AmountField'
+import { DateField } from './DateField'
 import { useErrorText } from './errors'
 import { HistoryDialog } from './HistoryDialog'
 import { newId } from '../lib/uuid'
@@ -217,15 +218,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
                 minorUnit={minor(account)}
                 helperText={form.type === 'adjustment' ? t('txn.adjustmentHint') : from?.currency}
               />
-              <TextField
-                label={t('txn.date')}
-                type="date"
-                required
-                value={form.date}
-                onChange={(e) => set({ date: e.target.value })}
-                slotProps={{ inputLabel: { shrink: true } }}
-                sx={{ maxWidth: { sm: 190 } }}
-              />
+              <DateField label={t('txn.date')} required value={form.date} onChange={(date) => set({ date })} sx={{ maxWidth: { sm: 190 } }} />
             </Stack>
             <TextField
               select
