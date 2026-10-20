@@ -8,7 +8,7 @@ import Typography from '@mui/material/Typography'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { BookInvites } from '../components/BookInvites'
 import { Centered } from '../components/Centered'
 import { CurrencyPicker } from '../components/CurrencyPicker'
@@ -17,7 +17,7 @@ import { TimezonePicker } from '../components/TimezonePicker'
 import { currentLanguage } from '../i18n'
 import { deviceTimezone } from '../lib/labels'
 import { send, type Book } from '../lib/api'
-import { keys } from '../lib/queries'
+import { keys, useBooks } from '../lib/queries'
 import { newId } from '../lib/uuid'
 
 // Screen 3. Shown when the user has no book, and from the book switcher.
@@ -25,6 +25,8 @@ export function CreateBook() {
   const { t } = useTranslation()
   const errorText = useErrorText()
   const navigate = useNavigate()
+  const location = useLocation()
+  const books = useBooks()
   const qc = useQueryClient()
   const id = useRef(newId()) // one id per screen, reused on retry
   const [name, setName] = useState('')
@@ -56,6 +58,12 @@ export function CreateBook() {
     }
   }
 
+  // With a book to go back to, Cancel returns to the page before (or the
+  // first book, when this page was opened directly). Without one there's
+  // nowhere to go: this is the first screen.
+  const hasBook = (books.data ?? []).length > 0
+  const cancel = () => (location.key !== 'default' ? navigate(-1) : navigate('/', { replace: true }))
+
   return (
     <Centered>
       <BookInvites />
@@ -73,6 +81,11 @@ export function CreateBook() {
         <Button type="submit" variant="contained" size="large" loading={busy} disabled={!name.trim() || !currency || !timezone}>
           {t('book.create')}
         </Button>
+        {hasBook && (
+          <Button size="large" onClick={cancel}>
+            {t('common.cancel')}
+          </Button>
+        )}
       </Stack>
     </Centered>
   )
