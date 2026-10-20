@@ -381,6 +381,36 @@ def test_people_and_lending(client):
     assert [(p["name"], p["owed_to_you"], p["you_owe"]) for p in dash["people"]] == [("Tom", 1_500_000, 0)]
 
 
+def test_edits_to_amounts_or_accounts_alone_are_versions(client):
+    """msaving#18, #19: changing only an amount or an account is an edit like any other: a new version (so a
+    second browser still gets 409) and its own line in the history. Saving with nothing changed is neither."""
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}/transactions"
+    tid = str(uuid.uuid4())
+    body = {"type": "expense", "occurred_on": "2026-10-03", "payee": "Lẩu", "entries": [{"account_id": accts["Cash"], "amount": -45_000}]}
+    assert client.post(base, headers=auth(u), json={**body, "id": tid}).status_code == 201
+
+    def put(version, **changes):
+        return client.put(f"{base}/{tid}", headers=auth(u), json={**body, **changes, "version": version})
+
+    amount = put(1, entries=[{"account_id": accts["Cash"], "amount": -65_000}])
+    assert (amount.status_code, amount.json()["version"]) == (200, 2)
+    stale = put(1, entries=[{"account_id": accts["Cash"], "amount": -50_000}])        # the other browser
+    assert (stale.status_code, stale.json()) == (409, {"detail": "conflict"})
+    moved = put(2, entries=[{"account_id": accts["Bank"], "amount": -65_000}])
+    assert (moved.status_code, moved.json()["version"]) == (200, 3)
+    same = put(3, entries=[{"account_id": accts["Bank"], "amount": -65_000}])
+    assert (same.status_code, same.json()["version"]) == (200, 3)
+
+    hist = client.get(f"{base}/{tid}/history", headers=auth(u)).json()
+    assert [(h["action"], h["version"]) for h in hist] == [("created", 1), ("edited", 2), ("edited", 3)]
+    assert [(h["entries"][0]["account_id"], h["entries"][0]["amount"]) for h in hist] == [
+        (accts["Cash"], -45_000), (accts["Cash"], -65_000), (accts["Bank"], -65_000)]
+    listed = lambda acc: [t["id"] for t in client.get(base, headers=auth(u), params={"account_id": acc}).json()["items"]]
+    assert tid not in listed(accts["Cash"]) and tid in listed(accts["Bank"])
+
+
 def test_budgets(client):
     from datetime import date as d
     today = d.today()

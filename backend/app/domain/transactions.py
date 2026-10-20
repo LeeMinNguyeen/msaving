@@ -68,14 +68,23 @@ def create_transaction(db: Session, t: TxnIn) -> int:
 
 
 def update_transaction(db: Session, t: TxnIn, expected_version: int) -> int:
-    """Replace a transaction's header and entries. Returns the new version."""
+    """Replace a transaction's header and entries. Returns the new version.
+
+    Any change is a new version with its own line in the edit history,
+    including one that only changes amounts or accounts: the entries live in
+    their own table, which the version trigger on the header can't see, so
+    the update then also sets modified_at, and bump_version() counts that as
+    a change. Saving with nothing changed keeps the version."""
+    saved = db.execute(text("select account_id, amount from entries where transaction_id = :id"), {"id": t.id}).all()
+    entries_changed = sorted((r.account_id, r.amount) for r in saved) != sorted((e.account_id, e.amount) for e in t.entries)
     # The UPDATE locks the header row, so a second device or book member
     # editing at the same moment waits, then re-checks the version and matches
     # 0 rows. A viewer's UPDATE matches 0 rows too (RLS), which also ends as 409;
     # the API should check the role first to return 403 instead.
     row = db.execute(
         text("update transactions set type = :type, occurred_on = :d, category_id = :c, payee = :p, note = :n"
-             " where id = :id and version = :v returning version"),
+             + (", modified_at = now()" if entries_changed else "")
+             + " where id = :id and version = :v returning version"),
         {"id": t.id, "v": expected_version, "type": t.type, "d": t.occurred_on,
          "c": t.category_id, "p": t.payee, "n": t.note},
     ).first()
