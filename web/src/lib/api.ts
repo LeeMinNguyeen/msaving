@@ -168,6 +168,7 @@ export type HistoryEntry = {
 
 export type Dashboard = {
   currency: string | null
+  rates_source: string | null
   net_worth: number
   net_worth_missing_rates: number
   spent_this_month: number

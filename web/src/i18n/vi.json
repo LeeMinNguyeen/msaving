@@ -261,7 +261,8 @@
     "empty": "Thêm tài khoản và giao dịch để xem tổng quan.",
     "budgets": "Ngân sách",
     "people": "Ai nợ ai",
-    "emptyViewer": "Sổ này chưa có gì."
+    "emptyViewer": "Sổ này chưa có gì.",
+    "ratesBy": "Tỷ giá:"
   },
   "budget": {
     "title": "Ngân sách",

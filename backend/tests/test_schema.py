@@ -786,3 +786,37 @@ def test_supabase_api_roles_have_no_access(database):
                                      {"r": role}).scalar(), role
         finally:
             c.exec_driver_sql("drop function public.t_later(); drop table public.t_later_table")
+
+
+def test_fx_sources_and_fallback(monkeypatch):
+    """open.er-api.com first; currency-api (CC0) when it fails or announces its end; OXR with a key."""
+    from app.jobs import fx_update
+    open_ok = {"result": "success", "base_code": "USD", "time_last_update_unix": 1792454552, "time_eol_unix": 0,
+               "rates": {"USD": 1, "VND": Decimal("25857.68")}}
+    cc0 = {"date": "2026-10-19", "usd": {"vnd": Decimal("25899.67"), "eur": Decimal("0.89"), "btc": Decimal("0.00001")}}
+    calls = []
+
+    def serve(answers):
+        def get(url):
+            calls.append(url)
+            answer = answers.get(url.split("/")[2])
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        monkeypatch.setattr(fx_update, "_get", get)
+
+    monkeypatch.delenv("OXR_APP_ID", raising=False)
+    serve({"open.er-api.com": open_ok, "cdn.jsdelivr.net": cc0})
+    assert fx_update.fetch_rates() == (date(2026, 10, 20), {"USD": 1, "VND": Decimal("25857.68")}, "open.er-api.com")
+
+    serve({"open.er-api.com": {**open_ok, "time_eol_unix": 1800000000}, "cdn.jsdelivr.net": cc0})
+    as_of, rates, source = fx_update.fetch_rates()
+    assert (as_of, rates["VND"], rates["BTC"], source) == (date(2026, 10, 19), Decimal("25899.67"), Decimal("0.00001"), "currency-api")
+
+    calls.clear()
+    serve({"open.er-api.com": OSError("down"), "cdn.jsdelivr.net": OSError("down"), "latest.currency-api.pages.dev": cc0})
+    assert fx_update.fetch_rates()[2] == "currency-api" and len(calls) == 3
+
+    serve({})
+    with pytest.raises(RuntimeError, match="no exchange rate source"):
+        fx_update.fetch_rates()
