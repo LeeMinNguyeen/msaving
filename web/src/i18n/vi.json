@@ -80,13 +80,28 @@
       "lent": "Tiền cho vay",
       "other_asset": "Tài sản khác",
       "other_liability": "Khoản nợ khác"
-    }
+    },
+    "details": "Chi tiết tài khoản",
+    "currentBalance": "Số dư hiện tại",
+    "owedNow": "Số tiền đang nợ",
+    "balanceHint": "Đổi số này sẽ thêm một giao dịch điều chỉnh cho phần chênh lệch, ghi ngày hôm nay.",
+    "creditLimit": "Hạn mức tín dụng",
+    "available": "Còn được dùng: {{amount}}",
+    "annualFee": "Phí thường niên",
+    "statementDay": "Ngày sao kê hằng tháng",
+    "dueDay": "Hạn thanh toán hằng tháng",
+    "noDay": "Không có",
+    "interestRate": "Lãi suất (%/năm)",
+    "interestHint": "Chỉ để ghi nhớ: tiền lãi không tự cộng vào số dư. Khi nhận hoặc trả lãi, hãy thêm giao dịch.",
+    "note": "Ghi chú"
   },
   "common": {
     "cancel": "Hủy",
     "copy": "Sao chép",
     "done": "Xong",
-    "close": "Đóng"
+    "close": "Đóng",
+    "edit": "Sửa",
+    "viewTransactions": "Xem giao dịch"
   },
   "errors": {
     "invalid_credentials": "Sai tên người dùng hoặc mật khẩu.",
@@ -207,7 +222,9 @@
     "showArchived": "Hiện danh mục đã đóng",
     "delete": "Xóa",
     "archivedInstead": "Danh mục này đã có giao dịch nên được đóng thay vì xóa.",
-    "empty": "Chưa có danh mục nào."
+    "empty": "Chưa có danh mục nào.",
+    "details": "Chi tiết danh mục",
+    "budgets": "Ngân sách"
   },
   "people": {
     "deletedUser": "Người dùng đã xóa",
