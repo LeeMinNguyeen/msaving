@@ -35,7 +35,7 @@ export TEST_ADMIN_URL="postgresql+psycopg://postgres@localhost:5499/postgres"
 PATH=/usr/lib/postgresql/17/bin:$PATH python -m pytest -q -p no:cacheprovider tests/
 ```
 
-75 tests are expected to pass. The backup tests need `pg_dump`, `pg_restore` and `psql` 17 on `PATH`
+79 tests are expected to pass. The backup tests need `pg_dump`, `pg_restore` and `psql` 17 on `PATH`
 (`sudo apt install postgresql-client-17`). `scripts/dev.sh` uses the same database as `docker compose up`;
 `docker compose down -v` resets everything.
 
@@ -70,7 +70,7 @@ Rules:
   printed for the operator, and only while there's no admin).
 - Rate limits (`app/core/sign_in.py`) on sign-in, sign-up, setup, reset, invite checks and code entry.
 - Random UUIDs for every exposed id; only the last 4 digits of card or account numbers.
-- No CORS (the web app is same-origin); `DEV_ORIGIN` only for development.
+- No CORS: the web app is same-origin, in development too (Vite's proxy).
 
 ## API conventions
 
