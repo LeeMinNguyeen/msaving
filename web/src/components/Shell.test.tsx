@@ -11,6 +11,7 @@ const family: Book = { id: 'b2', name: 'Family', base_currency: 'VND', timezone:
 
 function server(admin = false) {
   return fakeApi({
+    'GET /v1/instance': { server_version: '0.1.2' },
     'GET /v1/me': { id: 'u1', profile: { username: 'admin', is_admin: admin } },
     'GET /v1/books': [personal, family],
     'GET /v1/me/book-invites': [],
@@ -74,6 +75,13 @@ describe('desktop (msaving#22)', () => {
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
     const paper = document.querySelector('.MuiDrawer-paper')!
     expect(getComputedStyle(paper).backgroundColor).toBe('rgb(243, 244, 246)') // on a white page
+  })
+
+  it("shows the server's version next to the app's name", async () => {
+    desktop(true)
+    server()
+    await page()
+    expect(await screen.findByTitle('Server version 0.1.2')).toHaveTextContent('v0.1.2')
   })
 
   it('darkens the sidebar in dark mode too', async () => {
