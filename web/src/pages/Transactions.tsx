@@ -46,6 +46,8 @@ export function Transactions({ book }: { book: Book }) {
   const [params, setParams] = useSearchParams()
   const filters: TxnFilters = Object.fromEntries(FILTERS.map((k) => [k, params.get(k) ?? undefined]).filter(([, v]) => v))
   const [search, setSearch] = useState(filters.q ?? '')
+  // Clear starts the date fields afresh: a half-typed date isn't in the address, so clearing it wouldn't reach them.
+  const [cleared, setCleared] = useState(0)
   const txns = useTransactions(book.id, filters)
   const accounts = useAccounts(book.id, true)
   const categories = useCategories(book.id, true)
@@ -127,11 +129,11 @@ export function Transactions({ book }: { book: Book }) {
           {txnTypes.map((ty) => <MenuItem key={ty} value={ty}>{t(`txn.types.${ty}`)}</MenuItem>)}
         </TextField>
         <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', md: 'auto' } }}>
-          <DateField size="small" label={t('filters.from')} value={filters.from ?? ''} onChange={(v) => setFilter('from', v)} sx={{ flex: 1, minWidth: 0, maxWidth: { md: 190 } }} />
-          <DateField size="small" label={t('filters.to')} value={filters.to ?? ''} onChange={(v) => setFilter('to', v)} sx={{ flex: 1, minWidth: 0, maxWidth: { md: 190 } }} />
+          <DateField key={`from-${cleared}`} size="small" label={t('filters.from')} value={filters.from ?? ''} onChange={(v) => setFilter('from', v)} sx={{ flex: 1, minWidth: 0, maxWidth: { md: 190 } }} />
+          <DateField key={`to-${cleared}`} size="small" label={t('filters.to')} value={filters.to ?? ''} onChange={(v) => setFilter('to', v)} sx={{ flex: 1, minWidth: 0, maxWidth: { md: 190 } }} />
         </Stack>
         {filtered && (
-          <Button onClick={() => { setSearch(''); setParams({}, { replace: true }) }}>{t('filters.clear')}</Button>
+          <Button onClick={() => { setSearch(''); setCleared((n) => n + 1); setParams({}, { replace: true }) }}>{t('filters.clear')}</Button>
         )}
       </Stack>
 

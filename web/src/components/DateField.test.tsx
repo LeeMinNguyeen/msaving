@@ -73,6 +73,16 @@ describe('DateField (msaving#27)', () => {
     expect(screen.getByRole('status')).toHaveTextContent('2026-11-15')
   })
 
+  it("says when what's typed isn't a whole date yet, so a form can wait for it", async () => {
+    const onInvalid = vi.fn()
+    await renderApp(<DateField label="As of" value="2026-10-03" onChange={() => {}} onInvalid={onInvalid} />)
+    fireEvent.click(screen.getAllByRole('spinbutton')[0])
+    fireEvent.input(document.activeElement!, { target: { textContent: '0' } })  // half a day
+    expect(onInvalid).toHaveBeenLastCalledWith(true)
+    fireEvent.input(document.activeElement!, { target: { textContent: '5' } })
+    expect(onInvalid).toHaveBeenLastCalledWith(false)
+  })
+
   it('follows a new value from the parent', async () => {
     const { container, rerender } = await renderApp(<DateField label="Date" value="2026-10-03" onChange={() => {}} />)
     rerender(<DateField label="Date" value="2026-11-05" onChange={() => {}} />)

@@ -40,10 +40,12 @@ export function BudgetDialog({ book, category, onClose }: { book: Book; category
   const [amount, setAmount] = useState('')
   const [startsOn, setStartsOn] = useState(todayIn(book.timezone))
   const [endsOn, setEndsOn] = useState('')
+  const [badDates, setBadDates] = useState({ starts: false, ends: false }) // typed but not whole dates yet
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
   const [id, setId] = useState(() => newId())
   const parsed = parseAmount(amount, minor, lang)
+  const ready = !!parsed && parsed > 0 && !badDates.starts && !badDates.ends
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true)
@@ -62,9 +64,9 @@ export function BudgetDialog({ book, category, onClose }: { book: Book; category
 
   async function add(e: FormEvent) {
     e.preventDefault()
-    if (!parsed || parsed <= 0) return
+    if (!ready) return
     const ok = await run(() => send('POST', `/v1/books/${book.id}/budgets`, {
-      id, category_id: category.id, period, amount: parsed, starts_on: startsOn, ends_on: endsOn || null,
+      id, category_id: category.id, period, amount: parsed, starts_on: startsOn || null, ends_on: endsOn || null,
     }))
     if (ok) {
       setAmount('')
@@ -113,10 +115,12 @@ export function BudgetDialog({ book, category, onClose }: { book: Book; category
                 <AmountField label={`${t('budget.amount')} (${book.base_currency})`} required value={amount} onChange={setAmount} minorUnit={minor} />
               </Stack>
               <Stack direction="row" spacing={2}>
-                <DateField label={t('budget.startsOn')} value={startsOn} onChange={setStartsOn} />
-                <DateField label={t('budget.endsOn')} value={endsOn} onChange={setEndsOn} />
+                <DateField label={t('budget.startsOn')} value={startsOn} onChange={setStartsOn}
+                  onInvalid={(starts) => setBadDates((b) => ({ ...b, starts }))} />
+                <DateField label={t('budget.endsOn')} value={endsOn} onChange={setEndsOn}
+                  onInvalid={(ends) => setBadDates((b) => ({ ...b, ends }))} />
               </Stack>
-              <Button type="submit" variant="contained" loading={busy} disabled={!parsed || parsed <= 0} sx={{ alignSelf: 'start' }}>
+              <Button type="submit" variant="contained" loading={busy} disabled={!ready} sx={{ alignSelf: 'start' }}>
                 {t('budget.save')}
               </Button>
             </Stack>
