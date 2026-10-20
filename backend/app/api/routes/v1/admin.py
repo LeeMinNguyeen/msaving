@@ -8,7 +8,6 @@ SHA-256. Clients build the links from the address they reach the server at:
     invite  https://<server>/join?code=<code>  (QR: msaving://join?server=<server>&code=<code>)
     reset   https://<server>/reset?token=<token>
 """
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 from uuid import UUID
@@ -141,7 +140,6 @@ class UpdateInfo(BaseModel):
     latest_version: str | None        # None: unknown (checking is off, offline, or no release yet)
     release_url: str | None
     update_available: bool
-    pinned_version: str | None        # MSAVING_VERSION in .env: the updater keeps to it
     updater: bool                     # the one-click helper is running (COMPOSE_PROFILES=updater)
     status: str | None                # the helper's last run: running / done / failed, with the time
 
@@ -153,21 +151,19 @@ def _require_admin(db: Session) -> None:
 @router.get("/update")
 def update_info(db: Session = Depends(get_db)) -> UpdateInfo:
     _require_admin(db)
-    current = os.environ.get("MSAVING_VERSION", "dev")
-    pinned = os.environ.get("MSAVING_PINNED", "latest")
+    current = updates.current_version()
     latest = updates.latest_release()
     return UpdateInfo(
         current_version=current, latest_version=latest.version if latest else None,
         release_url=latest.url if latest else None,
         update_available=bool(latest and updates.newer(latest.version, current)),
-        pinned_version=None if pinned == "latest" else pinned,
         updater=updates.updater_running(), status=updates.status())
 
 
 @router.post("/update", status_code=202)
 def start_update(db: Session = Depends(get_db)) -> Response:
-    """Asks the helper to pull the newest image and restart the server (about a
-    minute; the server backs up before any database change). 409
+    """Asks the helper to pull the newest release, rebuild and restart the server (a few
+    minutes; the server backs up before any database change). 409
     updater_off without the helper."""
     _require_admin(db)
     if not updates.updater_running():

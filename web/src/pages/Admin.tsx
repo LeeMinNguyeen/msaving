@@ -129,7 +129,7 @@ function ServerSettings() {
 
 type UpdateInfo = {
   current_version: string; latest_version: string | null; release_url: string | null; update_available: boolean
-  pinned_version: string | null; updater: boolean; status: string | null
+  updater: boolean; status: string | null
 }
 
 // The newest release, and a one-click Update when the operator turned on the
@@ -180,15 +180,14 @@ function Updates() {
       {d.update_available && d.release_url && (
         <Button href={d.release_url} target="_blank" rel="noopener" sx={{ alignSelf: 'start' }}>{t('admin.releaseNotes')}</Button>
       )}
-      {d.pinned_version && <Alert severity="info">{t('admin.pinned', { version: d.pinned_version })}</Alert>}
       {d.updater ? (
-        <Button variant="contained" loading={updating} disabled={!d.update_available || !!d.pinned_version}
+        <Button variant="contained" loading={updating} disabled={!d.update_available}
           onClick={() => setConfirm(true)} sx={{ alignSelf: 'start' }}>{t('admin.updateNow')}</Button>
       ) : (
         <>
           <Typography color="text.secondary">{t('admin.updateByHand')}</Typography>
           <Box component="pre" sx={{ m: 0, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, overflowX: 'auto' }}>
-            docker compose pull{'\n'}docker compose up -d
+            git pull{'\n'}docker compose up -d --build
           </Box>
           <Typography variant="body2" color="text.secondary">{t('admin.updaterHint')}</Typography>
         </>

@@ -389,12 +389,12 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     assert client.get("/v1/admin/update", headers=bearer(member_token)).json() == {"detail": "admin_only"}
 
     monkeypatch.setattr(updates, "UPDATES", tmp_path)
-    monkeypatch.setenv("MSAVING_VERSION", "1.2.0")
+    monkeypatch.setattr(updates, "current_version", lambda: "1.2.0")
     monkeypatch.setattr(updates, "_cache", (0.0, None))
     monkeypatch.setattr(updates, "_github", lambda url: {"tag_name": "v1.3.0", "html_url": "https://github.com/x/releases/v1.3.0"})
     info = client.get("/v1/admin/update", headers=bearer(admin_token)).json()
     assert info | {"status": None} == {"current_version": "1.2.0", "latest_version": "1.3.0", "update_available": True,
-                                       "release_url": "https://github.com/x/releases/v1.3.0", "pinned_version": None,
+                                       "release_url": "https://github.com/x/releases/v1.3.0",
                                        "updater": False, "status": None}
     refused = client.post("/v1/admin/update", headers=bearer(admin_token))
     assert (refused.status_code, refused.json()) == (409, {"detail": "updater_off"})
@@ -408,5 +408,6 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
 
 
 def test_versions_compare():
-    from app.core.updates import newer
+    from app.core.updates import current_version, newer
     assert newer("1.10.0", "1.9.3") and not newer("1.2.0", "1.2.0") and not newer("1.3.0", "dev")
+    assert newer("9999.0.0", current_version())                  # the repository's VERSION file is a version

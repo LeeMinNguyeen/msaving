@@ -3,8 +3,6 @@
 A spending tracker you run yourself, for you, your family or a small group. Your money data stays on your own
 machine or server: nobody else runs it, and the project collects nothing.
 
-*Tiếng Việt: [README.vi.md](README.vi.md)*
-
 - Several books (personal, household, a side business), each with its own currency, shared if you like
 - Accounts in any currency: cash, bank, savings, investments, credit cards, loans, money lent
 - Expenses, income, transfers, refunds, with full edit history; categories, budgets, a dashboard
@@ -17,16 +15,17 @@ Free and open source ([AGPL-3.0](LICENSE)).
 
 ## Quick start
 
-On any machine with [Docker](https://docs.docker.com/engine/install/):
+On any machine with [Docker](https://docs.docker.com/engine/install/) and git:
 
 ```bash
-mkdir msaving && cd msaving
-curl -O https://raw.githubusercontent.com/LeeMinNguyeen/msaving/main/docker-compose.yml
-docker compose up -d
+git clone https://github.com/LeeMinNguyeen/msaving
+cd msaving
+docker compose up -d --build      # builds the server here: a few minutes the first time
 docker compose logs msaving       # the setup code
 ```
 
 Open http://localhost:8080, enter the setup code, and create your account: it becomes the server's admin.
+To update later: `git pull && docker compose up -d --build`.
 
 ## Documentation
 

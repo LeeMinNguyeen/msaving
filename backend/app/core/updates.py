@@ -4,11 +4,14 @@
 - The newest release comes from the project's GitHub releases, checked at
   most every 6 hours, only when the admin opens the admin page. UPDATE_CHECK=off
   turns it off. Nothing about the server is sent beyond an ordinary request.
+- There are no published images: a release is a version tag, and each server
+  is built from its own checkout of the repository. This server's version is
+  the VERSION file it was built from.
 - One-click updates need the operator to turn on the `updater` helper in
   docker-compose.yml (COMPOSE_PROFILES=updater). Only that helper can reach
-  Docker; this server only leaves a request file in the shared /updates folder,
-  which the helper picks up: pull the new image, restart this container. The
-  helper touches /updates/updater_alive every few seconds while it runs.
+  Docker and the checkout; this server only leaves a request file in the
+  shared /updates folder, which the helper picks up: git pull, rebuild, restart.
+  The helper touches /updates/updater_alive every few seconds while it runs.
 """
 import json
 import os
@@ -24,6 +27,18 @@ CHECK_EVERY = 6 * 3600
 ALIVE_WITHIN = 30          # seconds since the helper's last heartbeat
 
 _cache: tuple[float, "Release | None"] = (0.0, None)
+
+
+def current_version() -> str:
+    """The VERSION file this server was built from: /srv/VERSION in the image,
+    the repository root when run from source. 'dev' if there's none."""
+    here = Path(__file__).resolve().parents
+    for path in (here[2] / "VERSION", here[3] / "VERSION"):
+        try:
+            return path.read_text().strip() or "dev"
+        except OSError:
+            continue
+    return "dev"
 
 
 @dataclass(frozen=True)

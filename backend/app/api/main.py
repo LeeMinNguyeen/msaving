@@ -1,7 +1,6 @@
 """The server: the API under /v1, and the web app's files for everything else.
 Run for development: uvicorn app.api.main:app --reload
 """
-import os
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, FastAPI, Request
@@ -15,12 +14,13 @@ from app.api import errors
 from app.api.deps import get_public_db
 from app.api.routes.v1 import (accounts, admin, books, budgets, categories, contacts, dashboard, me, reference, sign_in,
                                transactions)
+from app.core import updates
 from app.core.settings import settings
 
 # The API's version. Additive changes only within /v1; a client that needs
 # something newer checks `api_version` and tells the user to update the server.
 API_VERSION = 1
-SERVER_VERSION = os.environ.get("MSAVING_VERSION", "dev")
+SERVER_VERSION = updates.current_version()
 
 app = FastAPI(title="MSaving API", docs_url=None, redoc_url=None, openapi_url="/v1/openapi.json")
 errors.install(app)

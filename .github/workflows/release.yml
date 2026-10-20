@@ -1,49 +1,30 @@
-# A version tag on main (v1.2.0) publishes the image for amd64 and arm64 to
-# GitHub Container Registry, as ghcr.io/leeminnguyeen/msaving:1.2.0, :1.2 and
-# :latest. docker-compose.yml runs :latest unless MSAVING_VERSION says otherwise.
+# Makes a release: Actions -> Release -> Run workflow, on main. It runs the
+# tests, then creates the tag v<VERSION> and a GitHub release with notes from
+# the merged pull requests. No images are published: each server builds from
+# its own checkout, and servers learn about releases from GitHub's releases.
+# VERSION is bumped in the release pull request into main.
 name: Release
 
 on:
-  push:
-    tags: ["v*.*.*"]
+  workflow_dispatch:
 
 permissions:
-  contents: read
-  packages: write
+  contents: write
 
 jobs:
   tests:
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/ci.yml
 
-  image:
+  release:
     needs: tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Only tags on main
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch -q origin main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/leeminnguyeen/msaving
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: MSAVING_VERSION=${{ steps.meta.outputs.version }}
+          version="$(cat VERSION)"
+          echo "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'
+          gh release create "v$version" --target "$GITHUB_SHA" --generate-notes --title "v$version"
