@@ -13,13 +13,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
+import { BookMembers } from '../components/BookMembers'
 import { CurrencyPicker } from '../components/CurrencyPicker'
 import { useErrorText } from '../components/errors'
 import { TimezonePicker } from '../components/TimezonePicker'
 import { send, type Book } from '../lib/api'
 import { keys } from '../lib/queries'
 
-// Screen 9: rename, currency, time zone, delete. Owners only.
+// Screen 9: rename, currency, time zone, members, delete. Settings and delete: owners only.
 export function BookSettings({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
@@ -85,6 +86,8 @@ export function BookSettings({ book }: { book: Book }) {
           </Button>
         )}
       </Stack>
+      <Divider />
+      <BookMembers book={book} />
       {owner && (
         <>
           <Divider />

@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
+import { BookInvites } from '../components/BookInvites'
 import { Centered } from '../components/Centered'
 import { CurrencyPicker } from '../components/CurrencyPicker'
 import { useErrorText } from '../components/errors'
@@ -17,6 +18,7 @@ import { currentLanguage } from '../i18n'
 import { deviceTimezone } from '../lib/labels'
 import { send, type Book } from '../lib/api'
 import { keys } from '../lib/queries'
+import { newId } from '../lib/uuid'
 
 // Screen 3. Shown when the user has no book, and from the book switcher.
 export function CreateBook() {
@@ -24,7 +26,7 @@ export function CreateBook() {
   const errorText = useErrorText()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const id = useRef(crypto.randomUUID()) // one id per screen, reused on retry
+  const id = useRef(newId()) // one id per screen, reused on retry
   const [name, setName] = useState('')
   const [currency, setCurrency] = useState<string | null>(currentLanguage() === 'vi' ? 'VND' : null)
   const [timezone, setTimezone] = useState<string | null>(deviceTimezone())
@@ -45,7 +47,7 @@ export function CreateBook() {
         timezone,
         starter_categories: starter,
       })
-      await qc.invalidateQueries({ queryKey: keys.books })
+      await qc.invalidateQueries({ queryKey: keys.books, refetchType: 'all' })
       navigate(`/books/${book.id}`, { replace: true })
     } catch (err) {
       setError(err)
@@ -56,6 +58,7 @@ export function CreateBook() {
 
   return (
     <Centered>
+      <BookInvites />
       <Stack component="form" spacing={2} onSubmit={submit}>
         <Typography variant="h5">{t('book.createTitle')}</Typography>
         <Typography color="text.secondary">{t('book.createIntro')}</Typography>

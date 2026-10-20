@@ -27,6 +27,7 @@ import { useAccounts, useCategories, useCurrencies, useInvalidateBook } from '..
 import { AmountField } from './AmountField'
 import { useErrorText } from './errors'
 import { HistoryDialog } from './HistoryDialog'
+import { newId } from '../lib/uuid'
 
 const mainTypes: TxnType[] = ['expense', 'income', 'transfer']
 const otherTypes: TxnType[] = ['refund', 'adjustment']
@@ -65,7 +66,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
   const accounts = useAccounts(book.id, true)
   const categories = useCategories(book.id, true)
   const invalidate = useInvalidateBook()
-  const id = useRef(initial?.id ?? crypto.randomUUID()) // made once, reused on retry
+  const id = useRef(initial?.id ?? newId()) // made once, reused on retry
   const [txn, setTxn] = useState(initial)
   const [form, setForm] = useState<Form>(() => toForm(initial, book, minorOf, defaults))
   const [error, setError] = useState<unknown>(null)

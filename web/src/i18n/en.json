@@ -102,7 +102,7 @@
     "name_taken": "That name is already used in this book.",
     "currency_locked": "The currency can't change once the account has transactions.",
     "no_rate": "There's no exchange rate yet to convert the book's currency.",
-    "owner_required": "A book needs at least one owner.",
+    "owner_required": "A book needs at least one owner. Make someone else owner first.",
     "amount": "The amount isn't in the right format.",
     "unexpected_error": "Something went wrong. Please try again.",
     "has_subcategories": "This category still has sub-categories. Move or delete them first.",
@@ -124,7 +124,8 @@
     "two_factor_off": "Two-step verification is off.",
     "invalid_timezone": "That timezone isn't one this server knows. Pick another.",
     "updater_off": "One-click updates are off on this server.",
-    "origin_not_allowed": "This address isn't this server's own web app."
+    "origin_not_allowed": "This address isn't this server's own web app.",
+    "cannot_invite": "No one with that username can be invited: check the spelling, or they may already be in this book."
   },
   "nav": {
     "transactions": "Transactions",
@@ -259,7 +260,8 @@
     "uncategorized": "No category",
     "empty": "Add accounts and transactions to see your overview.",
     "budgets": "Budgets",
-    "people": "Who owes whom"
+    "people": "Who owes whom",
+    "emptyViewer": "Nothing in this book yet."
   },
   "budget": {
     "title": "Budgets",
@@ -407,5 +409,31 @@
     "updateByHand": "To update, run these on the server, in the msaving folder (the one you cloned):",
     "updaterHint": "For a one-click Update here, add COMPOSE_PROFILES=updater to .env (see the setup guide: it gives a helper control of Docker).",
     "updateConfirm": "Install version {{version}}? The server builds it, takes a backup, then restarts; everyone is offline for a moment, and the whole update takes a few minutes."
+  },
+  "members": {
+    "title": "Members",
+    "intro": "People on this server who keep this book with you. They see everything in it.",
+    "username": "Username",
+    "roleLabel": "Role",
+    "invite": "Invite",
+    "invited": "Invited {{name}}. They'll see the invite when they sign in.",
+    "roles": "Owner: everything, including members and settings. Editor: adds and changes accounts, transactions, categories and budgets. Viewer: can only look.",
+    "role": {
+      "owner": "Owner",
+      "editor": "Editor",
+      "viewer": "Viewer"
+    },
+    "you": "you",
+    "pending": "Invited",
+    "remove": "Remove",
+    "cancelInvite": "Cancel invite",
+    "removeTitle": "Remove from the book?",
+    "removeBody": "{{name}} will no longer see \"{{book}}\". What they added stays in the book.",
+    "leave": "Leave book",
+    "leaveTitle": "Leave this book?",
+    "leaveBody": "You'll no longer see \"{{book}}\". An owner can invite you again.",
+    "invitedYou": "{{who}} invited you to the book \"{{book}}\" as {{role}}.",
+    "accept": "Accept",
+    "decline": "Decline"
   }
 }

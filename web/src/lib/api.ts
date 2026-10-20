@@ -86,6 +86,11 @@ export type Book = {
   version: number
 }
 
+// A book's member; `name` is a username or "Deleted user" (lib/people.ts).
+export type Member = { user_id: string; name: string; display_name: string | null; role: Role; pending: boolean; me: boolean }
+// An invite to someone else's book that I haven't answered.
+export type BookInvite = { book_id: string; book_name: string; role: Role; invited_by: string; invited_at: string }
+
 export const accountKinds = [
   'cash', 'checking', 'savings', 'investment', 'credit_card', 'loan', 'lent', 'other_asset', 'other_liability',
 ] as const

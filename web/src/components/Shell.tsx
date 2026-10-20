@@ -31,6 +31,7 @@ import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import type { Book, Transaction } from '../lib/api'
 import { useBooks, useMe } from '../lib/queries'
 import { signOut } from '../auth/signOut'
+import { BookInvites } from './BookInvites'
 import { TxnContext } from './txnContext'
 import { TxnDialog, type TxnDefaults } from './TxnDialog'
 
@@ -121,6 +122,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
           </Toolbar>
         </AppBar>
         <Box component="main" sx={{ p: 2, pb: 10 }}>
+          <BookInvites />
           {children}
         </Box>
         {canAdd && (
@@ -173,7 +175,10 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
         </Box>
       </Drawer>
       <Box component="main" sx={{ flex: 1, minWidth: 0, px: 4, py: 3 }}>
-        <Box sx={{ maxWidth: 1100 }}>{children}</Box>
+        <Box sx={{ maxWidth: 1100 }}>
+          <BookInvites />
+          {children}
+        </Box>
       </Box>
     </Box>
   )
