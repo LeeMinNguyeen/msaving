@@ -96,6 +96,10 @@ export const accountKinds = [
 export type AccountKind = (typeof accountKinds)[number]
 // Liabilities have negative balances: what's owed is entered as a positive amount.
 export const liabilityKinds: readonly AccountKind[] = ['credit_card', 'loan', 'other_liability']
+// Details by kind (msaving#17): which kinds have card or account numbers, an
+// interest rate, the credit card fields. A note goes on any account.
+export const last4Kinds: readonly AccountKind[] = ['checking', 'savings', 'investment', 'credit_card', 'loan']
+export const interestKinds: readonly AccountKind[] = ['savings', 'credit_card', 'loan', 'lent']
 
 export type Account = {
   id: string
@@ -105,6 +109,12 @@ export type Account = {
   last4: string | null
   in_net_worth: boolean
   contact_id: string | null
+  note: string | null
+  credit_limit: number | null // credit cards: minor units of the account's currency
+  annual_fee: number | null
+  statement_day: number | null // day of the month
+  payment_due_day: number | null
+  interest_rate_bp: number | null // hundredths of a percent a year: 5.5 % = 550
   archived_at: string | null
   version: number
   balance: number

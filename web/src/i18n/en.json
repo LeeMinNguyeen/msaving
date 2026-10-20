@@ -80,12 +80,29 @@
       "lent": "Money lent",
       "other_asset": "Other asset",
       "other_liability": "Other liability"
-    }
+    },
+    "details": "Account details",
+    "currentBalance": "Current balance",
+    "owedNow": "Amount owed now",
+    "balanceHint": "Changing it adds an adjustment transaction for the difference, dated today.",
+    "creditLimit": "Credit limit",
+    "available": "Available: {{amount}}",
+    "annualFee": "Annual fee",
+    "statementDay": "Statement day each month",
+    "dueDay": "Payment due day each month",
+    "noDay": "None",
+    "interestRate": "Interest rate (% a year)",
+    "interestHint": "For reference only: interest isn't added to the balance. Add a transaction when you receive or pay it.",
+    "note": "Note"
   },
   "common": {
     "cancel": "Cancel",
     "copy": "Copy",
-    "done": "Done"
+    "done": "Done",
+    "close": "Close",
+    "edit": "Edit",
+    "viewTransactions": "View transactions",
+    "refresh": "Refresh"
   },
   "errors": {
     "invalid_credentials": "Wrong username or password.",
@@ -128,7 +145,8 @@
     "categories": "Categories",
     "dashboard": "Overview",
     "profile": "Profile and security",
-    "admin": "Server admin"
+    "admin": "Server admin",
+    "more": "More"
   },
   "txn": {
     "add": "Add transaction",
@@ -206,7 +224,9 @@
     "showArchived": "Show archived categories",
     "delete": "Delete",
     "archivedInstead": "This category has transactions, so it was archived instead of deleted.",
-    "empty": "No categories yet."
+    "empty": "No categories yet.",
+    "details": "Category details",
+    "budgets": "Budgets"
   },
   "people": {
     "deletedUser": "Deleted user",

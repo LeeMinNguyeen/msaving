@@ -35,7 +35,7 @@ export TEST_ADMIN_URL="postgresql+psycopg://postgres@localhost:5499/postgres"
 PATH=/usr/lib/postgresql/17/bin:$PATH python -m pytest -q -p no:cacheprovider tests/
 ```
 
-79 tests are expected to pass. The backup tests need `pg_dump`, `pg_restore` and `psql` 17 on `PATH`
+82 tests are expected to pass. The backup tests need `pg_dump`, `pg_restore` and `psql` 17 on `PATH`
 (`sudo apt install postgresql-client-17`). `scripts/dev.sh` uses the same database as `docker compose up`;
 `docker compose down -v` resets everything.
 
