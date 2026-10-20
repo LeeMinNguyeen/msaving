@@ -36,9 +36,10 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import type { Book, Transaction } from '../lib/api'
-import { useBookChanges, useBooks, useMe } from '../lib/queries'
+import { useBookChanges, useBooks, useInstance, useMe } from '../lib/queries'
 import { signOut } from '../auth/signOut'
 import { BookInvites } from './BookInvites'
+import { UpdatingNotice } from './UpdatingNotice'
 import { TxnContext } from './txnContext'
 import { TxnDialog, type TxnDefaults } from './TxnDialog'
 
@@ -98,6 +99,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
   const desktop = useMediaQuery(useTheme().breakpoints.up('md'))
   const { pathname } = useLocation()
   const me = useMe()
+  const version = useInstance().data?.server_version
   const canAdd = book.role !== 'viewer'
   const pages = [
     { to: `/books/${book.id}`, label: t('nav.dashboard'), icon: <DashboardIcon /> },
@@ -125,6 +127,12 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
         <Box sx={{ p: 2, pb: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
             {t('app.name')}
+            {version && (
+              <Typography component="span" variant="caption" color="text.secondary" title={t('admin.version', { version })}
+                sx={{ ml: 1, fontWeight: 400 }}>
+                {/^\d/.test(version) ? `v${version}` : version}
+              </Typography>
+            )}
           </Typography>
           <BookSwitcher book={book} />
           {canAdd && (
@@ -158,6 +166,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
       </Drawer>
       <Box component="main" sx={{ flex: 1, minWidth: 0, px: 4, py: 3 }}>
         <Box sx={{ maxWidth: 1100 }}>
+          <UpdatingNotice />
           <BookInvites />
           {children}
         </Box>
@@ -204,6 +213,7 @@ function PhoneFrame({ book, pages, canAdd, onAdd, admin, children }: {
         </Toolbar>
       </AppBar>
       <Box component="main" sx={{ p: 2, pb: `calc(${NAV_HEIGHT + 88}px + env(safe-area-inset-bottom))` }}>
+        <UpdatingNotice />
         <BookInvites />
         {children}
       </Box>

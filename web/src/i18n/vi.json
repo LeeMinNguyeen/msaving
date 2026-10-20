@@ -138,7 +138,8 @@
     "invalid_timezone": "Máy chủ không nhận múi giờ này. Hãy chọn múi giờ khác.",
     "updater_off": "Máy chủ này chưa bật cập nhật bằng một nút bấm.",
     "origin_not_allowed": "Địa chỉ này không phải ứng dụng web của chính máy chủ.",
-    "cannot_invite": "Không thể mời tên đăng nhập này: hãy kiểm tra chính tả, hoặc người đó có thể đã ở trong sổ."
+    "cannot_invite": "Không thể mời tên đăng nhập này: hãy kiểm tra chính tả, hoặc người đó có thể đã ở trong sổ.",
+    "server_unreachable": "Không kết nối được máy chủ. Nếu máy chủ đang khởi động lại hoặc cập nhật, hãy thử lại sau vài phút."
   },
   "nav": {
     "transactions": "Giao dịch",
@@ -415,14 +416,16 @@
     "resetReadyBody": "Tự tay gửi đường dẫn này cho họ. Dùng được một lần trong 24 giờ, và sẽ tắt xác minh hai bước của họ.",
     "updates": "Cập nhật",
     "latest": "mới nhất {{version}}",
-    "updating": "Đang cập nhật: máy chủ tải phiên bản mới, dựng lại, sao lưu rồi khởi động lại. Mất vài phút; trang này sẽ tự kết nối lại.",
     "updateDone": "Lần cập nhật gần nhất đã xong.",
     "updateFailed": "Lần cập nhật gần nhất bị lỗi: {{detail}}",
     "releaseNotes": "Có gì mới",
     "updateNow": "Cập nhật ngay",
     "updateByHand": "Để cập nhật, chạy các lệnh sau trên máy chủ, trong thư mục msaving (thư mục bạn đã tải về bằng git clone):",
     "updaterHint": "Để cập nhật bằng một nút bấm tại đây, thêm COMPOSE_PROFILES=updater vào .env (xem hướng dẫn cài đặt: việc này cho một trình trợ giúp quyền điều khiển Docker).",
-    "updateConfirm": "Cài phiên bản {{version}}? Máy chủ sẽ dựng phiên bản mới, sao lưu rồi khởi động lại; mọi người mất kết nối trong chốc lát, cả quá trình mất vài phút."
+    "updateConfirm": "Cài phiên bản {{version}}? Máy chủ sẽ dựng phiên bản mới, sao lưu rồi khởi động lại; mọi người mất kết nối trong chốc lát, cả quá trình mất vài phút.",
+    "updatingReload": "Đang cập nhật lên {{version}}. Máy chủ đang dựng lại và khởi động lại nên trang này có thể không hoạt động trong vài phút. Hãy tải lại trang sau khoảng 5 phút.",
+    "updatedReload": "Đã cập nhật lên {{version}}. Hãy tải lại trang để dùng phiên bản mới.",
+    "reload": "Tải lại"
   },
   "members": {
     "title": "Thành viên",

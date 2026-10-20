@@ -78,7 +78,7 @@ export function Dashboard({ book }: { book: Book }) {
   const dayFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' })
 
   if (dash.isPending) return null
-  if (dash.isError) return <Alert severity="error">{errorText(dash.error)}</Alert>
+  if (!dash.data) return <Alert severity="error">{errorText(dash.error)}</Alert>
   const d = dash.data
 
   const months = lastSixMonths(todayIn(book.timezone))

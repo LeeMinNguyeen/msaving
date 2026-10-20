@@ -137,7 +137,7 @@ export function Transactions({ book }: { book: Book }) {
         )}
       </Stack>
 
-      {txns.isError && <Alert severity="error">{errorText(txns.error)}</Alert>}
+      {txns.isError && !txns.data && <Alert severity="error">{errorText(txns.error)}</Alert>}
       {txns.isSuccess && items.length === 0 && (
         <Typography color="text.secondary">{t(filtered ? 'txn.noMatch' : 'txn.empty')}</Typography>
       )}

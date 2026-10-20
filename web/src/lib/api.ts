@@ -21,6 +21,16 @@ async function fail(res: Response): Promise<never> {
   throw new ApiError(res.status, code)
 }
 
+// No answer at all (offline, or the server restarting during an update):
+// server_unreachable, which the screens say plainly instead of a generic error.
+async function reach(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init)
+  } catch {
+    throw new ApiError(0, 'server_unreachable')
+  }
+}
+
 function authHeaders(init?: HeadersInit): Headers {
   const headers = new Headers(init)
   const token = session.token()
@@ -32,7 +42,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = authHeaders(init.headers)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
-  const res = await fetch(path, { ...init, headers })
+  const res = await reach(path, { ...init, headers })
   if (!res.ok) await fail(res)
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
@@ -40,7 +50,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 // A file from the API (the data export): saved by the browser under the name it sends.
 export async function download(path: string): Promise<void> {
-  const res = await fetch(path, { headers: authHeaders() })
+  const res = await reach(path, { headers: authHeaders() })
   if (!res.ok) await fail(res)
   const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'export.zip'
   const url = URL.createObjectURL(await res.blob())

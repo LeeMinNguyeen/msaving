@@ -82,7 +82,7 @@ export function Accounts({ book }: { book: Book }) {
         )}
       </Stack>
       {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
-      {accounts.isError ? <Alert severity="error">{errorText(accounts.error)}</Alert> : null}
+      {accounts.isError && !accounts.data ? <Alert severity="error">{errorText(accounts.error)}</Alert> : null}
       {accounts.data?.length === 0 && <Typography color="text.secondary">{t('accounts.empty')}</Typography>}
       {desktop && accounts.data && accounts.data.length > 0 && (
         <Paper variant="outlined">
