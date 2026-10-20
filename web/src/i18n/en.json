@@ -85,7 +85,8 @@
   "common": {
     "cancel": "Cancel",
     "copy": "Copy",
-    "done": "Done"
+    "done": "Done",
+    "close": "Close"
   },
   "errors": {
     "invalid_credentials": "Wrong username or password.",

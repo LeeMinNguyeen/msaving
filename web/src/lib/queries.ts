@@ -64,10 +64,13 @@ export function useTransactions(bookId: string, filters: TxnFilters) {
   })
 }
 
+// Not kept between openings: a cached copy would show first and hide the newest
+// edit until the refetch lands, which on a slow link takes seconds (msaving#18).
 export function useHistory(bookId: string, txnId: string) {
   return useQuery({
     queryKey: ['books', bookId, 'transactions', 'history', txnId],
     queryFn: () => api<HistoryEntry[]>(`/v1/books/${bookId}/transactions/${txnId}/history`),
+    gcTime: 0,
   })
 }
 

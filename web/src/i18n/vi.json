@@ -85,7 +85,8 @@
   "common": {
     "cancel": "Hủy",
     "copy": "Sao chép",
-    "done": "Xong"
+    "done": "Xong",
+    "close": "Đóng"
   },
   "errors": {
     "invalid_credentials": "Sai tên người dùng hoặc mật khẩu.",
