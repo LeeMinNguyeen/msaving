@@ -138,7 +138,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
     <Box sx={{ display: 'flex', minHeight: '100dvh' }}>
       <Drawer
         variant="permanent"
-        sx={{ width: SIDEBAR, flexShrink: 0, '& .MuiDrawer-paper': { width: SIDEBAR, boxSizing: 'border-box' } }}
+        sx={{ width: SIDEBAR, flexShrink: 0, '& .MuiDrawer-paper': { width: SIDEBAR, boxSizing: 'border-box', bgcolor: 'background.sidebar' } }}
       >
         <Box sx={{ p: 2, pb: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
