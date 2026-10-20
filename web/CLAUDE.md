@@ -56,7 +56,8 @@ layout until the mobile app ships.
   when the user taps Save and reuse it on retry.
 - **Freshness:** refetch on window focus and about every minute. Inside a book, `useBookChanges` (in the Shell) polls
   `GET /v1/books/{id}/changes` every 5 seconds while the tab is visible and refetches the book when its marker moves,
-  so other members' changes show within seconds; the refresh button does the same at once.
+  so other members' changes show within seconds; the refresh button does the same at once. The app's own refetches
+  (`useInvalidateBook`, Refresh) note the marker first, so the poll doesn't fetch the same change again.
 - **Security:** the server sends a strict CSP (scripts `'self'` only; `style-src 'unsafe-inline'` for MUI's
   Emotion; QR codes are `data:` images from the API). No third-party scripts, fonts or analytics. Nothing in
   localStorage but the session token and the language choice.

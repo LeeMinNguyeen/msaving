@@ -76,17 +76,20 @@ export function useHistory(bookId: string, txnId: string) {
   })
 }
 
-// After any money change: transactions and balances both move.
+// After any money change: transactions and balances both move. The change
+// marker is noted first, so the poll doesn't fetch the user's own change again.
 export function useInvalidateBook() {
   const qc = useQueryClient()
-  return (bookId: string) =>
-    Promise.all([
+  return async (bookId: string) => {
+    await noteMarker(qc, bookId)
+    await Promise.all([
       qc.invalidateQueries({ queryKey: ['books', bookId, 'transactions'] }),
       qc.invalidateQueries({ queryKey: ['books', bookId, 'accounts'] }),
       qc.invalidateQueries({ queryKey: ['books', bookId, 'dashboard'] }),
       qc.invalidateQueries({ queryKey: ['books', bookId, 'contacts'] }),
       qc.invalidateQueries({ queryKey: ['books', bookId, 'budgets'] }),
     ])
+  }
 }
 
 export function useDashboard(bookId: string) {
@@ -121,24 +124,44 @@ export function refreshBook(qc: QueryClient, bookId: string) {
 
 export function useRefreshBook() {
   const qc = useQueryClient()
-  return (bookId: string) => refreshBook(qc, bookId)
+  return async (bookId: string) => {
+    await noteMarker(qc, bookId)
+    await refreshBook(qc, bookId)
+  }
 }
-
 
 // Another member's change shows within seconds (msaving#25): a tiny marker,
 // polled while the page is visible, and the book's data refetched when it moves.
+type Changes = { marker: string; handled?: boolean }
+const changesKey = (bookId: string) => ['books', bookId, 'changes']
+
 export function useBookChanges(bookId: string) {
   const qc = useQueryClient()
   const changes = useQuery({
-    queryKey: ['books', bookId, 'changes'],
-    queryFn: () => api<{ marker: string }>(`/v1/books/${bookId}/changes`),
+    queryKey: changesKey(bookId),
+    queryFn: () => api<Changes>(`/v1/books/${bookId}/changes`),
     refetchInterval: 5_000,
   })
   const marker = changes.data?.marker
+  const handled = changes.data?.handled
   const seen = useRef<{ bookId: string; marker?: string }>({ bookId, marker })
   useEffect(() => {
     const before = seen.current
-    if (before.bookId === bookId && before.marker && marker && marker !== before.marker) void refreshBook(qc, bookId)
+    if (!handled && before.bookId === bookId && before.marker && marker && marker !== before.marker) void refreshBook(qc, bookId)
     seen.current = { bookId, marker }
-  }, [qc, bookId, marker])
+  }, [qc, bookId, marker, handled])
+}
+
+// Before the app refetches a book itself (after the user's own change, or
+// Refresh): the marker as it is now, marked handled so the poll doesn't refetch
+// the same data again. It's read before that refetch, so anything saved after
+// it still moves the marker.
+async function noteMarker(qc: QueryClient, bookId: string) {
+  try {
+    await qc.cancelQueries({ queryKey: changesKey(bookId) })
+    const { marker } = await api<Changes>(`/v1/books/${bookId}/changes`)
+    qc.setQueryData<Changes>(changesKey(bookId), { marker, handled: true })
+  } catch {
+    // The poll catches up.
+  }
 }
