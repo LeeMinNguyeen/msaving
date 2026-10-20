@@ -145,7 +145,8 @@
     "categories": "Danh mục",
     "dashboard": "Tổng quan",
     "profile": "Hồ sơ và bảo mật",
-    "admin": "Quản trị máy chủ"
+    "admin": "Quản trị máy chủ",
+    "more": "Khác"
   },
   "txn": {
     "add": "Thêm giao dịch",

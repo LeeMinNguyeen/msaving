@@ -145,7 +145,8 @@
     "categories": "Categories",
     "dashboard": "Overview",
     "profile": "Profile and security",
-    "admin": "Server admin"
+    "admin": "Server admin",
+    "more": "More"
   },
   "txn": {
     "add": "Add transaction",
