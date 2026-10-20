@@ -105,7 +105,7 @@ export function Dashboard({ book }: { book: Book }) {
   return (
     <Stack spacing={2}>
       <Typography variant="h5">{t('dash.title')}</Typography>
-      {empty && <Alert severity="info">{t('dash.empty')}</Alert>}
+      {empty && <Alert severity="info">{t(book.role === 'viewer' ? 'dash.emptyViewer' : 'dash.empty')}</Alert>}
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' } }}>
         <Tile label={t('dash.netWorth')} value={money(d.net_worth)}
           note={d.net_worth_missing_rates ? t('dash.missingRates', { count: d.net_worth_missing_rates }) : undefined} />

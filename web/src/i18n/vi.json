@@ -102,7 +102,7 @@
     "name_taken": "Tên này đã có trong sổ.",
     "currency_locked": "Không đổi được tiền tệ khi tài khoản đã có giao dịch.",
     "no_rate": "Chưa có tỷ giá để đổi tiền tệ của sổ.",
-    "owner_required": "Sổ cần ít nhất một chủ sổ.",
+    "owner_required": "Sổ cần ít nhất một chủ sổ. Hãy cho người khác làm chủ sổ trước.",
     "amount": "Số tiền chưa đúng định dạng.",
     "unexpected_error": "Đã có lỗi. Hãy thử lại.",
     "has_subcategories": "Danh mục này còn danh mục con. Hãy chuyển hoặc xóa chúng trước.",
@@ -124,7 +124,8 @@
     "two_factor_off": "Xác minh hai bước đang tắt.",
     "invalid_timezone": "Máy chủ không nhận múi giờ này. Hãy chọn múi giờ khác.",
     "updater_off": "Máy chủ này chưa bật cập nhật bằng một nút bấm.",
-    "origin_not_allowed": "Địa chỉ này không phải ứng dụng web của chính máy chủ."
+    "origin_not_allowed": "Địa chỉ này không phải ứng dụng web của chính máy chủ.",
+    "cannot_invite": "Không thể mời tên đăng nhập này: hãy kiểm tra chính tả, hoặc người đó có thể đã ở trong sổ."
   },
   "nav": {
     "transactions": "Giao dịch",
@@ -259,7 +260,8 @@
     "uncategorized": "Không có danh mục",
     "empty": "Thêm tài khoản và giao dịch để xem tổng quan.",
     "budgets": "Ngân sách",
-    "people": "Ai nợ ai"
+    "people": "Ai nợ ai",
+    "emptyViewer": "Sổ này chưa có gì."
   },
   "budget": {
     "title": "Ngân sách",
@@ -407,5 +409,31 @@
     "updateByHand": "Để cập nhật, chạy các lệnh sau trên máy chủ, trong thư mục msaving (thư mục bạn đã tải về bằng git clone):",
     "updaterHint": "Để cập nhật bằng một nút bấm tại đây, thêm COMPOSE_PROFILES=updater vào .env (xem hướng dẫn cài đặt: việc này cho một trình trợ giúp quyền điều khiển Docker).",
     "updateConfirm": "Cài phiên bản {{version}}? Máy chủ sẽ dựng phiên bản mới, sao lưu rồi khởi động lại; mọi người mất kết nối trong chốc lát, cả quá trình mất vài phút."
+  },
+  "members": {
+    "title": "Thành viên",
+    "intro": "Những người trên máy chủ này cùng giữ sổ với bạn. Họ thấy mọi thứ trong sổ.",
+    "username": "Tên đăng nhập",
+    "roleLabel": "Vai trò",
+    "invite": "Mời",
+    "invited": "Đã mời {{name}}. Họ sẽ thấy lời mời khi đăng nhập.",
+    "roles": "Chủ sổ: mọi quyền, kể cả thành viên và cài đặt. Biên tập: thêm và sửa tài khoản, giao dịch, danh mục và ngân sách. Người xem: chỉ được xem.",
+    "role": {
+      "owner": "Chủ sổ",
+      "editor": "Biên tập",
+      "viewer": "Người xem"
+    },
+    "you": "bạn",
+    "pending": "Đã mời",
+    "remove": "Xóa khỏi sổ",
+    "cancelInvite": "Hủy lời mời",
+    "removeTitle": "Xóa khỏi sổ?",
+    "removeBody": "{{name}} sẽ không còn thấy \"{{book}}\". Những gì họ đã thêm vẫn còn trong sổ.",
+    "leave": "Rời sổ",
+    "leaveTitle": "Rời sổ này?",
+    "leaveBody": "Bạn sẽ không còn thấy \"{{book}}\". Chủ sổ có thể mời bạn lại.",
+    "invitedYou": "{{who}} đã mời bạn vào sổ \"{{book}}\" với vai trò {{role}}.",
+    "accept": "Đồng ý",
+    "decline": "Từ chối"
   }
 }

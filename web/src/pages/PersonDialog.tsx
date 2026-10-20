@@ -11,13 +11,14 @@ import { useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../components/errors'
 import { send, type Book, type Contact } from '../lib/api'
+import { newId } from '../lib/uuid'
 
 // Add or edit a person. Only a name and a note are kept (docs: Lending and borrowing).
 export function PersonDialog({ book, person, onClose }: { book: Book; person: Contact | null; onClose: () => void }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
   const qc = useQueryClient()
-  const id = useRef(person?.id ?? crypto.randomUUID())
+  const id = useRef(person?.id ?? newId())
   const [name, setName] = useState(person?.name ?? '')
   const [note, setNote] = useState(person?.note ?? '')
   const [error, setError] = useState<unknown>(null)
