@@ -2,6 +2,7 @@
 through the API itself (open sign-up in the test database; invite-only and
 setup are in test_sign_in.py) and use the session token it returns.
 """
+import re
 import uuid
 
 import pytest
@@ -430,9 +431,10 @@ def test_people_and_lending(client):
     assert [(p["name"], p["owed_to_you"], p["you_owe"]) for p in dash["people"]] == [("Tom", 1_500_000, 0)]
 
 
-def test_edits_to_amounts_or_accounts_alone_are_versions(client):
+def test_edits_to_amounts_or_accounts_alone_are_versions(client, database):
     """msaving#18, #19: changing only an amount or an account is an edit like any other: a new version (so a
-    second browser still gets 409) and its own line in the history. Saving with nothing changed is neither."""
+    second browser still gets 409) and its own line in the history. Saving with nothing changed is neither,
+    and leaves the entries alone (no rows in the audit log for them)."""
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)
     base = f"/v1/books/{bid}/transactions"
@@ -449,8 +451,14 @@ def test_edits_to_amounts_or_accounts_alone_are_versions(client):
     assert (stale.status_code, stale.json()) == (409, {"detail": "conflict"})
     moved = put(2, entries=[{"account_id": accts["Bank"], "amount": -65_000}])
     assert (moved.status_code, moved.json()["version"]) == (200, 3)
+    def entry_writes():
+        with database.connect() as c:
+            return c.execute(text("select count(*) from audit_log where table_name = 'entries'"
+                                  " and coalesce(new_row, old_row)->>'transaction_id' = :t"), {"t": tid}).scalar()
+    writes = entry_writes()
     same = put(3, entries=[{"account_id": accts["Bank"], "amount": -65_000}])
     assert (same.status_code, same.json()["version"]) == (200, 3)
+    assert entry_writes() == writes
 
     hist = client.get(f"{base}/{tid}/history", headers=auth(u)).json()
     assert [(h["action"], h["version"]) for h in hist] == [("created", 1), ("edited", 2), ("edited", 3)]
@@ -631,6 +639,7 @@ def test_book_changes_marker(client):
 
     first = client.get(url, headers=auth(owner)).json()["marker"]
     assert client.get(url, headers=auth(owner)).json()["marker"] == first == client.get(url, headers=auth(editor)).json()["marker"]
+    assert re.fullmatch(r"[0-9a-f]{32}", first)        # opaque: no audit ids, which count changes across the server
     client.post(f"/v1/books/{bid}/transactions", headers=auth(editor), json={
         "id": str(uuid.uuid4()), "type": "expense", "occurred_on": "2026-10-05",
         "entries": [{"account_id": accts["Cash"], "amount": -30_000}]})

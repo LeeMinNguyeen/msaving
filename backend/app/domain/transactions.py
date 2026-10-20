@@ -74,7 +74,10 @@ def update_transaction(db: Session, t: TxnIn, expected_version: int) -> int:
     including one that only changes amounts or accounts: the entries live in
     their own table, which the version trigger on the header can't see, so
     the update then also sets modified_at, and bump_version() counts that as
-    a change. Saving with nothing changed keeps the version."""
+    a change. Saving with nothing changed keeps the version. The entries are
+    rewritten only when they changed, so a header edit or a save of nothing
+    adds no entry rows to the audit log (nor moves the change marker for them);
+    the shape check still runs, on the header's type."""
     saved = db.execute(text("select account_id, amount from entries where transaction_id = :id"), {"id": t.id}).all()
     entries_changed = sorted((r.account_id, r.amount) for r in saved) != sorted((e.account_id, e.amount) for e in t.entries)
     # The UPDATE locks the header row, so a second device or book member
@@ -90,8 +93,9 @@ def update_transaction(db: Session, t: TxnIn, expected_version: int) -> int:
     ).first()
     if row is None:
         raise Conflict("changed or deleted on another device")
-    db.execute(text("delete from entries where transaction_id = :id"), {"id": t.id})
-    _insert_entries(db, t)
+    if entries_changed:
+        db.execute(text("delete from entries where transaction_id = :id"), {"id": t.id})
+        _insert_entries(db, t)
     return row.version
 
 
