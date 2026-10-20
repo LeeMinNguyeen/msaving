@@ -609,6 +609,27 @@ def test_shared_books(client):
     assert [(m["name"], m["me"]) for m in client.get(members, headers=auth(editor)).json()] == [(names["editor"], True)]
 
 
+def test_book_changes_marker(client):
+    """msaving#25: a member polls one cheap marker that changes when anyone changes the book."""
+    owner, editor, stranger = signed_up(client), signed_up(client), signed_up(client)
+    bid, accts = new_book_with_accounts(client, owner)
+    editor_name = client.get("/v1/me", headers=auth(editor)).json()["profile"]["username"]
+    client.post(f"/v1/books/{bid}/members", headers=auth(owner), json={"username": editor_name})
+    assert client.post(f"/v1/me/book-invites/{bid}/accept", headers=auth(editor)).status_code == 204
+    url = f"/v1/books/{bid}/changes"
+
+    first = client.get(url, headers=auth(owner)).json()["marker"]
+    assert client.get(url, headers=auth(owner)).json()["marker"] == first == client.get(url, headers=auth(editor)).json()["marker"]
+    client.post(f"/v1/books/{bid}/transactions", headers=auth(editor), json={
+        "id": str(uuid.uuid4()), "type": "expense", "occurred_on": "2026-10-05",
+        "entries": [{"account_id": accts["Cash"], "amount": -30_000}]})
+    second = client.get(url, headers=auth(owner)).json()["marker"]
+    assert second != first
+    client.patch(f"/v1/books/{bid}", headers=auth(owner), json={"version": 1, "name": "Renamed"})
+    assert client.get(url, headers=auth(editor)).json()["marker"] not in (first, second)
+    assert client.get(url, headers=auth(stranger)).json() == {"detail": "not_found"}
+
+
 def test_book_invites_are_rate_limited(client):
     """A found username becomes an invite, so guessing names is slowed down."""
     owner = signed_up(client)

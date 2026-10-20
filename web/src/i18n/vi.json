@@ -101,7 +101,8 @@
     "done": "Xong",
     "close": "Đóng",
     "edit": "Sửa",
-    "viewTransactions": "Xem giao dịch"
+    "viewTransactions": "Xem giao dịch",
+    "refresh": "Làm mới"
   },
   "errors": {
     "invalid_credentials": "Sai tên người dùng hoặc mật khẩu.",

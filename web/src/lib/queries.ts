@@ -1,4 +1,5 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
 import { api, type Account, type Book, type Budget, type Category, type Contact, type Currency, type Dashboard, type HistoryEntry, type Instance, type Me, type Member, type BookInvite, type TxnPage } from './api'
 
 export const keys = {
@@ -100,4 +101,43 @@ export function useContacts(bookId: string, includeArchived = false) {
 
 export function useBudgets(bookId: string) {
   return useQuery({ queryKey: ['books', bookId, 'budgets'], queryFn: () => api<Budget[]>(`/v1/books/${bookId}/budgets`) })
+}
+
+// A book's own queries, without the change marker below.
+const ofBook = (bookId: string) => ({
+  predicate: (q: { queryKey: readonly unknown[] }) => q.queryKey[0] === 'books' && q.queryKey[1] === bookId && q.queryKey[2] !== 'changes',
+})
+
+// Everything shown about a book, fetched again: its data, the book list
+// (names, roles) and pending invites.
+export function refreshBook(qc: QueryClient, bookId: string) {
+  return Promise.all([
+    qc.invalidateQueries(ofBook(bookId)),
+    qc.invalidateQueries({ queryKey: keys.books, exact: true }),
+    qc.invalidateQueries({ queryKey: keys.bookInvites }),
+  ])
+}
+
+export function useRefreshBook() {
+  const qc = useQueryClient()
+  return (bookId: string) => refreshBook(qc, bookId)
+}
+
+
+// Another member's change shows within seconds (msaving#25): a tiny marker,
+// polled while the page is visible, and the book's data refetched when it moves.
+export function useBookChanges(bookId: string) {
+  const qc = useQueryClient()
+  const changes = useQuery({
+    queryKey: ['books', bookId, 'changes'],
+    queryFn: () => api<{ marker: string }>(`/v1/books/${bookId}/changes`),
+    refetchInterval: 5_000,
+  })
+  const marker = changes.data?.marker
+  const seen = useRef<{ bookId: string; marker?: string }>({ bookId, marker })
+  useEffect(() => {
+    const before = seen.current
+    if (before.bookId === bookId && before.marker && marker && marker !== before.marker) void refreshBook(qc, bookId)
+    seen.current = { bookId, marker }
+  }, [qc, bookId, marker])
 }

@@ -30,6 +30,7 @@ import { categoryTree } from '../lib/categories'
 import { formatMoney } from '../lib/money'
 import { useAccounts, useCategories, useCurrencies, useTransactions, type TxnFilters } from '../lib/queries'
 import { DateField } from '../components/DateField'
+import { RefreshButton } from '../components/RefreshButton'
 
 const FILTERS = ['account_id', 'category_id', 'type', 'from', 'to', 'q'] as const
 
@@ -97,7 +98,10 @@ export function Transactions({ book }: { book: Book }) {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="h5">{filteredAccount ? `${t('txn.title')} · ${filteredAccount.name}` : t('txn.title')}</Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Typography variant="h5">{filteredAccount ? `${t('txn.title')} · ${filteredAccount.name}` : t('txn.title')}</Typography>
+        <RefreshButton bookId={book.id} />
+      </Stack>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
         <TextField
           size="small"

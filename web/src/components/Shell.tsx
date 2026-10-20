@@ -29,7 +29,7 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import type { Book, Transaction } from '../lib/api'
-import { useBooks, useMe } from '../lib/queries'
+import { useBookChanges, useBooks, useMe } from '../lib/queries'
 import { signOut } from '../auth/signOut'
 import { BookInvites } from './BookInvites'
 import { TxnContext } from './txnContext'
@@ -70,6 +70,7 @@ function BookSwitcher({ book }: { book: Book }) {
 // and the book's pages. Phones keep a working top bar until the mobile app is
 // in the stores (main.tsx sends phones there then).
 export function Shell({ book, children }: { book: Book; children: ReactNode }) {
+  useBookChanges(book.id)
   const [dialog, setDialog] = useState<{ txn: Transaction | null; defaults?: TxnDefaults } | null>(null)
   const openTxn = (txn: Transaction | null, defaults?: TxnDefaults) => setDialog({ txn, defaults })
   return (

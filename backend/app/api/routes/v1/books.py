@@ -78,6 +78,20 @@ def create_book(body: CreateBook, user_id: UUID = Depends(current_user), db: Ses
     return get_book(db, body.id)
 
 
+class Changes(BaseModel):
+    marker: str                                # opaque: a different one means something changed
+
+
+@router.get("/{book_id}/changes")
+def changes(book_id: UUID, db: Session = Depends(get_db)) -> Changes:
+    """Cheap to poll (msaving#25): a marker that changes whenever anything in
+    the book does, by anyone. Clients refetch the book's data when it differs."""
+    marker = db.execute(text("select book_change_marker(:b)"), {"b": book_id}).scalar()
+    if marker is None:
+        raise HTTPException(404, "not_found")
+    return Changes(marker=marker)
+
+
 @router.get("/{book_id}")
 def read_book(book_id: UUID, db: Session = Depends(get_db)) -> Book:
     return get_book(db, book_id)

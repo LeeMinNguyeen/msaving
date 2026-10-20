@@ -101,7 +101,8 @@
     "done": "Done",
     "close": "Close",
     "edit": "Edit",
-    "viewTransactions": "View transactions"
+    "viewTransactions": "View transactions",
+    "refresh": "Refresh"
   },
   "errors": {
     "invalid_credentials": "Wrong username or password.",

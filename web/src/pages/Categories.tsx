@@ -30,6 +30,7 @@ import { formatMoney } from '../lib/money'
 import { useBudgets, useCategories, useCurrencies } from '../lib/queries'
 import { BudgetDialog } from './BudgetDialog'
 import { CategoryDialog } from './CategoryDialog'
+import { RefreshButton } from '../components/RefreshButton'
 
 const KINDS: CategoryKind[] = ['expense', 'income', 'transfer']
 
@@ -81,7 +82,10 @@ export function Categories({ book }: { book: Book }) {
   return (
     <Stack spacing={2}>
       <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="h5">{t('cat.title')}</Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="h5">{t('cat.title')}</Typography>
+          <RefreshButton bookId={book.id} />
+        </Stack>
         {canEdit && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ category: null })}>
             {t('cat.add')}

@@ -34,6 +34,7 @@ import { currencyLabel } from '../lib/labels'
 import { useAccounts, useCurrencies } from '../lib/queries'
 import { AccountDialog } from './AccountDialog'
 import { People } from './People'
+import { RefreshButton } from '../components/RefreshButton'
 
 // Screen 7, without people (milestone 5): accounts with their balances. A
 // table on desktop, a list on phones. An account opens its details, which lead
@@ -70,7 +71,10 @@ export function Accounts({ book }: { book: Book }) {
   return (
     <Stack spacing={2}>
       <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="h5">{t('accounts.title')}</Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="h5">{t('accounts.title')}</Typography>
+          <RefreshButton bookId={book.id} />
+        </Stack>
         {canEdit && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ account: null, editing: true })}>
             {t('accounts.add')}
