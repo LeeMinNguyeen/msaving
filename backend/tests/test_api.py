@@ -241,6 +241,17 @@ def test_account_details_by_kind(client):
     cash = client.patch(url, headers=auth(u), json={"version": loan["version"], "kind": "cash"}).json()
     assert (cash["kind"], cash["interest_rate_bp"]) == ("cash", None)
 
+    # The export has them, readable: amounts in the currency, the rate as a percentage (Vietnamese headers).
+    import csv
+    import io
+    import zipfile
+    create("credit_card", note="Thẻ phụ", credit_limit=20_000_000, statement_day=5, payment_due_day=20, interest_rate_bp=2_550)
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
+    rows = {r["Ghi chú"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
+    assert {k: rows["Thẻ phụ"][k] for k in ("Hạn mức tín dụng", "Phí thường niên", "Ngày sao kê", "Ngày đến hạn thanh toán",
+                                            "Lãi suất (%/năm)")} == {"Hạn mức tín dụng": "20000000", "Phí thường niên": "",
+        "Ngày sao kê": "5", "Ngày đến hạn thanh toán": "20", "Lãi suất (%/năm)": "25.50"}
+
 
 def test_categories(client):
     u = signed_up(client)
