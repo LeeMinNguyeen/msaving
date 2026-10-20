@@ -1,4 +1,4 @@
-"""Home screen: everything the dashboard shows, in one call (msaving-docs, Home
+"""Home screen: everything the dashboard shows, in one call (docs: Home
 screen dashboard). Amounts are minor units of the book's currency unless a row
 says otherwise; *not_converted / missing_rates count what had no exchange rate
 and was left out of a total."""
@@ -75,6 +75,7 @@ class RecentTxn(BaseModel):
 
 class Dashboard(BaseModel):
     currency: str | None
+    rates_source: str | None             # e.g. open.er-api.com, whose terms ask for a visible credit
     net_worth: int
     net_worth_missing_rates: int
     spent_this_month: int

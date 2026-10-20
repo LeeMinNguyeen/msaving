@@ -1,4 +1,4 @@
-// The web app is designed for desktop (msaving-docs, Decisions). Phones get the
+// The web app is designed for desktop (a project decision). Phones get the
 // mobile app's store page instead, once it's published; until then they use
 // the web app as it is. Tablets stay on the web app.
 export function storeUrlFor(

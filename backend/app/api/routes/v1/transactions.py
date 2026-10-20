@@ -3,7 +3,7 @@
 Ids come from the client (made when the user taps Save, reused on retry), so a
 retry or a double tap can't save twice. Edits and deletes send the version the
 client loaded; if another device saved in between, nothing is written and the
-answer is 409 conflict (msaving-docs, Several devices at once). The shape rules
+answer is 409 conflict (docs: The ledger, several devices). The shape rules
 (a transfer has two entries, an expense is negative) are checked by the
 database when the route commits.
 """

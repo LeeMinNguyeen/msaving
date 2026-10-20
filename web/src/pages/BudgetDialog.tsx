@@ -21,6 +21,7 @@ import { budgetPeriods, send, type Book, type Budget, type BudgetPeriod, type Ca
 import { todayIn } from '../lib/labels'
 import { formatMoney, parseAmount } from '../lib/money'
 import { useBudgets, useCurrencies, useInvalidateBook } from '../lib/queries'
+import { newId } from '../lib/uuid'
 
 // A category's budgets: one per period, in the book's currency. Sub-categories count too.
 export function BudgetDialog({ book, category, onClose }: { book: Book; category: Category; onClose: () => void }) {
@@ -40,7 +41,7 @@ export function BudgetDialog({ book, category, onClose }: { book: Book; category
   const [endsOn, setEndsOn] = useState('')
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
-  const [id, setId] = useState(() => crypto.randomUUID())
+  const [id, setId] = useState(() => newId())
   const parsed = parseAmount(amount, minor, lang)
 
   async function run(fn: () => Promise<unknown>) {
@@ -67,7 +68,7 @@ export function BudgetDialog({ book, category, onClose }: { book: Book; category
     if (ok) {
       setAmount('')
       setEndsOn('')
-      setId(crypto.randomUUID())
+      setId(newId())
       const next = free.filter((p) => p !== period)
       if (next.length) setPeriod(next.includes('monthly') ? 'monthly' : next[0])
     }

@@ -1,5 +1,5 @@
+import { session } from '../auth/session'
 import { config } from '../config'
-import { supabase } from './supabase'
 
 // An error from the API. `code` is what the API sent as `detail` (for example
 // not_signed_in or plan_limit), which the screens translate.
@@ -14,30 +14,35 @@ export class ApiError extends Error {
   }
 }
 
+async function fail(res: Response): Promise<never> {
+  const body = await res.json().catch(() => null)
+  const code = typeof body?.detail === 'string' ? body.detail : 'unexpected_error'
+  // The session ended (expired, signed out elsewhere, account disabled): back to sign-in.
+  if (res.status === 401 && code === 'not_signed_in' && session.token()) session.set(null)
+  throw new ApiError(res.status, code)
+}
+
+function authHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers(init)
+  const token = session.token()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  return headers
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const { data } = await supabase.auth.getSession()
-  const headers = new Headers(init.headers)
-  if (data.session) headers.set('Authorization', `Bearer ${data.session.access_token}`)
+  const headers = authHeaders(init.headers)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
   const res = await fetch(`${config.apiUrl}${path}`, { ...init, headers })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const code = typeof body?.detail === 'string' ? body.detail : 'unexpected_error'
-    throw new ApiError(res.status, code)
-  }
+  if (!res.ok) await fail(res)
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
 
 // A file from the API (the data export): saved by the browser under the name it sends.
 export async function download(path: string): Promise<void> {
-  const { data } = await supabase.auth.getSession()
-  const res = await fetch(`${config.apiUrl}${path}`, { headers: data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {} })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, typeof body?.detail === 'string' ? body.detail : 'unexpected_error')
-  }
+  const res = await fetch(`${config.apiUrl}${path}`, { headers: authHeaders() })
+  if (!res.ok) await fail(res)
   const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'export.zip'
   const url = URL.createObjectURL(await res.blob())
   const a = Object.assign(document.createElement('a'), { href: url, download: name })
@@ -45,7 +50,6 @@ export async function download(path: string): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
-export type ConsentStatus = { current_version: string | null; current_path: string | null; agreed_version: string | null; agreed_at: string | null; needs_consent: boolean }
 export type AccountStatus = { deletion_requested_at: string | null; deletes_on: string | null }
 
 export const send = <T>(method: string, path: string, body?: unknown) =>
@@ -56,19 +60,20 @@ export type Language = 'vi' | 'en'
 export type Profile = {
   username: string
   display_name: string | null
-  email: string
   timezone: string
   language: Language
   created_at: string
   deletion_requested_at: string | null
-  plan: string
+  is_admin: boolean
 }
 
-// profile is null until the user picks a username and agrees to the privacy policy.
-export type Me = { id: string; profile: Profile | null; needs_consent: boolean }
+export type Me = { id: string; profile: Profile }
+
+// What a server says about itself before anyone signs in (GET /v1/instance).
+export type Instance = { name: string; server_version: string; api_version: number; signup: 'invite' | 'open'; setup_needed: boolean }
+export type Token = { token: string }
 
 export type Currency = { code: string; minor_unit: number; name: string }
-export type Policy = { version: string; path: string }
 
 export type Role = 'owner' | 'editor' | 'viewer'
 export type Book = {
@@ -80,6 +85,11 @@ export type Book = {
   archived_at: string | null
   version: number
 }
+
+// A book's member; `name` is a username or "Deleted user" (lib/people.ts).
+export type Member = { user_id: string; name: string; display_name: string | null; role: Role; pending: boolean; me: boolean }
+// An invite to someone else's book that I haven't answered.
+export type BookInvite = { book_id: string; book_name: string; role: Role; invited_by: string; invited_at: string }
 
 export const accountKinds = [
   'cash', 'checking', 'savings', 'investment', 'credit_card', 'loan', 'lent', 'other_asset', 'other_liability',
@@ -158,6 +168,7 @@ export type HistoryEntry = {
 
 export type Dashboard = {
   currency: string | null
+  rates_source: string | null
   net_worth: number
   net_worth_missing_rates: number
   spent_this_month: number

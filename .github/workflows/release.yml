@@ -1,0 +1,30 @@
+# Makes a release: Actions -> Release -> Run workflow, on main. It runs the
+# tests, then creates the tag v<VERSION> and a GitHub release with notes from
+# the merged pull requests. No images are published: each server builds from
+# its own checkout, and servers learn about releases from GitHub's releases.
+# VERSION is bumped in the release pull request into main.
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tests:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(cat VERSION)"
+          echo "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'
+          gh release create "v$version" --target "$GITHUB_SHA" --generate-notes --title "v$version"

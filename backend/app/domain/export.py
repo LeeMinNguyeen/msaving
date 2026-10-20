@@ -4,18 +4,17 @@ GET /v1/me/export -> build_export(db) inside user_session(). Row-level security
 already limits every query to the books this user is a member of.
 
 Covers everything the user entered, everything recorded about them (profile,
-memberships, plan, consents, their own activity) and what was derived from it
-(balances, AI advice). Written for people, not as a schema dump: named columns, amounts as
+memberships, their own activity) and what was derived from it
+(balances). Written for people, not as a schema dump: named columns, amounts as
 decimals in their currency, usernames instead of ids ("Deleted user" for
 purged accounts), no internal ids. In the user's language (users.language):
 Vietnamese by default, or English. Only the labels are translated; what users
 typed (names, payees, notes) is exported as typed.
-Not included: secrets (the AI key itself; only that one exists) and other
-members' emails.
+Not included: secrets (password hash, two-factor secret, recovery codes,
+sessions).
 """
 import csv
 import io
-import os
 import zipfile
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -32,7 +31,7 @@ Created: {created}
 Each file is a spreadsheet (CSV, UTF-8). It includes every book you are a
 member of, including books shared with you.
 
-profile.csv          Your account: username, name, email, timezone, language, plan
+profile.csv          Your account: username, name, timezone, language
 books.csv            Your books, your role in each, and who else is in them
 accounts.csv         Accounts in each book with their current balance
 transactions.csv     Every transaction. Transfers show both accounts
@@ -41,12 +40,7 @@ budgets.csv          Your budgets
 people.csv           People you lend to or borrow from, and who owes what
 exchange_rates.csv   Your books' own exchange rates
 edit_history.csv     Every saved version of every transaction, and who saved it
-ai_settings.csv      Whether AI advice is on in each book, and who turned it on
-ai_advice.csv        AI advice you received, with exactly what was sent to the AI
-ai_keys.csv          AI keys you added (only the last 4 characters; the key itself is never exported)
-subscription.csv     Your paid plan, if you have one
 my_activity.csv      Changes you made, with the time and book
-consents.csv         What you agreed to (privacy policy version), when, and any withdrawal
 
 Amounts are in the currency shown next to them. Negative = money out.
 """, "vi": """Dữ liệu của bạn
@@ -57,7 +51,7 @@ Tạo lúc: {created}
 Mỗi tệp là một bảng tính (CSV, UTF-8). Bao gồm mọi sổ bạn là thành viên,
 kể cả sổ người khác chia sẻ với bạn.
 
-profile.csv          Tài khoản của bạn: tên người dùng, tên hiển thị, email, múi giờ, ngôn ngữ, gói
+profile.csv          Tài khoản của bạn: tên người dùng, tên hiển thị, múi giờ, ngôn ngữ
 books.csv            Các sổ của bạn, vai trò của bạn trong từng sổ và những người khác trong sổ
 accounts.csv         Các tài khoản trong từng sổ và số dư hiện tại
 transactions.csv     Mọi giao dịch. Chuyển khoản hiển thị cả hai tài khoản
@@ -66,12 +60,7 @@ budgets.csv          Các ngân sách của bạn
 people.csv           Những người bạn cho vay hoặc vay, và ai nợ ai
 exchange_rates.csv   Tỷ giá riêng của các sổ
 edit_history.csv     Mọi phiên bản đã lưu của từng giao dịch, và người đã lưu
-ai_settings.csv      Tư vấn AI có bật trong từng sổ không, và ai đã bật
-ai_advice.csv        Lời khuyên AI bạn đã nhận, kèm chính xác dữ liệu đã gửi cho AI
-ai_keys.csv          Khóa AI bạn đã thêm (chỉ 4 ký tự cuối; khóa đầy đủ không bao giờ được xuất)
-subscription.csv     Gói trả phí của bạn, nếu có
 my_activity.csv      Những thay đổi bạn đã thực hiện, kèm thời gian và sổ
-consents.csv         Những gì bạn đã đồng ý (phiên bản chính sách quyền riêng tư), khi nào, và lần rút lại nếu có
 
 Số tiền tính theo loại tiền ghi bên cạnh. Số âm = tiền ra.
 """}
@@ -80,8 +69,8 @@ Số tiền tính theo loại tiền ghi bên cạnh. Số âm = tiền ra.
 # periods...). Anything not listed is exported as is.
 VI = {
     # headers
-    "Username": "Tên người dùng", "Name": "Tên", "Email": "Email", "Timezone": "Múi giờ", "Language": "Ngôn ngữ",
-    "Account created": "Ngày tạo tài khoản", "Plan": "Gói", "Deletion requested": "Yêu cầu xóa lúc",
+    "Username": "Tên người dùng", "Name": "Tên", "Timezone": "Múi giờ", "Language": "Ngôn ngữ",
+    "Account created": "Ngày tạo tài khoản", "Deletion requested": "Yêu cầu xóa lúc",
     "Book": "Sổ", "Your role": "Vai trò của bạn", "Main currency": "Tiền tệ chính", "Created": "Ngày tạo",
     "Members": "Thành viên", "Account": "Tài khoản", "Type": "Loại", "Currency": "Tiền tệ",
     "Last 4 digits": "4 số cuối", "Person": "Người liên quan", "Balance": "Số dư", "Closed": "Đã đóng",
@@ -94,14 +83,7 @@ VI = {
     "They owe you": "Họ nợ bạn", "You owe them": "Bạn nợ họ", "From": "Từ", "To": "Sang", "Rate": "Tỷ giá",
     "From date": "Áp dụng từ ngày", "Transaction date": "Ngày giao dịch", "Version": "Phiên bản",
     "Action": "Thao tác", "Changed by": "Người thay đổi", "Changed at": "Thay đổi lúc", "Amounts": "Số tiền",
-    "AI advice on": "Bật tư vấn AI", "Payee names shared": "Chia sẻ tên người nhận", "Turned on by": "Người bật",
-    "Turned on at": "Bật lúc", "Paid by": "Trả phí qua", "Period start": "Đầu kỳ", "Period end": "Cuối kỳ",
-    "AI model": "Mô hình AI", "Advice": "Lời khuyên", "What was sent to the AI": "Dữ liệu đã gửi cho AI",
-    "Dismissed": "Đã ẩn", "Provider": "Nhà cung cấp", "Key ending": "Đuôi khóa", "Added": "Thêm lúc",
-    "Status": "Trạng thái", "Paid through": "Thanh toán qua", "Renews or ends": "Gia hạn hoặc kết thúc",
-    "Time": "Thời gian", "What": "Mục", "Change": "Thay đổi", "Agreed to": "Đã đồng ý",
-    "Policy version": "Phiên bản chính sách", "Policy text": "Nội dung chính sách", "Agreed at": "Đồng ý lúc",
-    "Withdrawn at": "Rút lại lúc",
+    "Time": "Thời gian", "What": "Mục", "Change": "Thay đổi",
     # values
     "expense": "chi tiêu", "income": "thu nhập", "refund": "hoàn tiền", "transfer": "chuyển khoản",
     "opening balance": "số dư đầu kỳ", "adjustment": "điều chỉnh",
@@ -115,9 +97,7 @@ VI = {
     "books": "sổ", "book members": "thành viên sổ", "contacts": "người liên quan", "accounts": "tài khoản",
     "categories": "danh mục", "transactions": "giao dịch", "entries": "bút toán", "budgets": "ngân sách",
     "book fx rates": "tỷ giá riêng",
-    "Yes": "Có", "No": "Không", "plan": "gói", "own key": "khóa riêng", "free": "miễn phí",
-    "premium": "Premium", "active": "đang hoạt động", "trialing": "dùng thử", "past due": "quá hạn",
-    "canceled": "đã hủy", "Privacy policy (to use the app)": "Chính sách quyền riêng tư (để dùng ứng dụng)",
+    "Yes": "Có", "No": "Không",
 }
 LANGUAGE_NAMES = {"en": {"vi": "Vietnamese", "en": "English"}, "vi": {"vi": "Tiếng Việt", "en": "Tiếng Anh"}}
 
@@ -141,11 +121,8 @@ def _rows(db: Session, sql: str) -> list[dict]:
     return [dict(r) for r in db.execute(text(sql)).mappings()]
 
 
-def build_export(db: Session, site_url: str | None = None) -> bytes:
-    """site_url: the landing site, where policy texts live. Defaults to the SITE_URL setting,
-    so moving to another domain changes no code or data."""
+def build_export(db: Session) -> bytes:
     files: dict[str, bytes] = {}
-    site = (site_url if site_url is not None else os.environ.get("SITE_URL", "")).rstrip("/")
 
     profile = _rows(db, "select * from my_profile()")
     lang = profile[0]["language"] if profile else "vi"
@@ -166,17 +143,14 @@ def build_export(db: Session, site_url: str | None = None) -> bytes:
             return "Người dùng đã xóa" + name[len("Deleted user"):]
         return name
 
-    def yes_no(b):
-        return None if b is None else t("Yes" if b else "No")
-
     def out(name, rows, headers):
         files[name] = _csv(rows, headers, t)
 
     out("profile.csv", [{
-        "Username": p["username"], "Name": p["display_name"], "Email": p["email"], "Timezone": p["timezone"],
+        "Username": p["username"], "Name": p["display_name"], "Timezone": p["timezone"],
         "Language": LANGUAGE_NAMES[lang][p["language"]], "Account created": p["created_at"],
-        "Plan": word(p["plan"]), "Deletion requested": p["deletion_requested_at"]} for p in profile],
-        ["Username", "Name", "Email", "Timezone", "Language", "Account created", "Plan", "Deletion requested"])
+        "Deletion requested": p["deletion_requested_at"]} for p in profile],
+        ["Username", "Name", "Timezone", "Language", "Account created", "Deletion requested"])
 
     members = defaultdict(list)
     for m in _rows(db, "select book_id, username, role::text as role, accepted from book_member_list order by username"):
@@ -300,48 +274,10 @@ def build_export(db: Session, site_url: str | None = None) -> bytes:
         ["Book", "Transaction date", "Type", "Category", "Payee", "Note", "Version", "Action", "Changed by",
          "Changed at", "Amounts"])
 
-    ai_settings = _rows(db, """
-        select b.name as book, s.enabled, s.include_payees, u.name as turned_on_by, s.consented_at,
-               ai_entitlement(s.book_id) as paid_by
-          from ai_settings s join books b on b.id = s.book_id
-          left join book_people u on u.book_id = s.book_id and u.user_id = s.consented_by
-         order by 1""")
-    out("ai_settings.csv", [{
-        "Book": s["book"], "AI advice on": yes_no(s["enabled"]), "Payee names shared": yes_no(s["include_payees"]),
-        "Turned on by": who(s["turned_on_by"]), "Turned on at": s["consented_at"], "Paid by": word(s["paid_by"])}
-        for s in ai_settings], ["Book", "AI advice on", "Payee names shared", "Turned on by", "Turned on at", "Paid by"])
-
-    out("ai_advice.csv", _rows(db, """
-        select b.name as "Book", i.period_start as "Period start", i.period_end as "Period end",
-               i.model as "AI model", i.advice as "Advice", i.input::text as "What was sent to the AI",
-               i.created_at as "Created", i.dismissed_at as "Dismissed"
-          from ai_insights i join books b on b.id = i.book_id order by 1, i.created_at"""),
-        ["Book", "Period start", "Period end", "AI model", "Advice", "What was sent to the AI", "Created", "Dismissed"])
-
-    out("ai_keys.csv", _rows(db, """
-        select provider as "Provider", '...' || key_hint as "Key ending", created_at as "Added"
-          from user_ai_keys order by 1"""), ["Provider", "Key ending", "Added"])
-
-    out("subscription.csv", [{
-        "Plan": word(r["plan"]), "Status": word(r["status"]), "Paid through": r["store"].replace("_", " "),
-        "Renews or ends": r["current_period_end"]}
-        for r in _rows(db, "select plan, status, store, current_period_end from subscriptions")],
-        ["Plan", "Status", "Paid through", "Renews or ends"])
-
     out("my_activity.csv", [{
         "Time": a["at"], "Book": a["book_name"], "What": word(a["table_name"]), "Change": t(a["action"].lower())}
         for a in _rows(db, "select at, book_name, table_name, action from my_activity()")],
         ["Time", "Book", "What", "Change"])
-
-    out("consents.csv", [{
-        "Agreed to": t("Privacy policy (to use the app)") if c["purpose"] == "use_app" else c["purpose"],
-        "Policy version": c["policy_version"], "Policy text": site + c["path"], "Agreed at": c["agreed_at"],
-        "Withdrawn at": c["withdrawn_at"]}
-        for c in _rows(db, """
-            select c.purpose, c.policy_version, p.path, c.agreed_at, c.withdrawn_at
-              from consents c join policy_versions p on p.version = c.policy_version
-             order by c.agreed_at""")],
-        ["Agreed to", "Policy version", "Policy text", "Agreed at", "Withdrawn at"])
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:

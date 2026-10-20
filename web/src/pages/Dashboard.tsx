@@ -1,6 +1,7 @@
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Link from '@mui/material/Link'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
@@ -20,6 +21,11 @@ import { api, type Book, type Transaction } from '../lib/api'
 import { todayIn } from '../lib/labels'
 import { formatMoney } from '../lib/money'
 import { useCategories, useCurrencies, useDashboard } from '../lib/queries'
+
+// Credits some rate sources ask for (backend/app/jobs/fx_update.py); a proper name, not translated.
+const RATE_CREDITS: Record<string, { label: string; href: string }> = {
+  'open.er-api.com': { label: 'Rates By Exchange Rate API', href: 'https://www.exchangerate-api.com' },
+}
 
 function Card({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
@@ -102,10 +108,13 @@ export function Dashboard({ book }: { book: Book }) {
   }
 
   const empty = d.accounts.length === 0
+  // The open exchange rate source's terms ask for this credit wherever its rates are used.
+  const converts = d.accounts.some((a) => a.currency !== book.base_currency)
+  const credit = converts ? RATE_CREDITS[d.rates_source ?? ''] : undefined
   return (
     <Stack spacing={2}>
       <Typography variant="h5">{t('dash.title')}</Typography>
-      {empty && <Alert severity="info">{t('dash.empty')}</Alert>}
+      {empty && <Alert severity="info">{t(book.role === 'viewer' ? 'dash.emptyViewer' : 'dash.empty')}</Alert>}
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' } }}>
         <Tile label={t('dash.netWorth')} value={money(d.net_worth)}
           note={d.net_worth_missing_rates ? t('dash.missingRates', { count: d.net_worth_missing_rates }) : undefined} />
@@ -214,6 +223,12 @@ export function Dashboard({ book }: { book: Book }) {
           </List>
         </Card>
       </Box>
+      {credit && (
+        <Typography variant="caption" color="text.secondary">
+          {t('dash.ratesBy')}{' '}
+          <Link href={credit.href} target="_blank" rel="noopener" color="inherit">{credit.label}</Link>
+        </Typography>
+      )}
     </Stack>
   )
 }

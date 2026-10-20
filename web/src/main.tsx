@@ -6,8 +6,8 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import { config } from './config'
 import { storeUrlFor } from './lib/store'
+import { session } from './auth/session'
 import './i18n'
-import { supabase } from './lib/supabase'
 import { theme } from './theme'
 
 // Several devices at once: refetch when the window regains focus and about every minute.
@@ -16,8 +16,8 @@ const queryClient = new QueryClient({
 })
 
 // Nothing from one signed-in person stays in memory for the next.
-supabase.auth.onAuthStateChange((event) => {
-  if (event === 'SIGNED_OUT') queryClient.clear()
+session.subscribe(() => {
+  if (!session.token()) queryClient.clear()
 })
 
 // Phones go to the mobile app's store page once it's published.

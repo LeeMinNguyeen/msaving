@@ -2,10 +2,9 @@
 
 Run:  TEST_ADMIN_URL=postgresql+psycopg://postgres@localhost/postgres pytest -q tests/
 Needs a superuser connection; it creates a throwaway database, applies every
-file in supabase/migrations in order (exactly what reaches dev and prod), runs
-everything as the restricted app/AI/FX/purge/billing logins, then drops it.
+file in migrations/ in order (exactly what a server runs), runs everything as
+the restricted app/FX/purge logins, then drops it.
 """
-import os
 import threading
 import time
 import uuid
@@ -14,11 +13,10 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from cryptography.exceptions import InvalidTag
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError
 
-from conftest import POLICY, _url
+from conftest import _url
 
 pytestmark = pytest.mark.usefixtures("database")
 
@@ -48,10 +46,7 @@ def refused(user_id, sql, **params) -> str:
 
 def new_user(name):
     uid = uuid.uuid4()
-    # Sign-up: the users row and the privacy policy consent in one transaction.
-    run(uid, "with u as (insert into users (id, username, email) values (:i, :n, :e) returning id)"
-             " insert into consents (user_id, purpose, policy_version) select id, 'use_app', :v from u",
-        i=uid, n=name, e=f"{name}@example.com", v=POLICY)
+    run(uid, "insert into users (id, username) values (:i, :n)", i=uid, n=name)
     return uid
 
 
@@ -217,10 +212,11 @@ def test_sharing_roles():
                    b=b, o=owner) == "InsufficientPrivilege"
     assert q(owner, "select count(*) from books where id = :b", b=b)[0][0] == 1
 
-    # Who added what, by username; emails stay private.
+    # Who added what, by username; nobody else's sign-in details or admin flag.
     assert q(viewer, "select u.username from transactions t join users u on u.id = t.created_by"
                      " where t.payee = 'Groceries'")[0][0] == "edit_1"
-    assert refused(viewer, "select email from users") == "InsufficientPrivilege"
+    assert refused(viewer, "select is_admin from users") == "InsufficientPrivilege"
+    assert q(viewer, "select count(*) from local_credentials where user_id <> :v", v=viewer)[0][0] == 0
     assert {r[0] for r in q(viewer, "select username from book_member_list where book_id = :b", b=b)} == {"own_1", "edit_1", "view_1"}
 
     # Removing a member cuts access immediately.
@@ -458,65 +454,6 @@ def test_budget_periods():
         (today, today.replace(day=1), date(today.year, (today.month - 1) // 3 * 3 + 1, 1), date(today.year, 1, 1))
 
 
-def subscribe(user, plan="premium", days=30, status="active"):
-    """What the payment webhook does (as billing_webhook)."""
-    bill = create_engine(_url("t_bill"))
-    with bill.begin() as c:
-        c.execute(text("insert into subscriptions (user_id, plan, status, store, store_subscription_id, current_period_end)"
-                       " values (:u, :p, :s, 'stripe', :sid, now() + make_interval(days => :d))"
-                       " on conflict (user_id) do update set plan = excluded.plan, status = excluded.status,"
-                       " current_period_end = excluded.current_period_end, updated_at = now()"),
-                  {"u": user, "p": plan, "s": status, "sid": f"sub_{user.hex}", "d": days})
-    bill.dispose()
-
-
-def test_ai_views_are_gated():
-    """R-AI-1..3: AI only on opted-in books, only summaries, only owners turn it on; it stops when the payer leaves."""
-    owner, editor, stranger = new_user("ai_owner"), new_user("ai_editor"), new_user("ai_stranger")
-    subscribe(owner)
-    b = new_book(owner)
-    share(owner, b, editor, "editor")
-    chk, food = new_account(owner, b, "Checking"), new_category(owner, b, "Food")
-    add(owner, b, "expense", date(2026, 9, 3), [(chk, -5000)], food, "Costco")
-
-    ai = create_engine(_url("t_ai"))
-
-    def ai_q(user, sql):
-        with ai.begin() as c:
-            c.execute(text("select set_config('app.user_id', :u, true)"), {"u": str(user)})
-            return c.execute(text(sql)).all()
-
-    assert ai_q(owner, "select count(*) from ai_monthly_category_spend") == [(0,)]       # not opted in
-    assert refused(editor, "insert into ai_settings (book_id, enabled) values (:b, true)", b=b) == "InsufficientPrivilege"
-    run(owner, "insert into ai_settings (book_id, enabled) values (:b, true)", b=b)
-    assert ai_q(editor, "select category, spent from ai_monthly_category_spend") == [("Food", 5000)]
-    assert ai_q(owner, "select count(*) from ai_monthly_payee_spend") == [(0,)]          # payees need their own opt-in
-    assert ai_q(stranger, "select count(*) from ai_monthly_category_spend") == [(0,)]
-    with pytest.raises(DBAPIError):
-        ai_q(owner, "select * from transactions")
-
-    # The job can save advice only where AI is on.
-    def ai_save(user, book):
-        with ai.begin() as c:
-            c.execute(text("select set_config('app.user_id', :u, true)"), {"u": str(user)})
-            c.execute(text("insert into ai_insights (book_id, period_start, period_end, model, input, advice)"
-                           " values (:b, '2026-09-01', '2026-09-30', 'test', '{}', 'ok')"), {"b": book})
-    ai_save(editor, b)
-    assert refused(editor, "update ai_insights set advice = 'changed' where book_id = :b", b=b) == "InsufficientPrivilege"
-    run(editor, "update ai_insights set dismissed_at = now() where book_id = :b", b=b)
-    off = new_book(owner)
-    with pytest.raises(DBAPIError, match="row-level security"):
-        ai_save(owner, off)
-
-    # AI stops when the owner who pays for it leaves the book.
-    run(owner, "update book_members set role = 'owner' where book_id = :b and user_id = :e", b=b, e=editor)
-    assert q(editor, "select ai_entitlement(:b)", b=b)[0][0] == "plan"
-    run(owner, "delete from book_members where book_id = :b and user_id = :o", b=b, o=owner)
-    assert q(editor, "select ai_entitlement(:b)", b=b)[0][0] is None
-    assert ai_q(editor, "select count(*) from ai_monthly_category_spend") == [(0,)]
-    ai.dispose()
-
-
 # ---------------------------------------------------------------- account deletion
 
 def test_account_deletion_restore_and_purge(database, tmp_path):
@@ -550,23 +487,22 @@ def test_account_deletion_restore_and_purge(database, tmp_path):
     # The daily job won't run without somewhere outside the database to log ids,
     # and leaves accounts closed for less than 30 days alone.
     purger = create_engine(_url("t_purge"))
-    deleted_logins = []
     log = tmp_path / "purged.jsonl"
     with pytest.raises(RuntimeError, match="PURGE_LOG"):
-        ad.run_purge(purger, deleted_logins.append)
-    assert ad.run_purge(purger, deleted_logins.append, str(log)) == []
+        ad.run_purge(purger)
+    assert ad.run_purge(purger, str(log)) == []
 
-    # 31 days later. Supabase is down: the account is purged and the login is
-    # retried on the next run until it's confirmed deleted.
+    # 31 days later: purged, with their password, two-factor and sessions.
     with database.connect() as c:
         c.execute(text("update users set deletion_requested_at = now() - interval '31 days' where id = :u"), {"u": leaver})
-
-    def auth_down(user_id):
-        raise OSError("Supabase Auth unavailable")
-    with pytest.raises(RuntimeError, match="not deleted yet"):
-        ad.run_purge(purger, auth_down, str(log))
-    assert ad.run_purge(purger, deleted_logins.append, str(log)) == [] and deleted_logins == [leaver]
-    assert ad.run_purge(purger, deleted_logins.append, str(log)) == [] and deleted_logins == [leaver]   # confirmed: not again
+        c.execute(text("insert into local_credentials (user_id, password_hash, totp_secret) values (:u, 'h', 's')"),
+                  {"u": leaver})
+        c.execute(text("insert into recovery_codes (user_id, code_sha256) values (:u, sha256('r'))"), {"u": leaver})
+        c.execute(text("insert into sessions (token_sha256, user_id) values (sha256(:t), :u)"),
+                  {"u": leaver, "t": leaver.bytes})
+    assert ad.run_purge(purger, str(log)) == [leaver]
+    assert ad.run_purge(purger, str(log)) == []
+    assert [r["user_id"] for r in ad._read(str(log))] == [str(leaver)]
 
     with database.connect() as c:
         one = lambda sql, **p: c.execute(text(sql), p).scalar()
@@ -576,16 +512,16 @@ def test_account_deletion_restore_and_purge(database, tmp_path):
         assert one("select created_by from books where id = :b", b=shared) == editor     # household kept
         assert one("select role from book_members where book_id = :b and user_id = :e", b=shared, e=editor) == "owner"
         # Only a bare id is left, still linked to what they did in the household.
-        assert c.execute(text("select username, email, display_name, deleted_at is not null from users where id = :u"),
-                         {"u": leaver}).one() == (None, None, None, True)
+        assert c.execute(text("select username, display_name, deleted_at is not null from users where id = :u"),
+                         {"u": leaver}).one() == (None, None, True)
         assert one("select created_by from transactions where id = :t", t=t_shared) == leaver
         assert one("select count(*) from book_members where user_id = :u", u=leaver) == 0
         # Nothing personal is left anywhere.
-        for table in ("users", "transaction_history", "audit_log", "books", "transactions", "ai_settings"):
-            assert one(f"select count(*) from {table} t where t::text like '%leaver@example.com%'") == 0, table
+        for table in ("local_credentials", "recovery_codes", "sessions"):
+            assert one(f"select count(*) from {table} where user_id = :u", u=leaver) == 0, table
+        for table in ("users", "transaction_history", "audit_log", "books", "transactions"):
+            assert one(f"select count(*) from {table} t where t::text like '%\"leaver\"%'") == 0, table
     assert balance(editor, joint) == -1000
-    with pytest.raises(DBAPIError, match="account_deleted"):
-        subscribe(leaver)                                                          # a renewal after the purge
 
     # The household sees each deleted account as its own "Deleted user".
     def people():
@@ -606,18 +542,14 @@ def test_account_deletion_restore_and_purge(database, tmp_path):
         ad.request_deletion(s)
     with database.connect() as c:
         c.execute(text("update users set deletion_requested_at = now() - interval '31 days' where id = :u"), {"u": newcomer})
-    assert ad.run_purge(purger, deleted_logins.append, str(log)) == [newcomer] and deleted_logins == [leaver, newcomer]
+    assert ad.run_purge(purger, str(log)) == [newcomer]
     assert people() == {leaver: "Deleted user 1", newcomer: "Deleted user 2"}
 
-    # A backup from before the purge gets restored: the job deletes them again,
-    # and their Supabase logins, which the restore brought back too.
+    # A backup from before the purge gets restored: the job deletes them again.
     with database.connect() as c:
-        c.execute(text("update users set username = 'leaver_old', email = 'old@example.com', deleted_at = null"
-                       " where id = :u"), {"u": leaver})
-    restored_logins = []
-    assert ad.repurge(purger, str(log), restored_logins.append) == 1
-    assert set(restored_logins) == {leaver, newcomer}
-    assert ad.repurge(purger, str(log), restored_logins.append) == 0                    # already gone: nothing to do
+        c.execute(text("update users set username = 'leaver_old', deleted_at = null where id = :u"), {"u": leaver})
+    assert ad.repurge(purger, str(log)) == 1
+    assert ad.repurge(purger, str(log)) == 0                    # already gone: nothing to do
     with database.connect() as c:
         assert c.execute(text("select username from users where id = :u"), {"u": leaver}).scalar() is None
 
@@ -627,78 +559,27 @@ def test_account_deletion_restore_and_purge(database, tmp_path):
     purger.dispose()
 
 
-def test_signup_needs_consent(database):
-    """R-CON-1..3: no account without consent to the privacy policy; recorded with version and time; withdrawable."""
-    from app.jobs import account_deletion as ad
-    # No consent, no account.
-    lone = uuid.uuid4()
-    assert refused(lone, "insert into users (id, username, email) values (:i, 'no_consent', 'nc@example.com')",
-                   i=lone) == "RaiseException"
-    u, other = new_user("con_user"), new_user("con_other")
-    row = q(u, "select purpose, policy_version, agreed_at > now() - interval '1 minute', withdrawn_at from consents")
-    assert row == [("use_app", POLICY, True, None)]
-    assert q(other, "select count(*) from consents where user_id = :u", u=u)[0][0] == 0      # private
-    # The record can't be backdated, edited, deleted, or made for someone else.
-    assert refused(u, "insert into consents (user_id, purpose, policy_version, agreed_at)"
-                      " values (:u, 'use_app', :v, '2020-01-01')", u=u, v=POLICY) == "InsufficientPrivilege"
-    assert refused(u, "update consents set agreed_at = '2020-01-01'") == "InsufficientPrivilege"
-    assert refused(u, "delete from consents") == "InsufficientPrivilege"
-    assert refused(u, "insert into consents (user_id, purpose, policy_version) values (:o, 'use_app', :v)",
-                   o=other, v=POLICY) == "InsufficientPrivilege"
-    assert q(u, "select needs_consent from my_consent_status()")[0][0] is False
-
-    # A new policy is published: the app is told to ask again; agreeing adds a row.
-    with database.connect() as c:
-        c.execute(text("insert into policy_versions (version, published_at, path, text_sha256)"
-                       " values ('2027-01-01', now(), '/privacy/2027-01-01', repeat('a', 64))"))
-    try:
-        assert q(u, "select current_version, current_path, agreed_version, needs_consent from my_consent_status()")[0] == \
-            ("2027-01-01", "/privacy/2027-01-01", POLICY, True)
-        # A screen still showing the old policy can't record agreement to it, at sign-up or later.
-        late = uuid.uuid4()
-        assert refused(late, "with n as (insert into users (id, username, email) values (:i, 'con_late', 'l@example.com')"
-                             " returning id) insert into consents (user_id, purpose, policy_version)"
-                             " select id, 'use_app', :v from n", i=late, v=POLICY) == "RaiseException"
-        run(u, "insert into consents (user_id, purpose, policy_version) values (:u, 'use_app', '2027-01-01')", u=u)
-        assert q(u, "select needs_consent from my_consent_status()")[0][0] is False
-
-        # Withdrawing the sign-up consent closes the account, like deleting it.
-        with session(u) as s:
-            assert s.execute(text("select withdraw_consent('use_app')")).scalar() == 2
-            assert ad.status(s)["deletion_requested_at"] is not None
-        assert q(u, "select count(*) from consents where withdrawn_at is not null")[0][0] == 2
-        # Restoring needs a new consent to the policy in force first.
-        with session(u) as s:
-            assert ad.restore(s) is not True
-            assert s.execute(text("select needs_consent from my_consent_status()")).scalar() is True
-        run(u, "insert into consents (user_id, purpose, policy_version) values (:u, 'use_app', '2027-01-01')", u=u)
-        with session(u) as s:
-            assert ad.restore(s) is True
-        assert q(u, "select needs_consent from my_consent_status()")[0][0] is False
-    finally:
-        with database.connect() as c:
-            c.execute(text("delete from consents where policy_version = '2027-01-01'"))
-            c.execute(text("delete from policy_versions where version = '2027-01-01'"))
-
-
 def test_temp_tables_cannot_shadow_real_ones(database):
     """R-SEC-4: a session's own temp table can't stand in for a real table inside the database's checks."""
     api = create_engine(_url("t_api"))
     sneaky, victim_owner = uuid.uuid4(), new_user("shadow_owner")
     victim_book = new_book(victim_owner)
     try:
+        with database.connect() as owner:
+            owner.execute(text("update instance_settings set signup = 'invite'"))
         with api.connect() as c:
-            c.execute(text("create temp table consents (user_id uuid, purpose text, policy_version text, withdrawn_at timestamptz)"))
-            c.execute(text("insert into pg_temp.consents values (:u, 'use_app', :v, null)"), {"u": sneaky, "v": POLICY})
+            c.execute(text("create temp table instance_settings (signup text, setup_claimed_by uuid)"))
+            c.execute(text("insert into pg_temp.instance_settings values ('open', :u)"), {"u": sneaky})
+            c.execute(text("create temp table invites (used_by uuid)"))
+            c.execute(text("insert into pg_temp.invites values (:u)"), {"u": sneaky})
             c.execute(text("create temp table book_members (book_id uuid, user_id uuid, role text, accepted_at timestamptz)"))
             c.execute(text("insert into pg_temp.book_members values (:b, :u, 'owner', now())"), {"b": victim_book, "u": sneaky})
             c.commit()
-            # Account without a real consent: still refused.
-            with pytest.raises(DBAPIError, match="consent_required"):
+            # An account with a fake invite, open sign-up or setup claim: still refused, and never admin.
+            with pytest.raises(DBAPIError, match="invite_required"):
                 with c.begin():
                     c.execute(text("select set_config('app.user_id', :u, true)"), {"u": str(sneaky)})
-                    c.execute(text("insert into users (id, username, email) values (:u, 'shadow_x', 'sx@example.com')"),
-                              {"u": sneaky})
+                    c.execute(text("insert into users (id, username) values (:u, 'shadow_x')"), {"u": sneaky})
             c.rollback()
             # A fake membership doesn't open someone else's book.
             with c.begin():
@@ -724,6 +605,8 @@ def test_temp_tables_cannot_shadow_real_ones(database):
                                    " values (:b, :c, 'monthly', 100)"), {"b": victim_book, "c": salary})
     finally:
         api.dispose()
+        with database.connect() as owner:
+            owner.execute(text("update instance_settings set signup = 'open'"))
 
 
 def test_archived_categories(database):
@@ -825,106 +708,10 @@ def test_features_from_the_old_app(database):
     assert [r["Danh mục"] for r in txns if r["Loại"] == "chuyển khoản"] == ["Tiết kiệm"]
 
 
-# ---------------------------------------------------------------- plans, AI keys, export
-
-def test_plans_and_subscriptions(database):
-    """R-PLAN-1..2, R-AI-3, R-SEC-5: AI is paid by whoever turns it on; subscriptions only via webhook; limits in the database."""
-    free, paid, friend = new_user("plan_free"), new_user("plan_paid"), new_user("plan_friend")
-    fb, pb = new_book(free), new_book(paid)
-
-    # Free plan: no AI without an own key.
-    with pytest.raises(DBAPIError, match="AI needs Premium or your own AI key"):
-        run(free, "insert into ai_settings (book_id, enabled) values (:b, true)", b=fb)
-
-    # Nobody can give themselves a plan from the app.
-    assert refused(free, "insert into subscriptions (user_id, plan, status, store, store_subscription_id, current_period_end)"
-                         " values (:u, 'premium', 'active', 'stripe', 'x', now() + interval '1 year')", u=free) == "InsufficientPrivilege"
-
-    # Paid via webhook: AI works; when the period ends it stops on its own.
-    subscribe(paid)
-    assert q(paid, "select plan from my_profile()")[0][0] == "premium"
-    assert refused(free, "select user_plan(:u)", u=paid) == "InsufficientPrivilege"         # others' plans are private
-    run(paid, "insert into ai_settings (book_id, enabled) values (:b, true)", b=pb)
-    assert q(paid, "select ai_entitlement(:b)", b=pb)[0][0] == "plan"
-    subscribe(paid, days=-1)
-    assert q(paid, "select (select plan from my_profile()), ai_entitlement(:b)", b=pb)[0] == ("free", None)
-    assert q(friend, "select count(*) from subscriptions")[0][0] == 0           # can't see others' billing
-
-    # The webhook updates a subscription by the store's id, and can read nothing else.
-    subscribe(paid)
-    bill = create_engine(_url("t_bill"))
-    with bill.begin() as c:
-        assert c.execute(text("update subscriptions set status = 'canceled', updated_at = now()"
-                              " where store_subscription_id = :s"), {"s": f"sub_{paid.hex}"}).rowcount == 1
-    for sql in ("select * from accounts", "select id from users"):
-        with bill.connect() as c, pytest.raises(DBAPIError):
-            c.execute(text(sql))
-    bill.dispose()
-    assert q(paid, "select plan from my_profile()")[0][0] == "free"
-
-    # In a shared book, the owner who turns AI on pays: a Premium co-owner can
-    # turn it on in a book a free user created.
-    subscribe(paid)
-    share(free, fb, paid, "owner")
-    run(paid, "insert into ai_settings (book_id, enabled) values (:b, true)", b=fb)
-    assert q(free, "select ai_entitlement(:b)", b=fb)[0][0] == "plan"
-    # Another owner can't make someone else the payer: only turning AI on does that.
-    run(free, "update ai_settings set consented_by = :f, include_payees = true where book_id = :b", f=free, b=fb)
-    assert q(free, "select consented_by, include_payees from ai_settings where book_id = :b", b=fb)[0] == (paid, True)
-
-    # Sharing can be made paid by changing one row; the creator's plan decides.
-    with database.connect() as c:
-        c.execute(text("update plans set max_members_per_book = 1, max_books = 2 where code = 'free'"))
-    try:
-        with pytest.raises(DBAPIError, match="plan_limit"):
-            share(free, fb, friend, "editor")
-        new_book(free)
-        with pytest.raises(DBAPIError, match="plan_limit"):
-            new_book(free)                                                     # third book
-        subscribe(paid)
-        share(paid, pb, friend, "editor")                                      # premium creator: allowed
-    finally:
-        with database.connect() as c:
-            c.execute(text("update plans set max_members_per_book = null, max_books = null where code = 'free'"))
-
-
-def test_bring_your_own_ai_key(monkeypatch):
-    """R-AI-4: free users can use their own AI key; it's stored encrypted and never readable by the app."""
-    import base64
-    monkeypatch.setenv("AI_KEY_ENCRYPTION_KEY", base64.b64encode(os.urandom(32)).decode())
-    from app.domain import ai_keys
-    u, member = new_user("byok_user"), new_user("byok_member")
-    b = new_book(u)
-    share(u, b, member, "viewer")
-    secret = "sk-test-0123456789abcd"
-    with session(u) as s:
-        assert ai_keys.save_key(s, u, "anthropic", secret) == "abcd"
-    run(u, "insert into ai_settings (book_id, enabled, key_provider) values (:b, true, 'anthropic')", b=b)
-    assert q(u, "select ai_entitlement(:b)", b=b)[0][0] == "own_key"
-
-    assert q(u, "select provider, key_hint from user_ai_keys")[0] == ("anthropic", "abcd")
-    assert refused(u, "select key_ciphertext from user_ai_keys") == "InsufficientPrivilege"
-    assert q(member, "select count(*) from user_ai_keys")[0][0] == 0
-    with session(u) as s:                                                       # app can't call the job's function
-        with pytest.raises(DBAPIError):
-            s.execute(text("select * from ai_key_for_book(:b)"), {"b": b})
-
-    ai = create_engine(_url("t_ai"))
-    with ai.begin() as c:
-        c.execute(text("select set_config('app.user_id', :u, true)"), {"u": str(member)})
-        assert ai_keys.key_for_book(c, b) == ("anthropic", secret)
-        blob = bytes(c.execute(text("select key_ciphertext from ai_key_for_book(:b)"), {"b": b}).scalar())
-    assert secret.encode() not in blob
-    with pytest.raises(InvalidTag):
-        ai_keys.decrypt(blob, member, "anthropic")                              # bound to its owner
-    ai.dispose()
-
-    run(u, "delete from user_ai_keys")                                          # key removed: AI stops
-    assert q(u, "select ai_entitlement(:b)", b=b)[0][0] is None
-
+# ---------------------------------------------------------------- export
 
 def test_csv_export():
-    """R-EXP-1..2, R-CON-3, R-LANG-1: users download all their data as readable CSV, in their language."""
+    """R-EXP-1..2, R-LANG-1: users download all their data as readable CSV, in their language."""
     import csv
     import io
     import re
@@ -942,20 +729,15 @@ def test_csv_export():
     add(u, b, "transfer", date(2026, 10, 3), [(cash, -2500000), (card, 10000)])
 
     with session(u) as s:
-        z = zipfile.ZipFile(io.BytesIO(build_export(s, site_url="https://msaving.example/")))
+        z = zipfile.ZipFile(io.BytesIO(build_export(s)))
     names = set(z.namelist())
-    assert "consents.csv" in names
-    assert {"README.txt", "profile.csv", "books.csv", "accounts.csv", "transactions.csv", "edit_history.csv",
-            "ai_advice.csv", "subscription.csv", "my_activity.csv"} <= names
+    assert names == {"README.txt", "profile.csv", "books.csv", "accounts.csv", "transactions.csv", "categories.csv",
+                     "budgets.csv", "people.csv", "exchange_rates.csv", "edit_history.csv", "my_activity.csv"}
 
     def read(name):
         return list(csv.DictReader(io.StringIO(z.read(name).decode("utf-8-sig"))))
 
-    assert read("profile.csv")[0]["Email"] == "exp_user@example.com"
-    consent = read("consents.csv")
-    assert [(r["Agreed to"], r["Policy version"], r["Policy text"], r["Withdrawn at"]) for r in consent] == \
-        [("Privacy policy (to use the app)", POLICY, "https://msaving.example/privacy/dev-2026-10-01", "")] \
-        and consent[0]["Agreed at"]
+    assert read("profile.csv")[0]["Username"] == "exp_user"
     txns = read("transactions.csv")
     pho = next(t for t in txns if t["Payee"] == "Pho 24")
     assert (pho["Amount"], pho["Currency"], pho["Category"], pho["Added by"]) == ("-125000", "VND", "An uong", "exp_partner")
@@ -978,39 +760,18 @@ def test_csv_export():
 
     everything = "".join(z.read(n).decode("utf-8-sig") for n in names)
     assert not re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", everything)   # no internal ids
-    assert "exp_partner@example.com" not in everything                                                   # others' emails
-
-
-def test_one_shared_book_free():
-    """R-PLAN-3: one shared book is free, more need a paid plan; joining others' books is always free."""
-    free, paid, a, b2 = new_user("sh_free"), new_user("sh_paid"), new_user("sh_a"), new_user("sh_b")
-    first, second = new_book(free), new_book(free)
-    share(free, first, a, "editor")
-    share(free, first, b2, "viewer")                      # more people in the same shared book: fine
-    with pytest.raises(DBAPIError, match="1 shared book"):
-        share(free, second, a, "editor")
-    run(free, "delete from book_members where book_id = :b and user_id <> :u", b=first, u=free)
-    share(free, second, a, "editor")                       # unsharing the first frees the slot
-
-    # Joining other people's books never counts.
-    for owner in (new_user("sh_o1"), new_user("sh_o2")):
-        share(owner, new_book(owner), free, "editor")
-
-    subscribe(free)
-    share(free, first, b2, "viewer")                       # premium: unlimited
-    subscribe(paid)
-    for _ in range(3):
-        share(paid, new_book(paid), a, "viewer")
 
 
 def test_supabase_api_roles_have_no_access(database):
     """R-SEC-3: Supabase's anon/authenticated roles can't reach any table or function, now or added later."""
     with database.connect() as c:
         for role in ("anon", "authenticated"):
-            for table in ("fx_rates", "plans", "currencies", "users", "transactions", "subscriptions"):
+            for table in ("fx_rates", "currencies", "users", "transactions", "local_credentials", "sessions",
+                          "invites", "instance_settings"):
                 assert not c.execute(text("select has_table_privilege(:r, :t, 'select') or has_table_privilege(:r, :t, 'insert')"),
                                      {"r": role, "t": f"public.{table}"}).scalar(), (role, table)
-            for fn in ("find_user_by_username(text)", "user_plan(uuid)", "purge_deleted_accounts()"):
+            for fn in ("find_user_by_username(text)", "sign_in_lookup(text)", "claim_setup(bytea)",
+                       "purge_deleted_accounts()"):
                 assert not c.execute(text("select has_function_privilege(:r, :f, 'execute')"),
                                      {"r": role, "f": f"public.{fn}"}).scalar(), (role, fn)
         # Nor what later migrations add (created by the same role that ran these).
@@ -1025,3 +786,37 @@ def test_supabase_api_roles_have_no_access(database):
                                      {"r": role}).scalar(), role
         finally:
             c.exec_driver_sql("drop function public.t_later(); drop table public.t_later_table")
+
+
+def test_fx_sources_and_fallback(monkeypatch):
+    """open.er-api.com first; currency-api (CC0) when it fails or announces its end; OXR with a key."""
+    from app.jobs import fx_update
+    open_ok = {"result": "success", "base_code": "USD", "time_last_update_unix": 1792454552, "time_eol_unix": 0,
+               "rates": {"USD": 1, "VND": Decimal("25857.68")}}
+    cc0 = {"date": "2026-10-19", "usd": {"vnd": Decimal("25899.67"), "eur": Decimal("0.89"), "btc": Decimal("0.00001")}}
+    calls = []
+
+    def serve(answers):
+        def get(url):
+            calls.append(url)
+            answer = answers.get(url.split("/")[2])
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        monkeypatch.setattr(fx_update, "_get", get)
+
+    monkeypatch.delenv("OXR_APP_ID", raising=False)
+    serve({"open.er-api.com": open_ok, "cdn.jsdelivr.net": cc0})
+    assert fx_update.fetch_rates() == (date(2026, 10, 20), {"USD": 1, "VND": Decimal("25857.68")}, "open.er-api.com")
+
+    serve({"open.er-api.com": {**open_ok, "time_eol_unix": 1800000000}, "cdn.jsdelivr.net": cc0})
+    as_of, rates, source = fx_update.fetch_rates()
+    assert (as_of, rates["VND"], rates["BTC"], source) == (date(2026, 10, 19), Decimal("25899.67"), Decimal("0.00001"), "currency-api")
+
+    calls.clear()
+    serve({"open.er-api.com": OSError("down"), "cdn.jsdelivr.net": OSError("down"), "latest.currency-api.pages.dev": cc0})
+    assert fx_update.fetch_rates()[2] == "currency-api" and len(calls) == 3
+
+    serve({})
+    with pytest.raises(RuntimeError, match="no exchange rate source"):
+        fx_update.fetch_rates()

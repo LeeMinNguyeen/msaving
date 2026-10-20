@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../components/errors'
 import { send, type Book, type Category, type CategoryKind } from '../lib/api'
 import { categoryTree } from '../lib/categories'
+import { newId } from '../lib/uuid'
 
 // The old app's preset grid (CategoryFormScreen).
 const COLORS = ['#64748b', '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#06b6d4',
@@ -28,7 +29,7 @@ export function CategoryDialog({ book, all, category, parent, onClose }: Props) 
   const { t } = useTranslation()
   const errorText = useErrorText()
   const qc = useQueryClient()
-  const id = useRef(category?.id ?? crypto.randomUUID())
+  const id = useRef(category?.id ?? newId())
   const [name, setName] = useState(category?.name ?? '')
   const [kind, setKind] = useState<CategoryKind>(category?.kind ?? parent?.kind ?? 'expense')
   const [parentId, setParentId] = useState(category?.parent_id ?? parent?.id ?? '')

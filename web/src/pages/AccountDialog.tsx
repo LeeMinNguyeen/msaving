@@ -22,6 +22,7 @@ import { accountKinds, liabilityKinds, personKinds, send, type Account, type Acc
 import { todayIn } from '../lib/labels'
 import { parseAmount } from '../lib/money'
 import { useContacts, useCurrencies } from '../lib/queries'
+import { newId } from '../lib/uuid'
 
 type Props = { book: Book; account: Account | null; onClose: () => void }
 
@@ -34,7 +35,7 @@ export function AccountDialog({ book, account, onClose }: Props) {
   const qc = useQueryClient()
   const fullScreen = useMediaQuery(useTheme().breakpoints.down('sm'))
   const currencies = useCurrencies()
-  const id = useRef(account?.id ?? crypto.randomUUID())
+  const id = useRef(account?.id ?? newId())
   const [name, setName] = useState(account?.name ?? '')
   const [kind, setKind] = useState<AccountKind>(account?.kind ?? 'cash')
   const [currency, setCurrency] = useState<string | null>(account?.currency ?? book.base_currency)
@@ -45,7 +46,7 @@ export function AccountDialog({ book, account, onClose }: Props) {
   const contacts = useContacts(book.id, true)
   const [person, setPerson] = useState(account?.contact_id ?? '') // '' = none, 'new' = type a name
   const [newPerson, setNewPerson] = useState('')
-  const newPersonId = useRef(crypto.randomUUID())
+  const newPersonId = useRef(newId())
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
 

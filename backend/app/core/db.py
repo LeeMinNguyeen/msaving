@@ -14,16 +14,13 @@ from uuid import UUID
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
-# Login role that is a member of app_user (no table ownership, no BYPASSRLS).
-# sslmode=require so credentials and data are never sent in clear text.
-# Small pool: on Supabase Free the Session pooler shares about 15 database
-# connections between every client. 2 + 2 per instance, times the API's
-# max_instance_count (3, infra/terraform), leaves room for the jobs. Developers'
-# local APIs use the Transaction pooler (port 6543) instead, which shares
-# connections between many clients; app.user_id is transaction-local, so that's
-# safe, but it can't keep prepared statements, so psycopg never makes any.
+# A login that is a member of app_user (no table ownership, no BYPASSRLS):
+# api_login, made by app/jobs/migrate.py. A small pool: one API process
+# serves a household or a small group. No prepared statements, so an
+# operator's own database can sit behind a transaction pooler (Supabase's,
+# PgBouncer): app.user_id is transaction-local, so that's safe.
 engine = create_engine(
-    os.environ["DATABASE_URL"], pool_pre_ping=True, pool_size=2, max_overflow=2, pool_recycle=1800,
+    os.environ["DATABASE_URL"], pool_pre_ping=True, pool_size=5, max_overflow=5, pool_recycle=1800,
     connect_args={"prepare_threshold": None},
 )
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
@@ -54,15 +51,3 @@ def request_session(user_id: UUID) -> Iterator[Session]:
 
         yield session
 
-
-# FastAPI wiring (superseded by app/api/deps.py, kept as the short version) (current_user verifies the auth provider's JWT and returns its user id):
-#
-#   def get_db(user_id: UUID = Depends(current_user)) -> Iterator[Session]:
-#       with user_session(user_id) as session:
-#           yield session
-#
-#   @app.get("/books/{book_id}/balances")
-#   def balances(book_id: UUID, db: Session = Depends(get_db)):
-#       return db.execute(
-#           text("select * from account_balances where book_id = :b"), {"b": book_id}
-#       ).mappings().all()

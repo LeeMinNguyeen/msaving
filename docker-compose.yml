@@ -1,0 +1,149 @@
+# MSaving: your own spending tracker, for you or a private group.
+#
+#   git clone https://github.com/LeeMinNguyeen/msaving && cd msaving
+#   docker compose up -d --build
+#   docker compose logs msaving          the setup code, the first time
+#
+# Then open http://localhost:8080 and create the admin account with the setup
+# code. Everything is optional in a .env file next to this one (see
+# .env.example): the port, HTTPS with your own domain, your own database.
+# There are no published images: the server is built here, from this folder
+# (the first build takes a few minutes).
+#
+# Update:  git pull && docker compose up -d --build   (takes a backup first)
+# Guide:   https://msaving.leminhnguyen.com/docs/
+
+name: msaving
+
+services:
+  # First start only: makes the built-in database's password, in the secrets
+  # volume, before the database first starts. Nothing to type or keep.
+  secrets:
+    image: msaving:local
+    build: .
+    pull_policy: build
+    command: ["python", "-m", "app.launch", "secrets"]
+    volumes:
+      - secrets:/secrets
+    restart: "no"
+
+  # The built-in database. To use your own Postgres (or Supabase) instead, set
+  # ADMIN_DATABASE_URL in .env and start with: docker compose up -d --scale db=0
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD_FILE: /secrets/postgres_password
+    volumes:
+      - db:/var/lib/postgresql/data
+      - secrets:/secrets:ro
+    depends_on:
+      secrets:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # The server: the web app, the API and the daily jobs (purge, backup,
+  # exchange rates). Not reachable from other machines unless BIND says so.
+  msaving:
+    image: msaving:local
+    build: .
+    pull_policy: build
+    ports:
+      - "${BIND:-127.0.0.1}:${PORT:-8080}:8080"
+    environment:
+      ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-}
+      OXR_APP_ID: ${OXR_APP_ID:-}
+      JOBS_HOUR: ${JOBS_HOUR:-19}
+      UPDATE_CHECK: ${UPDATE_CHECK:-on}
+    volumes:
+      - secrets:/secrets
+      - backups:/backups
+      - updates:/updates
+    depends_on:
+      secrets:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+
+  # Optional HTTPS with your own domain (needed for the mobile app). In .env:
+  #   COMPOSE_PROFILES=https
+  #   DOMAIN=money.example.com
+  # Point the domain's DNS at this machine and open ports 80 and 443; Caddy
+  # gets and renews the certificate by itself.
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    command: ["caddy", "reverse-proxy", "--from", "${DOMAIN:-localhost}", "--to", "msaving:8080"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy:/data
+    depends_on:
+      - msaving
+    restart: unless-stopped
+
+  # Optional one-click updates from the web app's Server admin page. In .env:
+  #   COMPOSE_PROFILES=updater        (or https,updater)
+  # This helper can control Docker on this machine (root-level access) and
+  # write to this folder, so it's off unless you turn it on. It does one thing:
+  # when the admin presses Update, it runs `git pull` here (as this folder's
+  # owner), then rebuilds and restarts the services that are running. Without
+  # it, the admin page shows the two commands to run instead. A release that
+  # adds a service or changes this helper says so in its notes: run
+  # `docker compose up -d` once by hand for that.
+  updater:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM docker:29-cli
+        RUN apk add --no-cache git su-exec
+    image: msaving-updater:local
+    pull_policy: build
+    profiles: ["updater"]
+    working_dir: /project
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/project
+      - updates:/updates
+    command:
+      - sh
+      - -c
+      - |
+        chown 10001 /updates
+        owner=$$(stat -c %u:%g /project)
+        while true; do
+          touch /updates/updater_alive
+          if [ -f /updates/requested ]; then
+            rm -f /updates/requested
+            echo "running $$(date -u +%FT%TZ)" > /updates/status
+            # The running services but this one (compose here would mount this
+            # container's /project, not the folder on the host). Not the
+            # others: a database left off with --scale db=0 stays off.
+            if ! su-exec "$$owner" git symbolic-ref -q HEAD > /dev/null; then
+              echo "failed $$(date -u +%FT%TZ): this folder is on a fixed version, not a branch (git checkout main)" > /updates/status
+            elif HOME=/tmp su-exec "$$owner" git pull --ff-only > /tmp/update.log 2>&1 \
+              && services=$$(docker compose ps --services --status running | grep -vx updater) \
+              && docker compose up -d --build --no-deps $$services >> /tmp/update.log 2>&1; then
+              echo "done $$(date -u +%FT%TZ)" > /updates/status
+            else
+              echo "failed $$(date -u +%FT%TZ): $$(tail -n 3 /tmp/update.log | tr '\n' ' ')" > /updates/status
+            fi
+          fi
+          sleep 5
+        done
+    restart: unless-stopped
+
+volumes:
+  secrets:
+  db:
+  backups:
+  updates:
+  caddy:

@@ -1,7 +1,7 @@
 """Books: create (with starter categories), list, settings, delete.
 
 Ids come from the client, so a retried create can't make a second book. Edits
-send the version the client loaded; a mismatch is 409 (msaving-docs, Several
+send the version the client loaded; a mismatch is 409 (docs: The ledger, several
 devices at once).
 """
 from datetime import datetime
@@ -66,7 +66,7 @@ def create_book(body: CreateBook, user_id: UUID = Depends(current_user), db: Ses
     # A retry finds the book made the first time. Otherwise a plain insert: no
     # RETURNING and no ON CONFLICT, since both make Postgres apply the read
     # policy to the new row, and the creator only becomes a member once the
-    # insert finishes (msaving-docs, Users and shared books). An id that belongs to
+    # insert finishes (docs: Users and shared books). An id that belongs to
     # a book this user can't see fails on the primary key: 409.
     if db.execute(text("select 1 from books where id = :i"), {"i": body.id}).first() is None:
         db.execute(text("insert into books (id, created_by, name, base_currency, timezone) values (:i, :u, :n, :c, :tz)"),
