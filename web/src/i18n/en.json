@@ -138,7 +138,8 @@
     "invalid_timezone": "That timezone isn't one this server knows. Pick another.",
     "updater_off": "One-click updates are off on this server.",
     "origin_not_allowed": "This address isn't this server's own web app.",
-    "cannot_invite": "No one with that username can be invited: check the spelling, or they may already be in this book."
+    "cannot_invite": "No one with that username can be invited: check the spelling, or they may already be in this book.",
+    "server_unreachable": "Can't reach the server. If it's restarting or updating, try again in a few minutes."
   },
   "nav": {
     "transactions": "Transactions",
@@ -415,14 +416,16 @@
     "resetReadyBody": "Give this link to them yourself. It works once, for 24 hours, and turns their two-step verification off.",
     "updates": "Updates",
     "latest": "newest {{version}}",
-    "updating": "Updating: the server is getting the new version, building it, taking a backup and restarting. This takes a few minutes; this page reconnects by itself.",
     "updateDone": "The last update finished.",
     "updateFailed": "The last update failed: {{detail}}",
     "releaseNotes": "What's new",
     "updateNow": "Update now",
     "updateByHand": "To update, run these on the server, in the msaving folder (the one you cloned):",
     "updaterHint": "For a one-click Update here, add COMPOSE_PROFILES=updater to .env (see the setup guide: it gives a helper control of Docker).",
-    "updateConfirm": "Install version {{version}}? The server builds it, takes a backup, then restarts; everyone is offline for a moment, and the whole update takes a few minutes."
+    "updateConfirm": "Install version {{version}}? The server builds it, takes a backup, then restarts; everyone is offline for a moment, and the whole update takes a few minutes.",
+    "updatingReload": "Updating to {{version}}. The server rebuilds and restarts, so this page may stop working for a few minutes. Reload it in about 5 minutes.",
+    "updatedReload": "Updated to {{version}}. Reload the page to use the new version.",
+    "reload": "Reload"
   },
   "members": {
     "title": "Members",
