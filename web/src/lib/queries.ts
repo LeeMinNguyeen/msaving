@@ -65,8 +65,9 @@ export function useTransactions(bookId: string, filters: TxnFilters) {
   })
 }
 
-// Not kept between openings: a cached copy would show first and hide the newest
-// edit until the refetch lands, which on a slow link takes seconds (msaving#18).
+// Not kept between openings (msaving#18): a cached copy would show first and
+// hide the newest edit until the refetch lands, seconds on a slow link. The
+// dialog also waits for a fetch of its own (isFetchedAfterMount).
 export function useHistory(bookId: string, txnId: string) {
   return useQuery({
     queryKey: ['books', bookId, 'transactions', 'history', txnId],

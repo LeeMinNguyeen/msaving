@@ -24,6 +24,8 @@ export function HistoryDialog({ book, txnId, onClose }: { book: Book; txnId: str
   const errorText = useErrorText()
   const lang = currentLanguage()
   const history = useHistory(book.id, txnId)
+  // Only what was fetched since this opening: an older copy would hide the newest edit (msaving#18).
+  const fresh = history.isFetchedAfterMount ? history.data : undefined
   const accounts = useAccounts(book.id, true)
   const categories = useCategories(book.id, true)
   const currencies = useCurrencies()
@@ -37,14 +39,14 @@ export function HistoryDialog({ book, txnId, onClose }: { book: Book; txnId: str
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{t('txn.historyTitle')}</DialogTitle>
       <DialogContent>
-        {history.isPending && (
+        {!fresh && !history.isError && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
             <CircularProgress size={28} />
           </Box>
         )}
         {history.isError && <Alert severity="error">{errorText(history.error)}</Alert>}
         <Stack spacing={2}>
-          {history.data?.map((h, i) => (
+          {fresh?.map((h, i) => (
             <Fragment key={`${h.version}-${h.action}`}>
               {i > 0 && <Divider />}
               <Stack spacing={0.5}>
