@@ -15,7 +15,7 @@ function server(books: Book[]) {
 describe('Create a book (msaving#21)', () => {
   it('has Cancel, back to the page before, when the user already has a book', async () => {
     server([personal])
-    await renderApp(<CreateBook />, { history: ['/books/b1/accounts', '/books/new'] })
+    await renderApp(<CreateBook />, { history: ['/books/b1/accounts', { pathname: '/books/new', state: { fromApp: true } }] })
     await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
     expect(screen.getByTestId('where')).toHaveTextContent('/books/b1/accounts')
   })
@@ -25,6 +25,14 @@ describe('Create a book (msaving#21)', () => {
     await renderApp(<CreateBook />, { route: '/books/new' })
     await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/) // "/" opens the first book
+  })
+
+  it('stays in the app when "/" sent the user here and a book turned up since (an invite accepted)', async () => {
+    server([personal])
+    // The entry before is another site's: "/" replaced itself with this page.
+    await renderApp(<CreateBook />, { history: ['/elsewhere', '/books/new'] })
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/)
   })
 
   it('has no Cancel for a first book: there is nowhere to go back to', async () => {

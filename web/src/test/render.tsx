@@ -17,9 +17,12 @@ function Where() {
   return <div data-testid="where">{pathname + search}</div>
 }
 
+// An address in the history, with the state a link gave it if any.
+type Entry = string | { pathname: string; state?: unknown }
+
 // The app's providers around one screen. English by default so tests read
 // plainly; pass lang: 'vi' to check Vietnamese.
-export async function renderApp(ui: ReactElement, opts: { route?: string; history?: string[]; lang?: 'vi' | 'en'; client?: QueryClient } = {}) {
+export async function renderApp(ui: ReactElement, opts: { route?: string; history?: Entry[]; lang?: 'vi' | 'en'; client?: QueryClient } = {}) {
   await i18n.changeLanguage(opts.lang ?? 'en')
   const client = opts.client ?? testClient()
   const entries = opts.history ?? [opts.route ?? '/']

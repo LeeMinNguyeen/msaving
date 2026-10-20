@@ -58,11 +58,14 @@ export function CreateBook() {
     }
   }
 
-  // With a book to go back to, Cancel returns to the page before (or the
-  // first book, when this page was opened directly). Without one there's
-  // nowhere to go: this is the first screen.
+  // With a book to go back to, Cancel returns to the page before when the
+  // app opened this one (its links say so in their state), else to the first
+  // book: after opening it directly, or being sent here from "/", the entry
+  // before isn't the app's. Without a book there's nowhere to go: this is the
+  // first screen.
   const hasBook = (books.data ?? []).length > 0
-  const cancel = () => (location.key !== 'default' ? navigate(-1) : navigate('/', { replace: true }))
+  const fromApp = (location.state as { fromApp?: boolean } | null)?.fromApp
+  const cancel = () => (fromApp ? navigate(-1) : navigate('/', { replace: true }))
 
   return (
     <Centered>

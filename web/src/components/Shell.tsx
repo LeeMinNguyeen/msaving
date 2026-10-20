@@ -55,7 +55,7 @@ function BookSwitcher({ book }: { book: Book }) {
       fullWidth
       value={book.id}
       aria-label={t('book.switch')}
-      onChange={(e) => (e.target.value === 'new' ? navigate('/books/new') : navigate(`/books/${e.target.value}`))}
+      onChange={(e) => (e.target.value === 'new' ? navigate('/books/new', { state: { fromApp: true } }) : navigate(`/books/${e.target.value}`))}
     >
       {open.map((b) => (
         <MenuItem key={b.id} value={b.id}>
@@ -186,9 +186,9 @@ function PhoneFrame({ book, pages, canAdd, onAdd, admin, children }: {
     { to: `/books/${book.id}/profile`, label: t('nav.profile'), icon: <PersonIcon /> },
   ]
   const current = main.some((p) => p.to === pathname) ? pathname : 'more'
-  const go = (to: string) => {
+  const go = (to: string, state?: unknown) => {
     setSheet(null)
-    navigate(to)
+    navigate(to, { state })
   }
   const open = (books.data ?? []).filter((b) => !b.archived_at || b.id === book.id)
   const bottom = `calc(${NAV_HEIGHT}px + env(safe-area-inset-bottom))`
@@ -231,7 +231,7 @@ function PhoneFrame({ book, pages, canAdd, onAdd, admin, children }: {
             </ListItemButton>
           ))}
           <Divider />
-          <ListItemButton onClick={() => go('/books/new')}>
+          <ListItemButton onClick={() => go('/books/new', { fromApp: true })}>
             <ListItemIcon><AddIcon /></ListItemIcon>
             <ListItemText primary={t('book.new')} />
           </ListItemButton>
