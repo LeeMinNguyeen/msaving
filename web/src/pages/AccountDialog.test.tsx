@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Account, Book } from '../lib/api'
@@ -140,18 +140,19 @@ describe('fields by kind (msaving#17)', () => {
 
 describe('setting the balance (msaving#24)', () => {
   it('adds an adjustment for the difference from the balance now, dated today', async () => {
-    // Someone added 14,000 since the dialog opened: the server has 6,950,000.
-    const api = server([{ ...cash, balance: 6_950_000 }, card])
+    // Someone added 14,000 since the dialog opened: the save answers with 6,950,000.
+    const api = server()
+    api.routes['PATCH /v1/books/b1/accounts/a1'] = { ...cash, balance: 6_950_000, version: 4 }
     await renderApp(<AccountDialog book={book} account={cash} editing onClose={() => {}} />)
     expect(await screen.findByRole('textbox', { name: 'Current balance' })).toHaveValue('6,936,000')
     await userEvent.clear(field('Current balance'))
     await userEvent.type(field('Current balance'), '7000000')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(api.writes()).toHaveLength(2))
-    const [adjust, patch] = api.writes()
+    const [patch, adjust] = api.writes() // the account first: a refused edit leaves no adjustment behind
+    expect(patch.method).toBe('PATCH')
     expect(adjust).toMatchObject({ method: 'POST', path: '/v1/books/b1/transactions', body: {
       type: 'adjustment', occurred_on: todayIn(book.timezone), entries: [{ account_id: 'a1', amount: 50_000 }], category_id: null } })
-    expect(patch.method).toBe('PATCH')
   })
 
   it("reads a card's balance as what's owed", async () => {
@@ -162,7 +163,7 @@ describe('setting the balance (msaving#24)', () => {
     await userEvent.type(field('Amount owed now'), '10000000')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(api.writes()).toHaveLength(2))
-    expect(api.writes()[0].body).toMatchObject({ type: 'adjustment', entries: [{ account_id: 'a2', amount: -104_000 }] })
+    expect(api.writes()[1].body).toMatchObject({ type: 'adjustment', entries: [{ account_id: 'a2', amount: -104_000 }] })
   })
 
   it('adds nothing when the balance is left as it was', async () => {
@@ -174,20 +175,126 @@ describe('setting the balance (msaving#24)', () => {
     expect(api.writes()[0].method).toBe('PATCH')
   })
 
-  it('sends the same adjustment again on a retry, so it is never added twice', async () => {
+  // A server whose adjustments are idempotent by id, like the real one, and whose first answer to one is lost.
+  function lossyServer() {
     const api = server()
-    let fail = true
-    api.routes['PATCH /v1/books/b1/accounts/a1'] = () => (fail ? new Response('{"detail":"unexpected_error"}', { status: 500 }) : cash)
-    await renderApp(<AccountDialog book={book} account={cash} editing onClose={() => {}} />)
+    let balance = cash.balance
+    let version = cash.version
+    const saved = new Set<string>()
+    let lose = true
+    api.routes['PATCH /v1/books/b1/accounts/a1'] = () => ({ ...cash, balance, version: ++version })
+    api.routes['POST /v1/books/b1/transactions'] = (c: { body: unknown }) => {
+      const body = c.body as { id: string; entries: { amount: number }[] }
+      if (!saved.has(body.id)) {
+        saved.add(body.id)
+        balance += body.entries[0].amount
+      }
+      if (lose) {
+        lose = false
+        return new Response('{"detail":"unexpected_error"}', { status: 500 })
+      }
+      return {}
+    }
+    const posts = () => api.writes().filter((c) => c.method === 'POST') as { body: { id: string; entries: { amount: number }[] } }[]
+    return { api, posts, balance: () => balance }
+  }
+
+  async function saveBalance(typed: string) {
     await userEvent.clear(await screen.findByRole('textbox', { name: 'Current balance' }))
-    await userEvent.type(field('Current balance'), '7000000')
+    await userEvent.type(field('Current balance'), typed)
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  }
+
+  it('sends the same adjustment again on a retry, so it is never added twice', async () => {
+    const { api, posts, balance } = lossyServer()
+    await renderApp(<AccountDialog book={book} account={cash} editing onClose={() => {}} />)
+    await saveBalance('7000000')
     expect(await screen.findByRole('alert')).toBeInTheDocument()
-    fail = false
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(3))
+    expect(api.writes().map((c) => c.method)).toEqual(['PATCH', 'POST', 'PATCH']) // the first was saved: nothing left to add
+    expect((api.writes()[2].body as { version: number }).version).toBe(4)         // carries on from the first save
+    expect(posts()).toHaveLength(1)
+    expect(balance()).toBe(7_000_000)
+  })
+
+  it('makes a new adjustment for a different balance typed after a failed save', async () => {
+    const { api, posts, balance } = lossyServer()
+    await renderApp(<AccountDialog book={book} account={cash} editing onClose={() => {}} />)
+    await saveBalance('7000000')
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await saveBalance('7100000')
     await waitFor(() => expect(api.writes()).toHaveLength(4))
-    const posts = api.writes().filter((c) => c.method === 'POST') as { body: { id: string } }[]
-    expect(posts).toHaveLength(2)
-    expect(posts[0].body.id).toBe(posts[1].body.id)
+    expect(posts()[1].body.id).not.toBe(posts()[0].body.id)
+    expect(posts()[1].body.entries[0].amount).toBe(100_000)
+    expect(balance()).toBe(7_100_000)
+  })
+
+  it('on a conflict, shows the account as someone else saved it, adds nothing, and saves from there', async () => {
+    const api = server()
+    const renamed = { ...cash, name: 'Wallet', version: 4 }
+    api.routes['GET /v1/books/b1/accounts'] = [renamed, card]
+    api.routes['PATCH /v1/books/b1/accounts/a1'] = (c: { body: unknown }) =>
+      (c.body as { version: number }).version === 4 ? renamed : new Response('{"detail":"conflict"}', { status: 409 })
+    await renderApp(<AccountDialog book={book} account={cash} editing onClose={() => {}} />)
+    await saveBalance('7000000')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/changed somewhere else/i)
+    expect(field(/account name/i)).toHaveValue('Wallet')
+    expect(field('Current balance')).toHaveValue('6,936,000')
+    expect(postsTo(api)).toHaveLength(0)
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes().at(-1)).toMatchObject({ method: 'PATCH', body: { version: 4, name: 'Wallet' } }))
+  })
+})
+
+const postsTo = (api: ReturnType<typeof fakeApi>) => api.writes().filter((c) => c.method === 'POST')
+
+describe('fields that follow the kind and currency', () => {
+  it("keeps an untouched balance as it is when the currency changes (it isn't read back)", async () => {
+    const api = server()
+    const usd = { ...cash, currency: 'USD', balance: 0 }
+    api.routes['PATCH /v1/books/b1/accounts/a1'] = { ...usd, currency: 'VND' }
+    await renderApp(<AccountDialog book={book} account={usd} editing onClose={() => {}} />)
+    expect(await screen.findByRole('textbox', { name: 'Current balance' })).toHaveValue('0.00')
+    await userEvent.click(screen.getByRole('combobox', { name: 'Currency' }))
+    await userEvent.click(await screen.findByRole('option', { name: /VND/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    expect(api.writes()[0].body).toMatchObject({ currency: 'VND' })
+  })
+
+  it("doesn't let a field the kind hides hold up Save", async () => {
+    const api = server()
+    await renderApp(<AccountDialog book={book} account={card} editing onClose={() => {}} />)
+    await userEvent.clear(await screen.findByRole('textbox', { name: /credit limit/i }))
+    await userEvent.type(field(/credit limit/i), '-5')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await pick(/account type/i, 'Cash')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    expect(api.writes()[0].body).toMatchObject({ kind: 'cash', credit_limit: null })
+  })
+
+  it('shows an untouched balance the way the new kind reads it, and adds nothing for it', async () => {
+    const api = server()
+    await renderApp(<AccountDialog book={book} account={cash} editing onClose={() => {}} />)
+    expect(await screen.findByRole('textbox', { name: 'Current balance' })).toHaveValue('6,936,000')
+    await pick(/account type/i, 'Credit card')
+    expect(field('Amount owed now')).toHaveValue('-6,936,000')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    expect(api.writes()[0].method).toBe('PATCH')
+  })
+
+  it('waits for a whole date before a new account can be saved', async () => {
+    server()
+    await renderApp(<AccountDialog book={book} account={null} onClose={() => {}} />)
+    await userEvent.type(await screen.findByRole('textbox', { name: /account name/i }), 'Wallet')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    fireEvent.click(screen.getAllByRole('spinbutton')[0]) // the day of "As of"
+    fireEvent.input(document.activeElement!, { target: { textContent: '0' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    fireEvent.input(document.activeElement!, { target: { textContent: '5' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
 })

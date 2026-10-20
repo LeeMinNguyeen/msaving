@@ -28,9 +28,12 @@ export function detailsPayload(kind: AccountKind, d: Details) {
 // already has digits keeps the field so they can be cleared.
 export const showsLast4 = (kind: AccountKind, existing: string | null | undefined) => last4Kinds.includes(kind) || !!existing
 
+// A balance as typed in an account's edit dialog, as the ledger holds it: what's
+// owed (credit card, loan) is typed positive and is negative in the ledger.
+export const ledgerBalance = (kind: AccountKind, typed: number) => (liabilityKinds.includes(kind) ? -typed : typed)
+
 // The adjustment that takes an account from its balance now to the one typed
-// in its edit dialog (msaving#24). What's owed (credit card, loan) is typed
-// positive and is negative in the ledger.
+// in its edit dialog (msaving#24).
 export function adjustmentFor(kind: AccountKind, typed: number, balanceNow: number): number {
-  return (liabilityKinds.includes(kind) ? -typed : typed) - balanceNow
+  return ledgerBalance(kind, typed) - balanceNow
 }

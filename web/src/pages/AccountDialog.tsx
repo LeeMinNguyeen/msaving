@@ -22,9 +22,9 @@ import { CurrencyPicker } from '../components/CurrencyPicker'
 import { DateField } from '../components/DateField'
 import { useErrorText } from '../components/errors'
 import { currentLanguage } from '../i18n'
-import { adjustmentFor, detailsPayload, showsLast4 } from '../lib/accounts'
+import { adjustmentFor, detailsPayload, ledgerBalance, showsLast4 } from '../lib/accounts'
 import {
-  accountKinds, api, interestKinds, last4Kinds, liabilityKinds, personKinds, send, type Account, type AccountKind, type Book,
+  accountKinds, api, ApiError, interestKinds, last4Kinds, liabilityKinds, personKinds, send, type Account, type AccountKind, type Book,
 } from '../lib/api'
 import { todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
@@ -63,11 +63,15 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
   const fullScreen = useMediaQuery(useTheme().breakpoints.down('sm'))
   const contacts = useContacts(book.id, true)
   const id = useRef(account?.id ?? newId())
-  const adjustmentId = useRef(newId()) // one per dialog, so a retried save can't adjust twice
+  // One adjustment id per balance typed: a retry can't add it twice, and a
+  // different balance after a failed save is a new adjustment.
+  const adjustment = useRef<{ id: string; target: number } | null>(null)
   const newPersonId = useRef(newId())
   const canEdit = book.role !== 'viewer'
+  const [base, setBase] = useState(account) // the account as last loaded or saved
   const [editing, setEditing] = useState(!account || (startEditing && canEdit))
   const [form, setForm] = useState(() => toForm(account, book, lang, minorOf))
+  const [badDate, setBadDate] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }))
@@ -77,16 +81,26 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
   const withPerson = personKinds.includes(form.kind)
   const card = form.kind === 'credit_card'
   const withInterest = interestKinds.includes(form.kind)
-  const withLast4 = showsLast4(form.kind, account?.last4)
+  const withLast4 = showsLast4(form.kind, base?.last4)
   const parse = (text: string, minor = minorUnit) => (text.trim() === '' ? 0 : parseAmount(text, minor, lang))
   const opening = parse(form.opening)
-  const balance = parse(form.balance)
+  // An untouched balance isn't read back: its text has the decimals of the currency it was shown in.
+  const balanceChanged = !!base && form.balance !== form.balanceAtStart
+  const balance = balanceChanged ? parse(form.balance) : 0
   const creditLimit = parse(form.creditLimit)
   const annualFee = parse(form.annualFee)
   const interest = parse(form.interest, 2)
-  const valid = !!form.name.trim() && !!form.currency && [opening, balance, creditLimit, annualFee, interest].every((v) => v !== null)
-    && (creditLimit ?? 0) >= 0 && (annualFee ?? 0) >= 0 && (interest ?? 0) >= 0 && (interest ?? 0) <= 100_000
+  // Only the fields the kind shows count: a hidden one is sent as null.
+  const valid = !!form.name.trim() && !!form.currency && opening !== null && balance !== null && !badDate
+    && (!card || (creditLimit !== null && creditLimit >= 0 && annualFee !== null && annualFee >= 0))
+    && (!withInterest || (interest !== null && interest >= 0 && interest <= 100_000))
   const money = (minor: number) => formatMoney(minor, form.currency ?? '', minorUnit, lang)
+
+  // An untouched balance follows the kind, since what's owed is shown positive.
+  function changeKind(kind: AccountKind) {
+    const shown = base && !balanceChanged ? balanceText(base, kind, lang, minorOf) : null
+    set({ kind, ...(shown !== null ? { balance: shown, balanceAtStart: shown } : {}) })
+  }
 
   function details() {
     const blank = (text: string, value: number | null) => (text.trim() === '' ? null : value)
@@ -112,30 +126,34 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
         await send('POST', `/v1/books/${book.id}/contacts`, { id: newPersonId.current, name: form.newPerson.trim() })
         contactId = newPersonId.current
       }
-      if (account) {
-        // The balance first: the adjustment's id makes a retry safe, and it's
-        // worked out from the balance now, in case someone added a transaction meanwhile.
-        if (form.balance !== form.balanceAtStart && balance !== null) {
-          const all = await api<Account[]>(`/v1/books/${book.id}/accounts?include_archived=true`)
-          const diff = adjustmentFor(form.kind, balance, all.find((a) => a.id === account.id)?.balance ?? account.balance)
+      if (base) {
+        // The account first, then the balance: an edit refused after its
+        // adjustment was saved would leave half the change, and an adjustment
+        // would lock a currency being changed.
+        const saved = await send<Account>('PATCH', `/v1/books/${book.id}/accounts/${base.id}`, {
+          version: base.version,
+          name: form.name.trim(),
+          kind: form.kind,
+          currency: form.currency === base.currency ? null : form.currency,
+          last4: form.last4 === (base.last4 ?? '') ? null : form.last4,
+          in_net_worth: form.inNetWorth,
+          contact_id: contactId,
+          no_contact: !contactId && !!base.contact_id,
+          ...details(),
+        })
+        setBase(saved) // a retry carries on from what's saved
+        // Worked out from the balance the save returned, in case someone added a transaction meanwhile.
+        if (balanceChanged && balance !== null) {
+          const target = ledgerBalance(form.kind, balance)
+          if (adjustment.current?.target !== target) adjustment.current = { id: newId(), target }
+          const diff = adjustmentFor(form.kind, balance, saved.balance)
           if (diff !== 0) {
             await send('POST', `/v1/books/${book.id}/transactions`, {
-              id: adjustmentId.current, type: 'adjustment', occurred_on: todayIn(book.timezone),
-              entries: [{ account_id: account.id, amount: diff }], category_id: null, payee: null, note: null,
+              id: adjustment.current.id, type: 'adjustment', occurred_on: todayIn(book.timezone),
+              entries: [{ account_id: base.id, amount: diff }], category_id: null, payee: null, note: null,
             })
           }
         }
-        await send('PATCH', `/v1/books/${book.id}/accounts/${account.id}`, {
-          version: account.version,
-          name: form.name.trim(),
-          kind: form.kind,
-          currency: form.currency === account.currency ? null : form.currency,
-          last4: form.last4 === (account.last4 ?? '') ? null : form.last4,
-          in_net_worth: form.inNetWorth,
-          contact_id: contactId,
-          no_contact: !contactId && !!account.contact_id,
-          ...details(),
-        })
       } else {
         await send('POST', `/v1/books/${book.id}/accounts`, {
           id: id.current,
@@ -146,13 +164,14 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
           in_net_worth: form.inNetWorth,
           contact_id: contactId,
           opening_balance: owed ? -Math.abs(opening ?? 0) : (opening ?? 0),
-          opened_on: form.openedOn,
+          opened_on: form.openedOn || null, // none: today
           ...details(),
         })
       }
       onClose()
     } catch (err) {
-      setError(err)
+      if (base && err instanceof ApiError && err.code === 'conflict') await reload(base, err)
+      else setError(err)
     } finally {
       setBusy(false)
       await invalidate(book.id)
@@ -160,9 +179,24 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
     }
   }
 
+  // Someone else saved the account first: show their version and say so, as the
+  // transaction dialog does. Saving again then starts from it.
+  async function reload(current: Account, message: unknown) {
+    try {
+      const all = await api<Account[]>(`/v1/books/${book.id}/accounts?include_archived=true`)
+      const latest = all.find((a) => a.id === current.id)
+      if (!latest) return onClose()
+      setBase(latest)
+      setForm(toForm(latest, book, lang, minorOf))
+      setError(message)
+    } catch {
+      onClose()
+    }
+  }
+
   function cancel() {
-    if (account && !startEditing) {
-      setForm(toForm(account, book, lang, minorOf))
+    if (base && !startEditing) {
+      setForm(toForm(base, book, lang, minorOf))
       setError(null)
       setEditing(false)
     } else onClose()
@@ -173,14 +207,14 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
     <Dialog open onClose={onClose} fullScreen={fullScreen} fullWidth maxWidth="sm">
       <form onSubmit={submit}>
         <DialogTitle>
-          {t(!account ? 'accounts.add' : editing ? 'accounts.edit' : 'accounts.details')}
-          {account?.archived_at && <Chip size="small" label={t('accounts.archived')} sx={{ ml: 1 }} />}
+          {t(!base ? 'accounts.add' : editing ? 'accounts.edit' : 'accounts.details')}
+          {base?.archived_at && <Chip size="small" label={t('accounts.archived')} sx={{ ml: 1 }} />}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField label={t('accounts.name')} required disabled={ro} value={form.name} onChange={(e) => set({ name: e.target.value })}
               autoFocus={editing} />
-            <TextField select label={t('accounts.kind')} disabled={ro} value={form.kind} onChange={(e) => set({ kind: e.target.value as AccountKind })}>
+            <TextField select label={t('accounts.kind')} disabled={ro} value={form.kind} onChange={(e) => changeKind(e.target.value as AccountKind)}>
               {accountKinds.map((k) => (
                 <MenuItem key={k} value={k}>
                   {t(`accounts.kinds.${k}`)}
@@ -207,9 +241,9 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
               value={form.currency}
               onChange={(currency) => set({ currency })}
               disabled={ro}
-              helperText={account && editing ? t('accounts.currencyLocked') : undefined}
+              helperText={base && editing ? t('accounts.currencyLocked') : undefined}
             />
-            {account ? (
+            {base ? (
               <AmountField
                 label={t(owed ? 'accounts.owedNow' : 'accounts.currentBalance')}
                 disabled={ro}
@@ -226,7 +260,8 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
                   onChange={(opening) => set({ opening })}
                   minorUnit={minorUnit}
                 />
-                <DateField label={t('accounts.openedOn')} value={form.openedOn} onChange={(openedOn) => set({ openedOn })} sx={{ maxWidth: 190 }} />
+                <DateField label={t('accounts.openedOn')} value={form.openedOn} onChange={(openedOn) => set({ openedOn })} onInvalid={setBadDate}
+                  sx={{ maxWidth: 190 }} />
               </Stack>
             )}
             {card && (
@@ -238,7 +273,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
                     value={form.creditLimit}
                     onChange={(creditLimit) => set({ creditLimit })}
                     minorUnit={minorUnit}
-                    helperText={account && creditLimit ? t('accounts.available', { amount: money(creditLimit + account.balance) }) : undefined}
+                    helperText={base && creditLimit ? t('accounts.available', { amount: money(creditLimit + base.balance) }) : undefined}
                   />
                   <AmountField label={t('accounts.annualFee')} disabled={ro} value={form.annualFee} onChange={(annualFee) => set({ annualFee })}
                     minorUnit={minorUnit} />
@@ -271,12 +306,12 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
               label={t('accounts.inNetWorth')}
             />
             {!form.inNetWorth && editing && <Alert severity="info">{t('accounts.inNetWorthHint')}</Alert>}
-            {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
+            {error ? <Alert severity={error instanceof ApiError && error.code === 'conflict' ? 'warning' : 'error'}>{errorText(error)}</Alert> : null}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
-          {account && !editing && onTransactions && (
-            <Button startIcon={<ReceiptLongIcon />} onClick={() => onTransactions(account)}>
+          {base && !editing && onTransactions && (
+            <Button startIcon={<ReceiptLongIcon />} onClick={() => onTransactions(base)}>
               {t('common.viewTransactions')}
             </Button>
           )}
@@ -336,11 +371,15 @@ type Form = {
   interest: string
 }
 
+// An account's balance as its edit dialog shows it for this kind: what's owed is positive.
+function balanceText(a: Account, kind: AccountKind, lang: 'vi' | 'en', minorOf: (currency: string) => number) {
+  return amountText(liabilityKinds.includes(kind) ? -a.balance : a.balance, minorOf(a.currency), lang)
+}
+
 function toForm(a: Account | null, book: Book, lang: 'vi' | 'en', minorOf: (currency: string) => number): Form {
   const minor = minorOf(a?.currency ?? book.base_currency)
   const text = (v: number | null | undefined, m = minor) => (v === null || v === undefined ? '' : amountText(v, m, lang))
-  const owed = !!a && liabilityKinds.includes(a.kind)
-  const balance = a ? text(owed ? -a.balance : a.balance) : ''
+  const balance = a ? balanceText(a, a.kind, lang, minorOf) : ''
   return {
     name: a?.name ?? '',
     kind: a?.kind ?? 'cash',
