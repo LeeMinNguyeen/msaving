@@ -78,8 +78,11 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
   const accountList = accounts.data ?? []
   const byId = new Map(accountList.map((a) => [a.id, a]))
   const usable = (a: Account) => !a.archived_at || txn?.entries.some((e) => e.account_id === a.id)
+  const open = accountList.filter(usable)
+  // With a single open account there's nothing to pick: it's the one.
+  const account = form.account || (open.length === 1 ? open[0].id : '')
   const minor = (accountId: string) => minorOf(byId.get(accountId)?.currency ?? '')
-  const from = byId.get(form.account)
+  const from = byId.get(account)
   const to = byId.get(form.toAccount)
   const transfer = form.type === 'transfer'
   const crossCurrency = transfer && !!from && !!to && from.currency !== to.currency
@@ -90,16 +93,16 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
   )
 
   function money(): { account_id: string; amount: number }[] | null {
-    const a = parseAmount(form.amount, minor(form.account), lang)
-    if (a === null || a === 0 || !form.account) return null
-    if (form.type === 'adjustment') return [{ account_id: form.account, amount: a }]
+    const a = parseAmount(form.amount, minor(account), lang)
+    if (a === null || a === 0 || !account) return null
+    if (form.type === 'adjustment') return [{ account_id: account, amount: a }]
     const abs = Math.abs(a)
-    if (form.type === 'expense') return [{ account_id: form.account, amount: -abs }]
-    if (!transfer) return [{ account_id: form.account, amount: abs }]
-    if (!form.toAccount || form.toAccount === form.account) return null
+    if (form.type === 'expense') return [{ account_id: account, amount: -abs }]
+    if (!transfer) return [{ account_id: account, amount: abs }]
+    if (!form.toAccount || form.toAccount === account) return null
     const received = crossCurrency ? parseAmount(form.amountReceived, minor(form.toAccount), lang) : abs
     if (received === null || received === 0) return null
-    return [{ account_id: form.account, amount: -abs }, { account_id: form.toAccount, amount: Math.abs(received) }]
+    return [{ account_id: account, amount: -abs }, { account_id: form.toAccount, amount: Math.abs(received) }]
   }
   const entries = money()
 
@@ -158,7 +161,6 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
     }
   }
 
-  const open = accountList.filter(usable)
   const noAccounts = accounts.isSuccess && open.length === 0
   const readOnly = book.role === 'viewer'
   const openingBalance = form.type === 'opening_balance'
@@ -212,7 +214,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
                 autoFocus={!txn}
                 value={form.amount}
                 onChange={(v) => set({ amount: v })}
-                minorUnit={minor(form.account)}
+                minorUnit={minor(account)}
                 helperText={form.type === 'adjustment' ? t('txn.adjustmentHint') : from?.currency}
               />
               <TextField
@@ -229,7 +231,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
               select
               required
               label={t(transfer ? 'txn.fromAccount' : 'txn.account')}
-              value={byId.has(form.account) ? form.account : ''}
+              value={byId.has(account) ? account : ''}
               onChange={(e) => set({ account: e.target.value })}
               disabled={openingBalance}
             >
@@ -246,8 +248,8 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
                 label={t('txn.toAccount')}
                 value={byId.has(form.toAccount) ? form.toAccount : ''}
                 onChange={(e) => set({ toAccount: e.target.value })}
-                error={!!form.toAccount && form.toAccount === form.account}
-                helperText={form.toAccount && form.toAccount === form.account ? t('txn.sameAccount') : undefined}
+                error={!!form.toAccount && form.toAccount === account}
+                helperText={form.toAccount && form.toAccount === account ? t('txn.sameAccount') : undefined}
               >
                 {open.map((a) => (
                   <MenuItem key={a.id} value={a.id}>
