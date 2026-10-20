@@ -74,7 +74,9 @@ VI = {
     "Book": "Sổ", "Your role": "Vai trò của bạn", "Main currency": "Tiền tệ chính", "Created": "Ngày tạo",
     "Members": "Thành viên", "Account": "Tài khoản", "Type": "Loại", "Currency": "Tiền tệ",
     "Last 4 digits": "4 số cuối", "Person": "Người liên quan", "Balance": "Số dư", "Closed": "Đã đóng",
-    "Counted in net worth": "Tính vào tài sản ròng", "Color": "Màu",
+    "Counted in net worth": "Tính vào tài sản ròng", "Color": "Màu", "Credit limit": "Hạn mức tín dụng",
+    "Annual fee": "Phí thường niên", "Statement day": "Ngày sao kê", "Payment due day": "Ngày đến hạn thanh toán",
+    "Interest rate (% a year)": "Lãi suất (%/năm)",
     "Date": "Ngày", "Category": "Danh mục", "Payee": "Người nhận", "Note": "Ghi chú", "Amount": "Số tiền",
     "To account": "Đến tài khoản", "Amount received": "Số tiền nhận", "Received currency": "Tiền tệ nhận",
     "Added by": "Người thêm", "Added at": "Thêm lúc", "Last edited by": "Người sửa gần nhất",
@@ -166,7 +168,8 @@ def build_export(db: Session) -> bytes:
 
     accounts = _rows(db, """
         select b.name as book, a.name, a.kind::text as kind, a.currency, a.last4, c.name as person,
-               ab.balance, cur.minor_unit, a.in_net_worth, a.archived_at
+               ab.balance, cur.minor_unit, a.in_net_worth, a.archived_at, a.note, a.credit_limit, a.annual_fee,
+               a.statement_day, a.payment_due_day, a.interest_rate_bp
           from accounts a join books b on b.id = a.book_id
           join account_balances ab on ab.account_id = a.id
           join currencies cur on cur.code = a.currency
@@ -175,8 +178,12 @@ def build_export(db: Session) -> bytes:
     out("accounts.csv", [{
         "Book": a["book"], "Account": a["name"], "Type": word(a["kind"]), "Currency": a["currency"],
         "Last 4 digits": a["last4"], "Person": a["person"], "Balance": _money(a["balance"], a["minor_unit"]),
-        "Counted in net worth": word("Yes" if a["in_net_worth"] else "No"), "Closed": a["archived_at"]} for a in accounts],
-        ["Book", "Account", "Type", "Currency", "Last 4 digits", "Person", "Balance", "Counted in net worth", "Closed"])
+        "Counted in net worth": word("Yes" if a["in_net_worth"] else "No"), "Closed": a["archived_at"], "Note": a["note"],
+        "Credit limit": _money(a["credit_limit"], a["minor_unit"]), "Annual fee": _money(a["annual_fee"], a["minor_unit"]),
+        "Statement day": a["statement_day"], "Payment due day": a["payment_due_day"],
+        "Interest rate (% a year)": _money(a["interest_rate_bp"], 2)} for a in accounts],
+        ["Book", "Account", "Type", "Currency", "Last 4 digits", "Person", "Balance", "Counted in net worth", "Closed", "Note",
+         "Credit limit", "Annual fee", "Statement day", "Payment due day", "Interest rate (% a year)"])
 
     txns = _rows(db, """
         select b.name as book, t.occurred_on, t.type::text as type, c.name as category, t.payee, t.note,

@@ -204,6 +204,44 @@ def add_category(client, u, bid, name, kind="expense", parent=None):
     return r.json()
 
 
+def test_account_details_by_kind(client):
+    """msaving#17: a note on any account, a credit card's limit, fee and days, an interest rate where one applies.
+    A detail for the wrong kind is refused; changing the kind clears the ones that stop applying."""
+    u = signed_up(client)
+    bid, _ = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}/accounts"
+
+    def create(kind, **details):
+        return client.post(base, headers=auth(u), json={"id": str(uuid.uuid4()), "name": f"{kind} {uuid.uuid4().hex[:6]}",
+                                                        "kind": kind, **details})
+
+    card = create("credit_card", last4="3317", note="  Thẻ chính  ", credit_limit=50_000_000, annual_fee=499_000,
+                  statement_day=25, payment_due_day=10, interest_rate_bp=2_800)
+    assert card.status_code == 201
+    assert {k: card.json()[k] for k in ("note", "credit_limit", "annual_fee", "statement_day", "payment_due_day",
+                                        "interest_rate_bp")} == {"note": "Thẻ chính", "credit_limit": 50_000_000,
+        "annual_fee": 499_000, "statement_day": 25, "payment_due_day": 10, "interest_rate_bp": 2_800}
+    assert create("savings", interest_rate_bp=475).json()["interest_rate_bp"] == 475
+    assert create("cash", note="Ví").json()["note"] == "Ví"
+    for kind, details in (("cash", {"credit_limit": 1}), ("checking", {"interest_rate_bp": 100}), ("lent", {"statement_day": 3}),
+                          ("credit_card", {"statement_day": 32}), ("credit_card", {"credit_limit": -1}),
+                          ("savings", {"interest_rate_bp": 100_001}), ("cash", {"note": "x" * 501})):
+        assert create(kind, **details).status_code == 422, (kind, details)
+
+    acc = card.json()
+    url = f"{base}/{acc['id']}"
+    same = client.patch(url, headers=auth(u), json={"version": acc["version"], "name": "Visa"}).json()       # left out: kept
+    assert (same["credit_limit"], same["note"]) == (50_000_000, "Thẻ chính")
+    cleared = client.patch(url, headers=auth(u), json={"version": same["version"], "note": None, "annual_fee": None}).json()
+    assert (cleared["note"], cleared["annual_fee"], cleared["credit_limit"]) == (None, None, 50_000_000)
+    assert client.patch(url, headers=auth(u), json={"version": cleared["version"], "kind": "loan", "credit_limit": 1}).status_code == 422
+    loan = client.patch(url, headers=auth(u), json={"version": cleared["version"], "kind": "loan"}).json()
+    assert {k: loan[k] for k in ("kind", "credit_limit", "statement_day", "payment_due_day", "interest_rate_bp")} == {
+        "kind": "loan", "credit_limit": None, "statement_day": None, "payment_due_day": None, "interest_rate_bp": 2_800}
+    cash = client.patch(url, headers=auth(u), json={"version": loan["version"], "kind": "cash"}).json()
+    assert (cash["kind"], cash["interest_rate_bp"]) == ("cash", None)
+
+
 def test_categories(client):
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)
