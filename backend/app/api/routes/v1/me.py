@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.api.models import Timezone
+from app.core import sign_in as si
 from app.core.auth import Caller, current_caller
 from app.core.events import account_event
 from app.domain.export import build_export
@@ -52,7 +53,12 @@ class UpdateProfile(BaseModel):
 
 @router.patch("/me")
 def update_profile(body: UpdateProfile, caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> Me:
-    """Last write wins (docs: The ledger, several devices)."""
+    """Last write wins (docs: The ledger, several devices). Trying a new
+    username is rate limited (429 rate_limited); saving the same one isn't."""
+    if body.username is not None:
+        current = db.execute(text("select username from users where id = :i"), {"i": caller.id}).scalar()
+        if body.username != current and not si.username_changes.allow(str(caller.id)):
+            raise HTTPException(429, "rate_limited")
     n = db.execute(text(
         "update users set username = coalesce(:u, username),"
         " display_name = case when cast(:d as text) is null then display_name when cast(:d as text) = '' then null"

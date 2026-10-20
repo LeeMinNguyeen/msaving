@@ -548,3 +548,16 @@ def test_book_invites_are_rate_limited(client):
     codes = [client.post(f"/v1/books/{bid}/members", headers=auth(owner), json={"username": f"guess{i}"}).status_code
              for i in range(11)]
     assert codes == [409] * 10 + [429]
+
+
+def test_username_changes_are_rate_limited(client):
+    """A taken name answers username_taken, so trying names is slowed down (#4)."""
+    taken = f"taken_{uuid.uuid4().hex[:8]}"
+    signed_up(client, taken)
+    u = signed_up(client)
+    tries = [client.patch("/v1/me", headers=auth(u), json={"username": taken}).status_code for _ in range(5)]
+    assert tries == [409] * 5
+    assert client.patch("/v1/me", headers=auth(u), json={"username": taken}).json() == {"detail": "rate_limited"}
+    me = client.get("/v1/me", headers=auth(u)).json()["profile"]
+    same = client.patch("/v1/me", headers=auth(u), json={"username": me["username"], "display_name": "Mai"})
+    assert same.status_code == 200 and same.json()["profile"]["display_name"] == "Mai"     # saving the same name isn't a try

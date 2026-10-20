@@ -123,3 +123,6 @@ per_ip = RateLimit(30, 15 * 60)               # sign-in, join, setup, reset, inv
 per_username = RateLimit(10, 15 * 60)         # sign-in attempts on one account
 per_user_action = RateLimit(10, 15 * 60)      # password and two-factor changes by a signed-in user
 sign_ups_per_ip = RateLimit(5, 60 * 60)
+# A taken name answers username_taken, so changing one's username can list who
+# has an account: a few tries an hour.
+username_changes = RateLimit(5, 60 * 60)
