@@ -30,12 +30,12 @@ describe('DateField (msaving#27)', () => {
   it('shows a date day first in English, in a US-English browser', async () => {
     expect(navigator.language).toBe('en-US')
     const { container } = await renderApp(<DateField label="Date" value="2026-10-03" onChange={() => {}} />, { lang: 'en' })
-    expect(shown(container)).toBe('03/10/2026')
+    expect(shown(container)).toBe('03-10-2026')
   })
 
   it('shows a date day first in Vietnamese', async () => {
     const { container } = await renderApp(<DateField label="Ngày" value="2026-10-03" onChange={() => {}} />, { lang: 'vi' })
-    expect(shown(container)).toBe('03/10/2026')
+    expect(shown(container)).toBe('03-10-2026')
   })
 
   it('is typed day, month, year and hands the parent YYYY-MM-DD', async () => {
@@ -48,7 +48,7 @@ describe('DateField (msaving#27)', () => {
   it('reads a whole date (pasted, or filled in by the browser) day first', async () => {
     const onChange = vi.fn()
     const { container } = await renderApp(<DateField label="From" value="" onChange={onChange} />)
-    fireEvent.change(container.querySelector('input')!, { target: { value: '01/10/2026' } })
+    fireEvent.change(container.querySelector('input')!, { target: { value: '01-10-2026' } })
     expect(onChange).toHaveBeenLastCalledWith('2026-10-01') // 1 October, not 10 January
   })
 
@@ -56,7 +56,7 @@ describe('DateField (msaving#27)', () => {
     const { container } = await renderApp(<Filter />, { route: '/books/b1/transactions' })
     await type('0110')
     expect(screen.getByRole('status')).toHaveTextContent('none')
-    expect(shown(container)).toBe('01/10/YYYY')
+    expect(shown(container)).toBe('01-10-YYYY')
     for (const d of '2026') fireEvent.input(document.activeElement!, { target: { textContent: d } })
     expect(screen.getByRole('status')).toHaveTextContent('2026-10-01')
   })
@@ -68,7 +68,7 @@ describe('DateField (msaving#27)', () => {
     expect(screen.getByRole('status')).toHaveTextContent('2026-10-15')
     fireEvent.input(document.activeElement!, { target: { textContent: '' } })                     // clear the month
     expect(screen.getByRole('status')).toHaveTextContent('none')
-    expect(shown(container)).toBe('15/MM/2026')                                                    // the rest stays
+    expect(shown(container)).toBe('15-MM-2026')                                                    // the rest stays
     for (const d of '11') fireEvent.input(document.activeElement!, { target: { textContent: d } })
     expect(screen.getByRole('status')).toHaveTextContent('2026-11-15')
   })
@@ -86,7 +86,7 @@ describe('DateField (msaving#27)', () => {
   it('follows a new value from the parent', async () => {
     const { container, rerender } = await renderApp(<DateField label="Date" value="2026-10-03" onChange={() => {}} />)
     rerender(<DateField label="Date" value="2026-11-05" onChange={() => {}} />)
-    expect(shown(container)).toBe('05/11/2026')
+    expect(shown(container)).toBe('05-11-2026')
     rerender(<DateField label="Date" value="" onChange={() => {}} />)
     expect(shown(container)).toBe('')
   })
