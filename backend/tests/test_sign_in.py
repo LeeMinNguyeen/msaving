@@ -406,6 +406,18 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     assert client.post("/v1/admin/update", headers=bearer(admin_token)).status_code == 202
     assert (tmp_path / "requested").exists()
 
+    # The helper's last result, unless it's from before this server started (an update by hand or a restart
+    # since); a minute's grace, as it writes "done" just as the new server comes up.
+    def status_after(line, started):
+        (tmp_path / "status").write_text(line + "\n")
+        monkeypatch.setattr(updates, "STARTED", datetime.fromisoformat(started).timestamp())
+        return client.get("/v1/admin/update", headers=bearer(admin_token)).json()["status"]
+    old = "failed 2026-10-19T16:01:40Z: Error response from daemon: error from registry: denied"
+    assert status_after(old, "2026-10-20T16:27:30+00:00") is None
+    assert status_after(old, "2026-10-19T16:00:00+00:00") == old                   # failed while this server ran
+    assert status_after("done 2026-10-20T16:28:05Z", "2026-10-20T16:28:30+00:00") == "done 2026-10-20T16:28:05Z"
+    assert status_after("running 2026-10-20T16:20:00Z", "2026-10-20T16:27:30+00:00") is None
+
 
 def test_versions_compare():
     from app.core.updates import current_version, newer

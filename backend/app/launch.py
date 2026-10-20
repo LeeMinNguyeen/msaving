@@ -104,6 +104,7 @@ def print_setup_code(code: str) -> None:
 
 
 def serve() -> None:
+    started = time.time()              # before the backup and migrations: see app/core/updates.py status()
     admin = admin_url()
     passwords = login_passwords()
     wait_for(admin)
@@ -119,7 +120,7 @@ def serve() -> None:
     if setup_code:
         print_setup_code(setup_code)
 
-    base = {k: v for k, v in os.environ.items() if k != "ADMIN_DATABASE_URL"}
+    base = {**{k: v for k, v in os.environ.items() if k != "ADMIN_DATABASE_URL"}, "SERVER_STARTED_AT": str(started)}
     api_env = {**base, "DATABASE_URL": login_url(admin, "api_login", passwords["api_login"])}
     jobs_env = {**base,
                 "PURGE_DATABASE_URL": login_url(admin, "purge_login", passwords["purge_login"]),
