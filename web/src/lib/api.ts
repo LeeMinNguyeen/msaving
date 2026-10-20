@@ -21,6 +21,16 @@ async function fail(res: Response): Promise<never> {
   throw new ApiError(res.status, code)
 }
 
+// No answer at all (offline, or the server restarting during an update):
+// server_unreachable, which the screens say plainly instead of a generic error.
+async function reach(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init)
+  } catch {
+    throw new ApiError(0, 'server_unreachable')
+  }
+}
+
 function authHeaders(init?: HeadersInit): Headers {
   const headers = new Headers(init)
   const token = session.token()
@@ -32,7 +42,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = authHeaders(init.headers)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
-  const res = await fetch(path, { ...init, headers })
+  const res = await reach(path, { ...init, headers })
   if (!res.ok) await fail(res)
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
@@ -40,7 +50,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 // A file from the API (the data export): saved by the browser under the name it sends.
 export async function download(path: string): Promise<void> {
-  const res = await fetch(path, { headers: authHeaders() })
+  const res = await reach(path, { headers: authHeaders() })
   if (!res.ok) await fail(res)
   const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'export.zip'
   const url = URL.createObjectURL(await res.blob())
@@ -96,6 +106,10 @@ export const accountKinds = [
 export type AccountKind = (typeof accountKinds)[number]
 // Liabilities have negative balances: what's owed is entered as a positive amount.
 export const liabilityKinds: readonly AccountKind[] = ['credit_card', 'loan', 'other_liability']
+// Details by kind (msaving#17): which kinds have card or account numbers, an
+// interest rate, the credit card fields. A note goes on any account.
+export const last4Kinds: readonly AccountKind[] = ['checking', 'savings', 'investment', 'credit_card', 'loan']
+export const interestKinds: readonly AccountKind[] = ['savings', 'credit_card', 'loan', 'lent']
 
 export type Account = {
   id: string
@@ -105,6 +119,12 @@ export type Account = {
   last4: string | null
   in_net_worth: boolean
   contact_id: string | null
+  note: string | null
+  credit_limit: number | null // credit cards: minor units of the account's currency
+  annual_fee: number | null
+  statement_day: number | null // day of the month
+  payment_due_day: number | null
+  interest_rate_bp: number | null // hundredths of a percent a year: 5.5 % = 550
   archived_at: string | null
   version: number
   balance: number

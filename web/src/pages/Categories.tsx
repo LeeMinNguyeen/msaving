@@ -30,11 +30,13 @@ import { formatMoney } from '../lib/money'
 import { useBudgets, useCategories, useCurrencies } from '../lib/queries'
 import { BudgetDialog } from './BudgetDialog'
 import { CategoryDialog } from './CategoryDialog'
+import { RefreshButton } from '../components/RefreshButton'
 
 const KINDS: CategoryKind[] = ['expense', 'income', 'transfer']
 
 // Screen 8, without budgets (milestone 5): the category tree by kind. Tap one
-// to see its transactions; the menu edits, adds a sub-category, archives or deletes.
+// for its details, which lead to its transactions (msaving#23); the menu edits,
+// adds a sub-category, sets a budget, archives or deletes.
 export function Categories({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
@@ -43,7 +45,7 @@ export function Categories({ book }: { book: Book }) {
   const [showArchived, setShowArchived] = useState(false)
   const categories = useCategories(book.id, showArchived)
   const all = useCategories(book.id, true)
-  const [dialog, setDialog] = useState<{ category: Category | null; parent?: Category } | null>(null)
+  const [dialog, setDialog] = useState<{ category: Category | null; parent?: Category; editing?: boolean } | null>(null)
   const [menu, setMenu] = useState<{ el: HTMLElement; category: Category } | null>(null)
   const [notice, setNotice] = useState<{ error?: unknown; info?: string }>({})
   const canEdit = book.role !== 'viewer'
@@ -80,7 +82,10 @@ export function Categories({ book }: { book: Book }) {
   return (
     <Stack spacing={2}>
       <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="h5">{t('cat.title')}</Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="h5">{t('cat.title')}</Typography>
+          <RefreshButton bookId={book.id} />
+        </Stack>
         {canEdit && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ category: null })}>
             {t('cat.add')}
@@ -105,7 +110,7 @@ export function Categories({ book }: { book: Book }) {
                       </IconButton>
                     )}>
                     <ListItemButton sx={{ pl: 2 + depth * 3, opacity: c.archived_at ? 0.55 : 1 }}
-                      onClick={() => navigate(`/books/${book.id}/transactions?category_id=${c.id}`)}>
+                      onClick={() => setDialog({ category: c })}>
                       <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c.color ?? 'action.disabled', mr: 1.5, flexShrink: 0 }} />
                       <ListItemText primary={c.name} secondary={shown.get(c.id) && (
                         <BudgetBar label={t(`budget.periods.${shown.get(c.id)!.period}`)} spent={shown.get(c.id)!.progress!.spent}
@@ -122,7 +127,7 @@ export function Categories({ book }: { book: Book }) {
       </Box>
       <FormControlLabel control={<Switch checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />} label={t('cat.showArchived')} />
       <Menu anchorEl={menu?.el} open={!!menu} onClose={() => setMenu(null)}>
-        <MenuItem onClick={() => { setDialog({ category: menu!.category }); setMenu(null) }}>{t('cat.edit')}</MenuItem>
+        <MenuItem onClick={() => { setDialog({ category: menu!.category, editing: true }); setMenu(null) }}>{t('cat.edit')}</MenuItem>
         <MenuItem onClick={() => { setDialog({ category: null, parent: menu!.category }); setMenu(null) }}>{t('cat.addSub')}</MenuItem>
         {menu?.category.kind === 'expense' && (
           <MenuItem onClick={() => { setBudgetFor(menu.category); setMenu(null) }}>{t('budget.set')}</MenuItem>
@@ -134,7 +139,8 @@ export function Categories({ book }: { book: Book }) {
       </Menu>
       {budgetFor && <BudgetDialog book={book} category={budgetFor} onClose={() => setBudgetFor(null)} />}
       {dialog && all.data && (
-        <CategoryDialog book={book} all={all.data} category={dialog.category} parent={dialog.parent} onClose={() => setDialog(null)} />
+        <CategoryDialog key={dialog.category?.id ?? 'new'} book={book} all={all.data} category={dialog.category} parent={dialog.parent}
+          editing={dialog.editing} onTransactions={(c) => navigate(`/books/${book.id}/transactions?category_id=${c.id}`)} onClose={() => setDialog(null)} />
       )}
     </Stack>
   )

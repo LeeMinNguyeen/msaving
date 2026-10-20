@@ -15,5 +15,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],
+    // A screen's first test also loads MUI and its date pickers: 3 to 5 s on a
+    // busy machine, too close to the default 5 s.
+    testTimeout: 15_000,
   },
 })

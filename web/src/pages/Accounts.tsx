@@ -34,9 +34,11 @@ import { currencyLabel } from '../lib/labels'
 import { useAccounts, useCurrencies } from '../lib/queries'
 import { AccountDialog } from './AccountDialog'
 import { People } from './People'
+import { RefreshButton } from '../components/RefreshButton'
 
 // Screen 7, without people (milestone 5): accounts with their balances. A
-// table on desktop, a list on phones.
+// table on desktop, a list on phones. An account opens its details, which lead
+// to its transactions (msaving#23).
 export function Accounts({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
@@ -44,14 +46,14 @@ export function Accounts({ book }: { book: Book }) {
   const [showArchived, setShowArchived] = useState(false)
   const accounts = useAccounts(book.id, showArchived)
   const currencies = useCurrencies()
-  const [editing, setEditing] = useState<Account | 'new' | null>(null)
+  const [dialog, setDialog] = useState<{ account: Account | null; editing: boolean } | null>(null)
   const [menu, setMenu] = useState<{ el: HTMLElement; account: Account } | null>(null)
   const [error, setError] = useState<unknown>(null)
   const canEdit = book.role !== 'viewer'
   const desktop = useMediaQuery(useTheme().breakpoints.up('md'))
   const navigate = useNavigate()
-  // An account opens its own transactions (screen 7).
-  const open = (a: Account) => navigate(`/books/${book.id}/transactions?account_id=${a.id}`)
+  const open = (a: Account) => setDialog({ account: a, editing: false })
+  const transactions = (a: Account) => navigate(`/books/${book.id}/transactions?account_id=${a.id}`)
 
   const money = (a: Account) => formatMoney(a.balance, a.currency, currencies.data?.get(a.currency)?.minor_unit ?? 2, currentLanguage())
 
@@ -69,15 +71,18 @@ export function Accounts({ book }: { book: Book }) {
   return (
     <Stack spacing={2}>
       <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="h5">{t('accounts.title')}</Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="h5">{t('accounts.title')}</Typography>
+          <RefreshButton bookId={book.id} />
+        </Stack>
         {canEdit && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setEditing('new')}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ account: null, editing: true })}>
             {t('accounts.add')}
           </Button>
         )}
       </Stack>
       {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
-      {accounts.isError ? <Alert severity="error">{errorText(accounts.error)}</Alert> : null}
+      {accounts.isError && !accounts.data ? <Alert severity="error">{errorText(accounts.error)}</Alert> : null}
       {accounts.data?.length === 0 && <Typography color="text.secondary">{t('accounts.empty')}</Typography>}
       {desktop && accounts.data && accounts.data.length > 0 && (
         <Paper variant="outlined">
@@ -170,7 +175,7 @@ export function Accounts({ book }: { book: Book }) {
       <Menu anchorEl={menu?.el} open={!!menu} onClose={() => setMenu(null)}>
         <MenuItem
           onClick={() => {
-            setEditing(menu!.account)
+            setDialog({ account: menu!.account, editing: true })
             setMenu(null)
           }}
         >
@@ -181,7 +186,10 @@ export function Accounts({ book }: { book: Book }) {
         </MenuItem>
       </Menu>
       <People book={book} />
-      {editing && <AccountDialog book={book} account={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+      {dialog && (
+        <AccountDialog key={dialog.account?.id ?? 'new'} book={book} account={dialog.account} editing={dialog.editing}
+          onTransactions={transactions} onClose={() => setDialog(null)} />
+      )}
     </Stack>
   )
 }

@@ -35,6 +35,14 @@ describe('api', () => {
     expect(err).toMatchObject({ status: 403, code: 'forbidden' })
   })
 
+  it('says server_unreachable when there is no answer at all (restarting, offline)', async () => {
+    session.set('tok')
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+    const err = await api('/v1/me').catch((e) => e)
+    expect(err).toMatchObject({ status: 0, code: 'server_unreachable' })
+    expect(session.token()).toBe('tok')                   // still signed in
+  })
+
   it('forgets a session the server no longer accepts', async () => {
     session.set('expired')
     fetchMock.mockResolvedValue(new Response('{"detail":"not_signed_in"}', { status: 401 }))

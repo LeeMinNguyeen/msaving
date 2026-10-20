@@ -24,6 +24,7 @@ import { useErrorText } from '../components/errors'
 import { currentLanguage } from '../i18n'
 import { api, send } from '../lib/api'
 import { useInstance, useMe } from '../lib/queries'
+import { updating, useUpdating, type UpdateInfo } from '../lib/updating'
 
 type AdminUser = {
   id: string; username: string; display_name: string | null; is_admin: boolean; created_at: string
@@ -127,41 +128,25 @@ function ServerSettings() {
   )
 }
 
-type UpdateInfo = {
-  current_version: string; latest_version: string | null; release_url: string | null; update_available: boolean
-  updater: boolean; status: string | null
-}
-
-// The newest release, and a one-click Update when the operator turned on the
-// updater helper; otherwise the two commands to run on the server.
-// Whether the helper's status line ("done 2026-...", "failed ...") is about the update started at `since`.
-function updateFinished(status: string | null | undefined, since: number | null): boolean {
-  const [state, at] = (status ?? '').split(' ')
-  return !!since && !!at && Date.parse(at) >= since - 5000 && (state === 'done' || state === 'failed')
-}
-
+// The running and newest version, and a one-click Update when the operator
+// turned on the updater helper; otherwise the two commands to run on the server.
+// While it runs, UpdatingNotice (on every page) takes over.
 function Updates() {
   const { t } = useTranslation()
   const errorText = useErrorText()
-  const [started, setStarted] = useState<number | null>(null)
+  const update = useUpdating()
+  const running = update?.phase === 'running'
   const [confirm, setConfirm] = useState(false)
   const [error, setError] = useState<unknown>(null)
-  const info = useQuery({
-    queryKey: ['admin', 'update'],
-    queryFn: () => api<UpdateInfo>('/v1/admin/update'),
-    // While updating, the server goes away for a moment: keep asking.
-    refetchInterval: (q) => (started && !updateFinished(q.state.data?.status, started) ? 5000 : false),
-    retry: started ? true : 1,
-  })
+  const info = useQuery({ queryKey: ['admin', 'update'], queryFn: () => api<UpdateInfo>('/v1/admin/update') })
   const d = info.data
-  const updating = !!started && !updateFinished(d?.status, started)
 
-  async function update() {
+  async function start() {
     setConfirm(false)
     setError(null)
     try {
       await send('POST', '/v1/admin/update')
-      setStarted(Date.now())
+      updating.start(d?.latest_version ?? null)
     } catch (err) {
       setError(err)
     }
@@ -174,14 +159,13 @@ function Updates() {
         {t('admin.version', { version: d.current_version })}
         {d.latest_version && ' · ' + t('admin.latest', { version: d.latest_version })}
       </Typography>
-      {updating ? <Alert severity="info">{t('admin.updating')}</Alert> : null}
-      {!updating && d.status?.startsWith('done') ? <Alert severity="success">{t('admin.updateDone')}</Alert> : null}
-      {!updating && d.status?.startsWith('failed') ? <Alert severity="error">{t('admin.updateFailed', { detail: d.status })}</Alert> : null}
+      {!update && d.status?.startsWith('done') ? <Alert severity="success">{t('admin.updateDone')}</Alert> : null}
+      {!update && d.status?.startsWith('failed') ? <Alert severity="error">{t('admin.updateFailed', { detail: d.status })}</Alert> : null}
       {d.update_available && d.release_url && (
         <Button href={d.release_url} target="_blank" rel="noopener" sx={{ alignSelf: 'start' }}>{t('admin.releaseNotes')}</Button>
       )}
       {d.updater ? (
-        <Button variant="contained" loading={updating} disabled={!d.update_available}
+        <Button variant="contained" loading={running} disabled={!d.update_available || !!update}
           onClick={() => setConfirm(true)} sx={{ alignSelf: 'start' }}>{t('admin.updateNow')}</Button>
       ) : (
         <>
@@ -198,7 +182,7 @@ function Updates() {
         <DialogContent><DialogContentText>{t('admin.updateConfirm', { version: d.latest_version })}</DialogContentText></DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirm(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={update}>{t('admin.updateNow')}</Button>
+          <Button variant="contained" onClick={start}>{t('admin.updateNow')}</Button>
         </DialogActions>
       </Dialog>
     </Section>
@@ -261,30 +245,32 @@ function Invites() {
       </Stack>
       {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
       {invites.data && invites.data.length > 0 && (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>{t('admin.inviteNote')}</TableCell>
-              <TableCell>{t('admin.created')}</TableCell>
-              <TableCell>{t('admin.status')}</TableCell>
-              <TableCell />
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {invites.data.map((i) => (
-              <TableRow key={i.id}>
-                <TableCell>{i.note}</TableCell>
-                <TableCell>{when(i.created_at)}</TableCell>
-                <TableCell>{status(i)}</TableCell>
-                <TableCell align="right">
-                  {!i.used_at && !i.revoked_at && Date.parse(i.expires_at) > now && (
-                    <Button size="small" color="error" onClick={() => revoke(i.id)}>{t('admin.revoke')}</Button>
-                  )}
-                </TableCell>
+        <Box sx={{ overflowX: 'auto' }}>{/* phones: the table scrolls, not the page */}
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>{t('admin.inviteNote')}</TableCell>
+                <TableCell>{t('admin.created')}</TableCell>
+                <TableCell>{t('admin.status')}</TableCell>
+                <TableCell />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {invites.data.map((i) => (
+                <TableRow key={i.id}>
+                  <TableCell>{i.note}</TableCell>
+                  <TableCell>{when(i.created_at)}</TableCell>
+                  <TableCell>{status(i)}</TableCell>
+                  <TableCell align="right">
+                    {!i.used_at && !i.revoked_at && Date.parse(i.expires_at) > now && (
+                      <Button size="small" color="error" onClick={() => revoke(i.id)}>{t('admin.revoke')}</Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
       )}
       {created && (
         <ShowOnce title={t('admin.inviteReady')} body={t('admin.inviteReadyBody', { date: when(created.expires_at) })}
@@ -315,43 +301,45 @@ function Users({ selfId }: { selfId: string }) {
   return (
     <Section title={t('admin.users')}>
       {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>{t('auth.username')}</TableCell>
-            <TableCell>{t('admin.lastSeen')}</TableCell>
-            <TableCell>{t('admin.status')}</TableCell>
-            <TableCell />
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {users.data?.map((u) => (
-            <TableRow key={u.id}>
-              <TableCell>
-                {u.username}{u.display_name ? ` (${u.display_name})` : ''}
-                {u.is_admin && <Chip size="small" label={t('admin.admin')} sx={{ ml: 1 }} />}
-              </TableCell>
-              <TableCell>{when(u.last_seen_at)}</TableCell>
-              <TableCell>
-                {u.disabled_at ? t('admin.disabled') : u.deletion_requested_at ? t('admin.closing') : t('admin.active')}
-                {u.two_factor && ` · ${t('admin.twoFactor')}`}
-              </TableCell>
-              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                <Button size="small" onClick={() => act(async () => {
-                  const r = await send<{ token: string }>('POST', `/v1/admin/users/${u.id}/reset`)
-                  setReset({ username: u.username, link: `${window.location.origin}/reset?token=${r.token}` })
-                })}>{t('admin.resetLink')}</Button>
-                {u.id !== selfId && (
-                  <Button size="small" color={u.disabled_at ? 'primary' : 'error'}
-                    onClick={() => act(() => send('POST', `/v1/admin/users/${u.id}/disable`, { disabled: !u.disabled_at }))}>
-                    {t(u.disabled_at ? 'admin.enable' : 'admin.disable')}
-                  </Button>
-                )}
-              </TableCell>
+      <Box sx={{ overflowX: 'auto' }}>{/* phones: the table scrolls, not the page */}
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>{t('auth.username')}</TableCell>
+              <TableCell>{t('admin.lastSeen')}</TableCell>
+              <TableCell>{t('admin.status')}</TableCell>
+              <TableCell />
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHead>
+          <TableBody>
+            {users.data?.map((u) => (
+              <TableRow key={u.id}>
+                <TableCell>
+                  {u.username}{u.display_name ? ` (${u.display_name})` : ''}
+                  {u.is_admin && <Chip size="small" label={t('admin.admin')} sx={{ ml: 1 }} />}
+                </TableCell>
+                <TableCell>{when(u.last_seen_at)}</TableCell>
+                <TableCell>
+                  {u.disabled_at ? t('admin.disabled') : u.deletion_requested_at ? t('admin.closing') : t('admin.active')}
+                  {u.two_factor && ` · ${t('admin.twoFactor')}`}
+                </TableCell>
+                <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                  <Button size="small" onClick={() => act(async () => {
+                    const r = await send<{ token: string }>('POST', `/v1/admin/users/${u.id}/reset`)
+                    setReset({ username: u.username, link: `${window.location.origin}/reset?token=${r.token}` })
+                  })}>{t('admin.resetLink')}</Button>
+                  {u.id !== selfId && (
+                    <Button size="small" color={u.disabled_at ? 'primary' : 'error'}
+                      onClick={() => act(() => send('POST', `/v1/admin/users/${u.id}/disable`, { disabled: !u.disabled_at }))}>
+                      {t(u.disabled_at ? 'admin.enable' : 'admin.disable')}
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Box>
       {reset && (
         <ShowOnce title={t('admin.resetReady', { name: reset.username })} body={t('admin.resetReadyBody')}
           link={reset.link} onClose={() => setReset(null)} />

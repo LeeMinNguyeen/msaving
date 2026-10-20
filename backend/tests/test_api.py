@@ -2,6 +2,7 @@
 through the API itself (open sign-up in the test database; invite-only and
 setup are in test_sign_in.py) and use the session token it returns.
 """
+import re
 import uuid
 
 import pytest
@@ -204,6 +205,55 @@ def add_category(client, u, bid, name, kind="expense", parent=None):
     return r.json()
 
 
+def test_account_details_by_kind(client):
+    """msaving#17: a note on any account, a credit card's limit, fee and days, an interest rate where one applies.
+    A detail for the wrong kind is refused; changing the kind clears the ones that stop applying."""
+    u = signed_up(client)
+    bid, _ = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}/accounts"
+
+    def create(kind, **details):
+        return client.post(base, headers=auth(u), json={"id": str(uuid.uuid4()), "name": f"{kind} {uuid.uuid4().hex[:6]}",
+                                                        "kind": kind, **details})
+
+    card = create("credit_card", last4="3317", note="  Thẻ chính  ", credit_limit=50_000_000, annual_fee=499_000,
+                  statement_day=25, payment_due_day=10, interest_rate_bp=2_800)
+    assert card.status_code == 201
+    assert {k: card.json()[k] for k in ("note", "credit_limit", "annual_fee", "statement_day", "payment_due_day",
+                                        "interest_rate_bp")} == {"note": "Thẻ chính", "credit_limit": 50_000_000,
+        "annual_fee": 499_000, "statement_day": 25, "payment_due_day": 10, "interest_rate_bp": 2_800}
+    assert create("savings", interest_rate_bp=475).json()["interest_rate_bp"] == 475
+    assert create("cash", note="Ví").json()["note"] == "Ví"
+    for kind, details in (("cash", {"credit_limit": 1}), ("checking", {"interest_rate_bp": 100}), ("lent", {"statement_day": 3}),
+                          ("credit_card", {"statement_day": 32}), ("credit_card", {"credit_limit": -1}),
+                          ("savings", {"interest_rate_bp": 100_001}), ("cash", {"note": "x" * 501})):
+        assert create(kind, **details).status_code == 422, (kind, details)
+
+    acc = card.json()
+    url = f"{base}/{acc['id']}"
+    same = client.patch(url, headers=auth(u), json={"version": acc["version"], "name": "Visa"}).json()       # left out: kept
+    assert (same["credit_limit"], same["note"]) == (50_000_000, "Thẻ chính")
+    cleared = client.patch(url, headers=auth(u), json={"version": same["version"], "note": None, "annual_fee": None}).json()
+    assert (cleared["note"], cleared["annual_fee"], cleared["credit_limit"]) == (None, None, 50_000_000)
+    assert client.patch(url, headers=auth(u), json={"version": cleared["version"], "kind": "loan", "credit_limit": 1}).status_code == 422
+    loan = client.patch(url, headers=auth(u), json={"version": cleared["version"], "kind": "loan"}).json()
+    assert {k: loan[k] for k in ("kind", "credit_limit", "statement_day", "payment_due_day", "interest_rate_bp")} == {
+        "kind": "loan", "credit_limit": None, "statement_day": None, "payment_due_day": None, "interest_rate_bp": 2_800}
+    cash = client.patch(url, headers=auth(u), json={"version": loan["version"], "kind": "cash"}).json()
+    assert (cash["kind"], cash["interest_rate_bp"]) == ("cash", None)
+
+    # The export has them, readable: amounts in the currency, the rate as a percentage (Vietnamese headers).
+    import csv
+    import io
+    import zipfile
+    create("credit_card", note="Thẻ phụ", credit_limit=20_000_000, statement_day=5, payment_due_day=20, interest_rate_bp=2_550)
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
+    rows = {r["Ghi chú"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
+    assert {k: rows["Thẻ phụ"][k] for k in ("Hạn mức tín dụng", "Phí thường niên", "Ngày sao kê", "Ngày đến hạn thanh toán",
+                                            "Lãi suất (%/năm)")} == {"Hạn mức tín dụng": "20000000", "Phí thường niên": "",
+        "Ngày sao kê": "5", "Ngày đến hạn thanh toán": "20", "Lãi suất (%/năm)": "25.50"}
+
+
 def test_categories(client):
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)
@@ -381,6 +431,43 @@ def test_people_and_lending(client):
     assert [(p["name"], p["owed_to_you"], p["you_owe"]) for p in dash["people"]] == [("Tom", 1_500_000, 0)]
 
 
+def test_edits_to_amounts_or_accounts_alone_are_versions(client, database):
+    """msaving#18, #19: changing only an amount or an account is an edit like any other: a new version (so a
+    second browser still gets 409) and its own line in the history. Saving with nothing changed is neither,
+    and leaves the entries alone (no rows in the audit log for them)."""
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}/transactions"
+    tid = str(uuid.uuid4())
+    body = {"type": "expense", "occurred_on": "2026-10-03", "payee": "Lẩu", "entries": [{"account_id": accts["Cash"], "amount": -45_000}]}
+    assert client.post(base, headers=auth(u), json={**body, "id": tid}).status_code == 201
+
+    def put(version, **changes):
+        return client.put(f"{base}/{tid}", headers=auth(u), json={**body, **changes, "version": version})
+
+    amount = put(1, entries=[{"account_id": accts["Cash"], "amount": -65_000}])
+    assert (amount.status_code, amount.json()["version"]) == (200, 2)
+    stale = put(1, entries=[{"account_id": accts["Cash"], "amount": -50_000}])        # the other browser
+    assert (stale.status_code, stale.json()) == (409, {"detail": "conflict"})
+    moved = put(2, entries=[{"account_id": accts["Bank"], "amount": -65_000}])
+    assert (moved.status_code, moved.json()["version"]) == (200, 3)
+    def entry_writes():
+        with database.connect() as c:
+            return c.execute(text("select count(*) from audit_log where table_name = 'entries'"
+                                  " and coalesce(new_row, old_row)->>'transaction_id' = :t"), {"t": tid}).scalar()
+    writes = entry_writes()
+    same = put(3, entries=[{"account_id": accts["Bank"], "amount": -65_000}])
+    assert (same.status_code, same.json()["version"]) == (200, 3)
+    assert entry_writes() == writes
+
+    hist = client.get(f"{base}/{tid}/history", headers=auth(u)).json()
+    assert [(h["action"], h["version"]) for h in hist] == [("created", 1), ("edited", 2), ("edited", 3)]
+    assert [(h["entries"][0]["account_id"], h["entries"][0]["amount"]) for h in hist] == [
+        (accts["Cash"], -45_000), (accts["Cash"], -65_000), (accts["Bank"], -65_000)]
+    listed = lambda acc: [t["id"] for t in client.get(base, headers=auth(u), params={"account_id": acc}).json()["items"]]
+    assert tid not in listed(accts["Cash"]) and tid in listed(accts["Bank"])
+
+
 def test_budgets(client):
     from datetime import date as d
     today = d.today()
@@ -539,6 +626,28 @@ def test_shared_books(client):
     assert client.delete(f"/v1/me/book-invites/{bid}", headers=auth(other)).status_code == 204
     assert client.get("/v1/me/book-invites", headers=auth(other)).json() == []
     assert [(m["name"], m["me"]) for m in client.get(members, headers=auth(editor)).json()] == [(names["editor"], True)]
+
+
+def test_book_changes_marker(client):
+    """msaving#25: a member polls one cheap marker that changes when anyone changes the book."""
+    owner, editor, stranger = signed_up(client), signed_up(client), signed_up(client)
+    bid, accts = new_book_with_accounts(client, owner)
+    editor_name = client.get("/v1/me", headers=auth(editor)).json()["profile"]["username"]
+    client.post(f"/v1/books/{bid}/members", headers=auth(owner), json={"username": editor_name})
+    assert client.post(f"/v1/me/book-invites/{bid}/accept", headers=auth(editor)).status_code == 204
+    url = f"/v1/books/{bid}/changes"
+
+    first = client.get(url, headers=auth(owner)).json()["marker"]
+    assert client.get(url, headers=auth(owner)).json()["marker"] == first == client.get(url, headers=auth(editor)).json()["marker"]
+    assert re.fullmatch(r"[0-9a-f]{32}", first)        # opaque: no audit ids, which count changes across the server
+    client.post(f"/v1/books/{bid}/transactions", headers=auth(editor), json={
+        "id": str(uuid.uuid4()), "type": "expense", "occurred_on": "2026-10-05",
+        "entries": [{"account_id": accts["Cash"], "amount": -30_000}]})
+    second = client.get(url, headers=auth(owner)).json()["marker"]
+    assert second != first
+    client.patch(f"/v1/books/{bid}", headers=auth(owner), json={"version": 1, "name": "Renamed"})
+    assert client.get(url, headers=auth(editor)).json()["marker"] not in (first, second)
+    assert client.get(url, headers=auth(stranger)).json() == {"detail": "not_found"}
 
 
 def test_book_invites_are_rate_limited(client):

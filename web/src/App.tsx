@@ -6,8 +6,10 @@ import { createBrowserRouter, Navigate, Outlet, RouterProvider, useParams } from
 import { useSession } from './auth/useSession'
 import { useErrorText } from './components/errors'
 import { Shell } from './components/Shell'
+import { UpdatingNotice } from './components/UpdatingNotice'
 import { setLanguage } from './i18n'
 import { useBooks, useInstance, useMe } from './lib/queries'
+import { useUpdating } from './lib/updating'
 import { AccountClosing } from './pages/AccountClosing'
 import { Admin } from './pages/Admin'
 import { Profile } from './pages/Profile'
@@ -28,11 +30,14 @@ function Loading() {
   )
 }
 
+// Only when there's nothing to show yet: a refresh that fails later keeps the
+// page as it was (the server may be restarting, and every query retries).
 function Failed({ error }: { error: unknown }) {
   const errorText = useErrorText()
+  const updating = useUpdating()
   return (
     <Box sx={{ p: 2 }}>
-      <Alert severity="error">{errorText(error)}</Alert>
+      {updating ? <UpdatingNotice /> : <Alert severity="error">{errorText(error)}</Alert>}
     </Box>
   )
 }
@@ -48,7 +53,7 @@ function RequireAccount() {
 
   if (!signedIn) return <Navigate to="/sign-in" replace />
   if (me.isPending) return <Loading />
-  if (me.isError) return <Failed error={me.error} />
+  if (!me.data) return <Failed error={me.error} />
   const profile = me.data.profile
   if (profile.deletion_requested_at) return <AccountClosing requestedAt={profile.deletion_requested_at} />
   return <Outlet />
@@ -58,7 +63,7 @@ function RequireAccount() {
 function Home() {
   const books = useBooks()
   if (books.isPending) return <Loading />
-  if (books.isError) return <Failed error={books.error} />
+  if (!books.data) return <Failed error={books.error} />
   const first = books.data.find((b) => !b.archived_at) ?? books.data[0]
   return <Navigate to={first ? `/books/${first.id}` : '/books/new'} replace />
 }
@@ -69,7 +74,7 @@ function InBook({ page }: { page: Page }) {
   const { bookId } = useParams()
   const books = useBooks()
   if (books.isPending) return <Loading />
-  if (books.isError) return <Failed error={books.error} />
+  if (!books.data) return <Failed error={books.error} />
   const book = books.data.find((b) => b.id === bookId)
   if (!book) return <Navigate to="/" replace />
   const pages: Record<Page, ReactNode> = {
@@ -91,7 +96,7 @@ function PublicOnly({ page }: { page: 'sign-in' | 'join' | 'reset' }) {
   const instance = useInstance()
   if (signedIn && page !== 'reset') return <Navigate to="/" replace />
   if (instance.isPending) return <Loading />
-  if (instance.isError) return <Failed error={instance.error} />
+  if (!instance.data) return <Failed error={instance.error} />
   if (instance.data.setup_needed) return <Setup />
   return { 'sign-in': <SignIn />, join: <Join />, reset: <Reset /> }[page]
 }

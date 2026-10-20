@@ -21,6 +21,7 @@ import { api, type Book, type Transaction } from '../lib/api'
 import { todayIn } from '../lib/labels'
 import { formatMoney } from '../lib/money'
 import { useCategories, useCurrencies, useDashboard } from '../lib/queries'
+import { RefreshButton } from '../components/RefreshButton'
 
 // Credits some rate sources ask for (backend/app/jobs/fx_update.py); a proper name, not translated.
 const RATE_CREDITS: Record<string, { label: string; href: string }> = {
@@ -77,7 +78,7 @@ export function Dashboard({ book }: { book: Book }) {
   const dayFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' })
 
   if (dash.isPending) return null
-  if (dash.isError) return <Alert severity="error">{errorText(dash.error)}</Alert>
+  if (!dash.data) return <Alert severity="error">{errorText(dash.error)}</Alert>
   const d = dash.data
 
   const months = lastSixMonths(todayIn(book.timezone))
@@ -113,7 +114,10 @@ export function Dashboard({ book }: { book: Book }) {
   const credit = converts ? RATE_CREDITS[d.rates_source ?? ''] : undefined
   return (
     <Stack spacing={2}>
-      <Typography variant="h5">{t('dash.title')}</Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Typography variant="h5">{t('dash.title')}</Typography>
+        <RefreshButton bookId={book.id} />
+      </Stack>
       {empty && <Alert severity="info">{t(book.role === 'viewer' ? 'dash.emptyViewer' : 'dash.empty')}</Alert>}
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' } }}>
         <Tile label={t('dash.netWorth')} value={money(d.net_worth)}
