@@ -384,7 +384,7 @@ def test_categories(client):
 
 
 def test_transactions_have_a_time_of_day(client):
-    """R-TXN-5: every transaction has a date and a time of day; lists sort by both; one saved without a time has
+    """R-TXN-6: every transaction has a date and a time of day; lists sort by both; one saved without a time has
     00:00, and an edit that leaves the time out keeps it."""
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)
