@@ -318,6 +318,70 @@ def test_two_factor_with_recovery_codes(client):
     assert sign_in(client, name).status_code == 200
 
 
+def test_remembered_device_skips_the_code_until_cancelled(client, admin, database, monkeypatch):
+    """R-AUTH-10: "remember this device" skips the two-factor code there, never the password, for 30 days. A new
+    password, two-factor turned off, an admin's reset link and "sign out other devices" (but this one) cancel it."""
+    from app.core import sign_in as si
+    monkeypatch.setattr(si, "per_username", si.RateLimit(100, 60))
+    name, token = sign_up(client)
+    uid = me(client, token).json()["id"]
+    secret = client.post("/v1/auth/two-factor/setup", headers=bearer(token)).json()["secret"]
+    client.post("/v1/auth/two-factor/enable", headers=bearer(token), json={"secret": secret, "code": pyotp.TOTP(secret).now()})
+    password = PASSWORD
+
+    def remember():
+        body = {"username": name, "password": password, "code": pyotp.TOTP(secret).now(), "remember_device": True}
+        return client.post("/v1/auth/sign-in", json=body).json()["device_token"]
+
+    def with_device(device_token, password_typed=None):
+        body = {"username": name, "password": password_typed or password, "device_token": device_token}
+        return client.post("/v1/auth/sign-in", json=body)
+
+    def remembered():
+        with database.connect() as c:
+            return c.execute(text("select count(*) from remembered_devices where user_id = :u"), {"u": uid}).scalar()
+
+    assert sign_in(client, name, code=pyotp.TOTP(secret).now()).json()["device_token"] is None
+    laptop, phone, tablet = remember(), remember(), remember()
+    assert with_device(laptop).status_code == 200
+    assert with_device(laptop, "wrong password!").json() == {"detail": "invalid_credentials"}
+    assert with_device("not-a-token").json() == {"detail": "code_required"}
+    other, _ = sign_up(client)
+    assert client.post("/v1/auth/sign-in", json={"username": other, "password": PASSWORD, "device_token": laptop}).status_code == 200
+
+    with database.connect() as c:                                  # 30 days later
+        c.execute(text("update remembered_devices set expires_at = now() - interval '1 second'"
+                       " where token_sha256 = sha256(convert_to(:t, 'utf8'))"), {"t": phone})
+    assert with_device(phone).json() == {"detail": "code_required"}
+
+    here = with_device(laptop).json()["token"]
+    assert client.post("/v1/auth/sign-out-others", headers=bearer(here), json={"device_token": laptop}).status_code == 204
+    assert with_device(laptop).status_code == 200 and with_device(tablet).json() == {"detail": "code_required"}
+
+    new_password = "another long password"
+    assert client.post("/v1/auth/password", headers=bearer(here),
+                       json={"current_password": password, "new_password": new_password}).status_code == 204
+    password = new_password
+    assert remembered() == 0 and with_device(laptop).json() == {"detail": "code_required"}
+
+    remember()
+    assert client.post("/v1/auth/two-factor/disable", headers=bearer(here), json={"code": pyotp.TOTP(secret).now()}).status_code == 204
+    assert remembered() == 0
+
+    client.post("/v1/auth/two-factor/enable", headers=bearer(here), json={"secret": secret, "code": pyotp.TOTP(secret).now()})
+    remember()
+    _, admin_token = admin
+    link = client.post(f"/v1/admin/users/{uid}/reset", headers=bearer(admin_token)).json()
+    assert client.post("/v1/auth/reset", json={"token": link["token"], "new_password": "a third long password"}).status_code == 200
+    assert remembered() == 0
+
+    with database.connect() as c:                                  # the daily purge: past their 30 days
+        c.execute(text("insert into remembered_devices (token_sha256, user_id, expires_at)"
+                       " values (sha256('old'::bytea), :u, now() - interval '1 day')"), {"u": uid})
+        c.execute(text("select purge_expired_sign_in()"))
+    assert remembered() == 0
+
+
 def test_rate_limits(client):
     from app.core import sign_in as si
     name, _ = sign_up(client)

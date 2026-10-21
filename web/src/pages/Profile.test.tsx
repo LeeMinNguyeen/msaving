@@ -91,3 +91,15 @@ describe('signing out after inactivity, the user\'s own choice (msaving#26)', ()
     await waitFor(() => expect(api.writes()[0]?.body).toEqual({ idle_sign_out_minutes: null }))
   })
 })
+
+describe('signing out the other devices', () => {
+  it("keeps this device's remembered two-step verification", async () => {
+    localStorage.setItem('msaving.device.lan', 'device-1')
+    const api = server([laptop, phone])
+    await renderApp(<Profile />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign out other devices' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    expect(api.writes()[0]).toMatchObject({ path: '/v1/auth/sign-out-others', body: { device_token: 'device-1' } })
+    localStorage.removeItem('msaving.device.lan')
+  })
+})

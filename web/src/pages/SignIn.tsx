@@ -1,5 +1,7 @@
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
+import Checkbox from '@mui/material/Checkbox'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
@@ -7,9 +9,10 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
 import { useSignedInForm } from '../auth/forms'
+import { rememberedDevice } from '../auth/rememberedDevice'
 import { Centered } from '../components/Centered'
 import { FormError, PublicHeader } from '../components/AccountForm'
-import { ApiError, send, type Token } from '../lib/api'
+import { ApiError, send, type SignedIn } from '../lib/api'
 import { useIdleNotice } from '../lib/idle'
 import { useInstance } from '../lib/queries'
 // Sign in: username, password, and the authenticator's code (or a recovery
@@ -23,13 +26,20 @@ export function SignIn() {
 
   async function signIn(form: HTMLFormElement) {
     const f = new FormData(form)
+    const username = String(f.get('username')).trim()
+    const deviceToken = rememberedDevice.get(username)
     try {
-      return await send<Token>('POST', '/v1/auth/sign-in', {
-        username: String(f.get('username')).trim(), password: String(f.get('password')),
-        code: needsCode ? String(f.get('code') ?? '').trim() : null,
+      const signedIn = await send<SignedIn>('POST', '/v1/auth/sign-in', {
+        username, password: String(f.get('password')), code: needsCode ? String(f.get('code') ?? '').trim() : null,
+        remember_device: needsCode && f.get('remember') === 'on', device_token: deviceToken,
       })
+      if (signedIn.device_token) rememberedDevice.set(username, signedIn.device_token)
+      return signedIn
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'code_required') setNeedsCode(true)
+      if (err instanceof ApiError && err.code === 'code_required') {
+        if (deviceToken) rememberedDevice.forget(username)
+        setNeedsCode(true)
+      }
       throw err
     }
   }
@@ -43,8 +53,11 @@ export function SignIn() {
           slotProps={{ htmlInput: { autoCapitalize: 'none' } }} />
         <TextField name="password" label={t('auth.password')} type="password" required autoComplete="current-password" />
         {needsCode && (
-          <TextField name="code" label={t('mfa.codeOrRecovery')} required autoFocus
-            slotProps={{ htmlInput: { autoComplete: 'one-time-code', autoCapitalize: 'characters' } }} />
+          <>
+            <TextField name="code" label={t('mfa.codeOrRecovery')} required autoFocus
+              slotProps={{ htmlInput: { autoComplete: 'one-time-code', autoCapitalize: 'characters' } }} />
+            <FormControlLabel control={<Checkbox name="remember" />} label={t('mfa.rememberDevice')} />
+          </>
         )}
         {error instanceof ApiError && error.code === 'code_required' ? null : <FormError error={error} />}
         <Button type="submit" variant="contained" size="large" loading={busy}>{t('auth.signIn')}</Button>

@@ -22,11 +22,16 @@ Password = Annotated[str, StringConstraints(min_length=si.MIN_PASSWORD, max_leng
 AnyPassword = Annotated[str, StringConstraints(max_length=si.MAX_PASSWORD)]
 Code = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20)]
 DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
+DeviceToken = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 RECOVERY_CODES = 10
 
 
 class Token(BaseModel):
     token: str
+
+
+class SignedIn(Token):
+    device_token: str | None = None    # with remember_device: send it back at the next sign-in on this device
 
 
 def _client_ip(request: Request) -> str:
@@ -128,15 +133,33 @@ class SignIn(BaseModel):
     username: Annotated[str, StringConstraints(strip_whitespace=True, to_lower=True, max_length=30)]
     password: AnyPassword
     code: Code | None = None           # the authenticator's 6 digits, or a recovery code
+    remember_device: bool = False      # with a code: skip the code on this device for 30 days
+    device_token: DeviceToken | None = None
+
+
+def _remembered(user_id: uuid.UUID, device_token: str | None) -> bool:
+    if not device_token:
+        return False
+    with user_session(user_id) as s:
+        return s.execute(text("select 1 from remembered_devices where token_sha256 = :h and expires_at > now()"),
+                         {"h": si.token_hash(device_token)}).first() is not None
+
+
+def _remember(user_id: uuid.UUID) -> str:
+    token, digest = si.new_token()
+    with user_session(user_id) as s:
+        s.execute(text("insert into remembered_devices (token_sha256, user_id) values (:h, :u)"), {"h": digest, "u": user_id})
+    return token
 
 
 @router.post("/auth/sign-in")
-def sign_in(body: SignIn, request: Request, db: Session = Depends(get_public_db)) -> Token:
+def sign_in(body: SignIn, request: Request, db: Session = Depends(get_public_db)) -> SignedIn:
     _limit((si.per_ip, f"sign-in:{_client_ip(request)}"), (si.per_username, body.username))
     row = db.execute(text("select * from sign_in_lookup(:u)"), {"u": body.username}).mappings().first()
     if not si.password_matches(row["password_hash"] if row else None, body.password):
         raise HTTPException(401, "invalid_credentials")
-    if row["totp_secret"]:
+    device_token = None
+    if row["totp_secret"] and not _remembered(row["user_id"], body.device_token):
         if not body.code:
             raise HTTPException(401, "code_required")
         ok = si.totp_matches(row["totp_secret"], body.code) or db.execute(
@@ -144,7 +167,9 @@ def sign_in(body: SignIn, request: Request, db: Session = Depends(get_public_db)
         db.commit()
         if not ok:
             raise HTTPException(401, "invalid_code")
-    return _start_session(row["user_id"], _device(request))
+        if body.remember_device:
+            device_token = _remember(row["user_id"])
+    return SignedIn(token=_start_session(row["user_id"], _device(request)).token, device_token=device_token)
 
 
 @router.post("/auth/sign-out", status_code=204)
@@ -182,10 +207,19 @@ def end_session(session_id: uuid.UUID, caller: Caller = Depends(current_caller),
     return Response(status_code=204)
 
 
+class SignOutOthers(BaseModel):
+    device_token: DeviceToken | None = None    # this device's, which stays remembered
+
+
 @router.post("/auth/sign-out-others", status_code=204)
-def sign_out_others(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> Response:
+def sign_out_others(body: SignOutOthers | None = None, caller: Caller = Depends(current_caller),
+                    db: Session = Depends(get_db)) -> Response:
+    """Also forgets every other remembered device."""
     db.execute(text("delete from sessions where user_id = :u and token_sha256 <> :h"),
                {"u": caller.id, "h": caller.token_sha256})
+    keep = si.token_hash(body.device_token) if body and body.device_token else None
+    db.execute(text("delete from remembered_devices where user_id = :u and token_sha256 is distinct from cast(:k as bytea)"),
+               {"u": caller.id, "k": keep})
     db.commit()
     return Response(status_code=204)
 
