@@ -333,10 +333,15 @@
     "save": "Lưu",
     "saved": "Đã lưu.",
     "security": "Bảo mật",
-    "devices": "Thiết bị",
-    "devicesHint": "Đăng xuất khỏi mọi thiết bị khác đang đăng nhập tài khoản này. Thiết bị này vẫn đăng nhập.",
+    "devices": "Thiết bị đang đăng nhập",
+    "devicesHint": "Những nơi tài khoản này đang đăng nhập. Đăng xuất thiết bị bạn không dùng nữa, hoặc mọi thiết bị khác cùng lúc.",
     "signOutOthers": "Đăng xuất các thiết bị khác",
     "signedOutOthers": "Đã đăng xuất các thiết bị khác.",
+    "thisDevice": "Thiết bị này",
+    "unknownDevice": "Thiết bị không rõ",
+    "deviceTimes": "Đăng nhập {{signedIn}} · dùng gần nhất {{lastUsed}}",
+    "signOutDevice": "Đăng xuất",
+    "signedOutDevice": "Đã đăng xuất {{device}}.",
     "yourData": "Dữ liệu của bạn",
     "exportHint": "Tải về toàn bộ dữ liệu của bạn dưới dạng các tệp CSV đọc được, trong một tệp ZIP.",
     "export": "Tải dữ liệu của tôi",
@@ -347,7 +352,11 @@
     "password": "Mật khẩu",
     "currentPassword": "Mật khẩu hiện tại",
     "changePassword": "Đổi mật khẩu",
-    "passwordChanged": "Đã đổi mật khẩu. Các thiết bị khác đã được đăng xuất."
+    "passwordChanged": "Đã đổi mật khẩu. Các thiết bị khác đã được đăng xuất.",
+    "idleSignOut": "Tự đăng xuất khi không hoạt động",
+    "idleSignOutHint": "Trên mọi thiết bị: sau khoảng thời gian này không nhấp, gõ phím hay chạm, bạn sẽ bị đăng xuất, có cảnh báo trước một phút.",
+    "idleOff": "Không (chỉ sau 30 ngày không dùng)",
+    "idleMinutes": "Sau {{minutes}} phút"
   },
   "closing": {
     "title": "Tài khoản đang được đóng",
@@ -425,7 +434,25 @@
     "updateConfirm": "Cài phiên bản {{version}}? Máy chủ sẽ dựng phiên bản mới, sao lưu rồi khởi động lại; mọi người mất kết nối trong chốc lát, cả quá trình mất vài phút.",
     "updatingReload": "Đang cập nhật lên {{version}}. Máy chủ đang dựng lại và khởi động lại nên trang này có thể không hoạt động trong vài phút. Hãy tải lại trang sau khoảng 5 phút.",
     "updatedReload": "Đã cập nhật lên {{version}}. Hãy tải lại trang để dùng phiên bản mới.",
-    "reload": "Tải lại"
+    "reload": "Tải lại",
+    "jobs": "Việc chạy hằng ngày",
+    "jobsHint": "Mỗi việc chạy mỗi ngày một lần vào giờ đã đặt, theo múi giờ của bạn ({{timezone}}). Việc bị lỡ khi máy chủ tắt sẽ chạy khi máy chủ bật lại.",
+    "job": "Việc",
+    "jobTime": "Giờ chạy",
+    "jobTimeOf": "Giờ chạy: {{job}}",
+    "jobLast": "Lần chạy gần nhất",
+    "jobNames": {
+      "purge": "Xóa tài khoản đã đóng và phiên đăng nhập cũ",
+      "backup": "Sao lưu cơ sở dữ liệu",
+      "rates": "Cập nhật tỷ giá"
+    },
+    "jobRatesOn": "Cập nhật tỷ giá mỗi ngày",
+    "jobOn": "Bật",
+    "jobOff": "Tắt: tỷ giá giữ nguyên",
+    "jobNever": "Chưa chạy",
+    "jobRunning": "Đang chạy từ {{when}}",
+    "jobDone": "Xong lúc {{when}}",
+    "jobFailed": "Lỗi lúc {{when}}"
   },
   "members": {
     "title": "Thành viên",
@@ -452,5 +479,11 @@
     "invitedYou": "{{who}} đã mời bạn vào sổ \"{{book}}\" với vai trò {{role}}.",
     "accept": "Đồng ý",
     "decline": "Từ chối"
+  },
+  "idle": {
+    "title": "Bạn còn ở đây không?",
+    "warning": "Bạn sẽ bị đăng xuất sau {{seconds}} giây vì đã lâu không có thao tác nào.",
+    "stay": "Vẫn đăng nhập",
+    "signedOut": "Bạn đã bị đăng xuất sau {{minutes}} phút không hoạt động."
   }
 }

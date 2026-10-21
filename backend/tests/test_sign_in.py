@@ -50,9 +50,9 @@ def bearer(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def sign_up(client, name=None, password=PASSWORD, status=201, **extra):
+def sign_up(client, name=None, password=PASSWORD, status=201, headers=None, **extra):
     name = name or f"u{uuid.uuid4().hex[:10]}"
-    r = client.post("/v1/auth/sign-up", json={"username": name, "password": password, **extra})
+    r = client.post("/v1/auth/sign-up", json={"username": name, "password": password, **extra}, headers=headers)
     assert r.status_code == status, r.text
     return (name, r.json()["token"]) if status == 201 else r.json()
 
@@ -191,6 +191,102 @@ def test_change_password_signs_out_other_devices(client):
                        json={"current_password": PASSWORD, "new_password": "a new password"}).status_code == 204
     assert me(client, other).status_code == 401 and me(client, token).status_code == 200
     assert sign_in(client, name).status_code == 401 and sign_in(client, name, "a new password").status_code == 200
+
+
+CHROME_WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+SAFARI_IPHONE = ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+                 " Version/18.6 Mobile/15E148 Safari/604.1")
+
+
+def test_signed_in_devices(client, database):
+    """msaving#5: a user sees where they're signed in, this device first, and signs out one other device."""
+    name, laptop = sign_up(client, headers={"User-Agent": CHROME_WINDOWS})
+    phone = client.post("/v1/auth/sign-in", json={"username": name, "password": PASSWORD},
+                        headers={"User-Agent": SAFARI_IPHONE}).json()["token"]
+    script = sign_in(client, name).json()["token"]                          # no browser: no label
+    _, stranger = sign_up(client)
+
+    listed = client.get("/v1/auth/sessions", headers=bearer(phone)).json()
+    assert [(s["device"], s["current"]) for s in listed][:1] == [("Safari · iOS", True)]
+    assert sorted((s["device"] or "", s["current"]) for s in listed) == [
+        ("", False), ("Chrome · Windows", False), ("Safari · iOS", True)]
+    assert set(listed[0]) == {"id", "device", "created_at", "last_used_at", "current"}   # never a token or its hash
+    assert [s["current"] for s in client.get("/v1/auth/sessions", headers=bearer(stranger)).json()] == [True]  # only theirs
+
+    chrome = next(s["id"] for s in listed if s["device"] == "Chrome · Windows")
+    assert client.delete(f"/v1/auth/sessions/{chrome}", headers=bearer(stranger)).json() == {"detail": "not_found"}
+    assert me(client, laptop).status_code == 200
+    assert client.delete(f"/v1/auth/sessions/{chrome}", headers=bearer(phone)).status_code == 204
+    assert me(client, laptop).status_code == 401 and me(client, script).status_code == 200
+    assert client.delete(f"/v1/auth/sessions/{uuid.uuid4()}", headers=bearer(phone)).status_code == 404
+
+    # A session unused for 30 days isn't a device any more, even before the daily purge deletes it.
+    with database.connect() as c:
+        c.execute(text("update sessions set last_used_at = now() - interval '31 days'"
+                       " where token_sha256 = sha256(convert_to(:t, 'utf8'))"), {"t": script})
+    assert [s["device"] for s in client.get("/v1/auth/sessions", headers=bearer(phone)).json()] == ["Safari · iOS"]
+
+
+def test_idle_sign_out(client, database):
+    """msaving#26: each user's sessions end after so many minutes unused, 5 by default, or their own choice,
+    never included (30 days); nobody else's setting touches them."""
+    name, token = sign_up(client)
+    other = sign_in(client, name).json()["token"]
+    _, neighbour = sign_up(client)
+    assert me(client, token).json()["profile"]["idle_sign_out_minutes"] == 5            # the default
+    assert client.patch("/v1/me", headers=bearer(neighbour), json={"idle_sign_out_minutes": 60}).status_code == 200
+    for bad in (0, 1441, "five"):
+        assert client.patch("/v1/me", headers=bearer(token), json={"idle_sign_out_minutes": bad}).status_code == 422
+
+    def unused_for(t, minutes):
+        with database.connect() as c:
+            c.execute(text("update sessions set last_used_at = now() - make_interval(mins => :m)"
+                           " where token_sha256 = sha256(convert_to(:t, 'utf8'))"), {"t": t, "m": minutes})
+
+    assert client.patch("/v1/me", headers=bearer(token), json={"language": "en"}).json()["profile"][
+        "idle_sign_out_minutes"] == 5                                     # left out: kept
+    assert "idle_sign_out_minutes" not in client.get("/v1/instance").json()   # not a server setting
+    unused_for(token, 5)                     # kept to the minute, so a minute's grace: still signed in
+    assert me(client, token).status_code == 200
+    unused_for(token, 7)
+    assert me(client, token).status_code == 401
+    unused_for(neighbour, 7)                 # someone else's sessions: their own 60 minutes
+    assert me(client, neighbour).status_code == 200
+    unused_for(other, 7)                     # not listed, then deleted by the daily purge
+    third = sign_in(client, name).json()["token"]
+    assert [s["current"] for s in client.get("/v1/auth/sessions", headers=bearer(third)).json()] == [True]
+    with database.connect() as c:
+        c.execute(text("select purge_expired_sign_in()"))
+        left = c.execute(text("select count(*) from sessions s join users u on u.id = s.user_id where u.username = :n"),
+                         {"n": name}).scalar()
+    assert left == 1
+    assert client.patch("/v1/me", headers=bearer(third), json={"idle_sign_out_minutes": None}).json()["profile"][
+        "idle_sign_out_minutes"] is None
+    unused_for(third, 7 * 24 * 60)           # off again: 30 days
+    assert me(client, third).status_code == 200
+
+
+@pytest.mark.parametrize("agent, label", [
+    (CHROME_WINDOWS, "Chrome · Windows"),
+    (SAFARI_IPHONE, "Safari · iOS"),
+    ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+     "Safari · macOS"),
+    ("Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0", "Firefox · Linux"),
+    ("Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36",
+     "Chrome · Android"),
+    ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+     " Edg/141.0.0.0", "Edge · Windows"),
+    ("Mozilla/5.0 (Linux; Android 15; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/28.0"
+     " Chrome/130.0.0.0 Mobile Safari/537.36", "Samsung Internet · Android"),
+    ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0"
+     " Mobile/15E148 Safari/604.1", "Chrome · iOS"),
+    ("MSaving/1.0 (Android 15)", "MSaving · Android"),
+    ("python-httpx/0.28.1", None),
+    (None, None),
+])
+def test_device_label(agent, label):
+    from app.core.sign_in import device_label
+    assert device_label(agent) == label
 
 
 def test_two_factor_with_recovery_codes(client):
@@ -373,11 +469,71 @@ def test_launcher_builds_login_urls():
     assert login_url("postgresql://u:x@[::1]/app", "fx_login", "p", driver="postgresql") == "postgresql://fx_login:p@[::1]/app"
 
 
-def test_scheduler_runs_daily_at_the_hour():
-    from app.jobs.scheduler import next_run
-    at = lambda h: datetime(2026, 10, 19, h, tzinfo=timezone.utc)
-    assert next_run(at(18), 19) == at(19)
-    assert next_run(at(19), 19) == datetime(2026, 10, 20, 19, tzinfo=timezone.utc)
+def test_job_schedule_times(monkeypatch):
+    """msaving#6: each job at its time of day, the admin's (in their timezone) or JOBS_HOUR (UTC) until then; due
+    once its time has come since it last started and since its schedule changed."""
+    from zoneinfo import ZoneInfo
+
+    from app.core import jobs
+    monkeypatch.setenv("JOBS_HOUR", "19")
+    t = lambda *a: datetime(*a, tzinfo=timezone.utc)
+    assert (jobs.next_time(t(2026, 10, 21, 18), None, None), jobs.next_time(t(2026, 10, 21, 19), None, None)) == (
+        t(2026, 10, 21, 19), t(2026, 10, 22, 19))
+    assert jobs.last_time(t(2026, 10, 21, 18), None, None) == t(2026, 10, 20, 19)
+    assert jobs.next_time(t(2026, 10, 21, 12), 150, "Asia/Ho_Chi_Minh") == t(2026, 10, 21, 19, 30)   # 02:30 in Vietnam
+    # Daylight saving time doesn't move it: 02:00 in Berlin is 00:00 UTC in summer and 01:00 after 25 October.
+    assert jobs.next_time(t(2026, 10, 20, 12), 120, "Europe/Berlin") == t(2026, 10, 21, 0)
+    assert jobs.next_time(t(2026, 10, 30, 12), 120, "Europe/Berlin") == datetime(2026, 10, 31, 2, tzinfo=ZoneInfo("Europe/Berlin"))
+    assert jobs.next_time(t(2026, 10, 30, 12), 120, "Europe/Berlin") == t(2026, 10, 31, 1)
+
+    def due(now, **job):
+        return jobs.is_due(now, {"enabled": True, "at_minute": None, "timezone": None, "last_started_at": None,
+                                 "changed_at": None} | job)
+    assert due(t(2026, 10, 21, 18))                                                     # never ran: a new server
+    assert not due(t(2026, 10, 21, 18), last_started_at=t(2026, 10, 20, 19, 0, 5))      # ran at yesterday's time
+    assert due(t(2026, 10, 21, 19, 0, 30), last_started_at=t(2026, 10, 20, 19, 0, 5))   # today's has come
+    assert due(t(2026, 10, 21, 23), last_started_at=t(2026, 10, 19, 19))                # off at 19:00: catches up
+    assert not due(t(2026, 10, 21, 23), last_started_at=t(2026, 10, 19, 19), changed_at=t(2026, 10, 21, 22))
+    assert not due(t(2026, 10, 21, 23), enabled=False)
+
+
+def test_daily_jobs_on_server_admin(client, admin, database):
+    """msaving#6: the admin sees each job's time and last run, sets the time in their own timezone, and can turn
+    only the exchange rates off."""
+    _, admin_token = admin
+    _, member = sign_up(client)
+    url = "/v1/admin/jobs"
+    assert client.get(url, headers=bearer(member)).json() == {"detail": "admin_only"}
+    assert client.patch(f"{url}/backup", headers=bearer(member), json={"enabled": True}).json() == {"detail": "admin_only"}
+
+    def listed():
+        return {j["name"]: j for j in client.get(url, headers=bearer(admin_token)).json()}
+    try:
+        jobs = client.get(url, headers=bearer(admin_token)).json()
+        assert [j["name"] for j in jobs] == ["purge", "backup", "rates"]
+        assert all((j["at_minute"], j["timezone"], j["default_minute"], j["enabled"]) == (None, None, 19 * 60, True) for j in jobs)
+        assert datetime.fromisoformat(jobs[0]["next_run_at"]).astimezone(timezone.utc).strftime("%H:%M") == "19:00"
+
+        patch = lambda name, **body: client.patch(f"{url}/{name}", headers=bearer(admin_token), json=body)
+        assert patch("backup", at_minute=150, timezone="Asia/Saigon").status_code == 204        # an alias, kept as the real name
+        backup = listed()["backup"]
+        assert (backup["at_minute"], backup["timezone"], backup["enabled"]) == (150, "Asia/Ho_Chi_Minh", True)
+        from zoneinfo import ZoneInfo
+        assert datetime.fromisoformat(backup["next_run_at"]).astimezone(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%H:%M") == "02:30"
+        assert listed()["purge"]["at_minute"] is None                                        # the others stay
+
+        for body in ({"at_minute": 150}, {"at_minute": 1440, "timezone": "UTC"}, {"at_minute": 60, "timezone": "Mars/Base"}):
+            assert patch("purge", **body).status_code == 422, body
+        assert patch("backup", enabled=False).json() == {"detail": "invalid"}                # can't do without backups
+        assert patch("purge", enabled=False).json() == {"detail": "invalid"}
+        assert patch("rates", enabled=False).status_code == 204 and listed()["rates"]["enabled"] is False
+        assert listed()["rates"]["at_minute"] is None                                        # left out: stays
+        assert patch("backup", at_minute=None).status_code == 204                            # back to JOBS_HOUR
+        assert (listed()["backup"]["at_minute"], listed()["backup"]["timezone"]) == (None, None)
+        assert patch("nightly", enabled=True).json() == {"detail": "not_found"}
+    finally:
+        with database.connect() as c:
+            c.execute(text("update jobs set at_minute = null, timezone = null, enabled = true, changed_at = null"))
 
 
 # ---------------------------------------------------------------- updates
@@ -405,6 +561,18 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     assert not (tmp_path / "requested").exists()
     assert client.post("/v1/admin/update", headers=bearer(admin_token)).status_code == 202
     assert (tmp_path / "requested").exists()
+
+    # The helper's last result, unless it's from before this server started (an update by hand or a restart
+    # since); a minute's grace, as it writes "done" just as the new server comes up.
+    def status_after(line, started):
+        (tmp_path / "status").write_text(line + "\n")
+        monkeypatch.setattr(updates, "STARTED", datetime.fromisoformat(started).timestamp())
+        return client.get("/v1/admin/update", headers=bearer(admin_token)).json()["status"]
+    old = "failed 2026-10-19T16:01:40Z: Error response from daemon: error from registry: denied"
+    assert status_after(old, "2026-10-20T16:27:30+00:00") is None
+    assert status_after(old, "2026-10-19T16:00:00+00:00") == old                   # failed while this server ran
+    assert status_after("done 2026-10-20T16:28:05Z", "2026-10-20T16:28:30+00:00") == "done 2026-10-20T16:28:05Z"
+    assert status_after("running 2026-10-20T16:20:00Z", "2026-10-20T16:27:30+00:00") is None
 
 
 def test_versions_compare():

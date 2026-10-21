@@ -9,6 +9,8 @@ tokens and rate limits. The routes are in app/api/routes/v1/sign_in.py.
   (invites, the setup code, recovery codes) are short and readable. The
   database keeps the SHA-256 of each, never the value.
 - Rate limits: in memory, per server process (a server runs one).
+- Signed-in devices: each session keeps a short label of the browser and
+  system that signed in (device_label()), never versions or addresses.
 """
 import base64
 import hashlib
@@ -57,6 +59,25 @@ def new_token() -> tuple[str, bytes]:
     """A session or reset token: (the value for the client, its SHA-256)."""
     token = secrets.token_urlsafe(32)
     return token, token_hash(token)
+
+
+# Matched in order: Edge, Opera and Samsung Internet also say Chrome; Chrome also says Safari; an iPhone also says
+# Mac OS X, and Android also says Linux. The mobile app will send "MSaving/<version>".
+_BROWSERS = (("MSaving/", "MSaving"), ("Edg", "Edge"), ("OPR/", "Opera"), ("SamsungBrowser/", "Samsung Internet"),
+             ("Firefox/", "Firefox"), ("FxiOS/", "Firefox"), ("CriOS/", "Chrome"), ("Chrome/", "Chrome"),
+             ("Safari/", "Safari"))
+_SYSTEMS = (("Windows", "Windows"), ("iPhone", "iOS"), ("iPad", "iOS"), ("iPod", "iOS"), ("Android", "Android"),
+            ("CrOS", "ChromeOS"), ("Macintosh", "macOS"), ("Mac OS X", "macOS"), ("Linux", "Linux"))
+
+
+def device_label(user_agent: str | None) -> str | None:
+    """A short name for the device that signed in, from its User-Agent: the browser and the system, without
+    versions ("Chrome · Windows", "Safari · iOS"), so it tells the user's devices apart without identifying them.
+    None when neither is recognised."""
+    ua = user_agent or ""
+    browser = next((name for key, name in _BROWSERS if key in ua), None)
+    system = next((name for key, name in _SYSTEMS if key in ua), None)
+    return " · ".join(n for n in (browser, system) if n) or None
 
 
 def new_code(groups: int = 2) -> tuple[str, bytes]:

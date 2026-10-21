@@ -12,6 +12,8 @@
   Docker and the checkout; this server only leaves a request file in the
   shared /updates folder, which the helper picks up: git pull, rebuild, restart.
   The helper touches /updates/updater_alive every few seconds while it runs.
+- The helper's last result counts only if it's from after this server started:
+  an update by hand or a restart since then makes it old news.
 """
 import json
 import os
@@ -19,12 +21,16 @@ import re
 import time
 import urllib.request
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 UPDATES = Path(os.environ.get("UPDATES_DIR", "/updates"))
 REPO = os.environ.get("UPDATE_REPO", "LeeMinNguyeen/msaving")
 CHECK_EVERY = 6 * 3600
 ALIVE_WITHIN = 30          # seconds since the helper's last heartbeat
+# When this server started: set by app/launch.py before the backup and migrations, so it's the container's start.
+STARTED = float(os.environ.get("SERVER_STARTED_AT") or time.time())
+GRACE = 60                 # seconds: after an update the helper writes "done" just as the new server starts
 
 _cache: tuple[float, "Release | None"] = (0.0, None)
 
@@ -89,11 +95,17 @@ def updater_running() -> bool:
 
 
 def status() -> str | None:
-    """The helper's last result: 'running ...', 'done ...' or 'failed ...'."""
+    """The helper's last result: 'running <time>', 'done <time>' or 'failed <time>: <why>'. None when it's from
+    before this server started: then an update by hand or a restart came since, and an old failure would show
+    for ever (the folder outlives the containers)."""
     try:
-        return (UPDATES / "status").read_text().strip() or None
+        line = (UPDATES / "status").read_text().strip()
     except OSError:
         return None
+    m = re.match(r"\w+ (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)", line)
+    if m and datetime.strptime(m[1], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp() < STARTED - GRACE:
+        return None
+    return line or None
 
 
 def request_update() -> None:

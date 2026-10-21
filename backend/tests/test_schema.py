@@ -820,3 +820,45 @@ def test_fx_sources_and_fallback(monkeypatch):
     serve({})
     with pytest.raises(RuntimeError, match="no exchange rate source"):
         fx_update.fetch_rates()
+
+
+def test_scheduler_runs_what_is_due_as_the_purge_login(database):
+    """msaving#6: the scheduler, logged in as purge_login, reads the schedule and records each run; the API can't
+    record runs, and purge_login can't reach the jobs table itself."""
+    from app.jobs.scheduler import run_due
+    purger, api = create_engine(_url("t_purge")), create_engine(_url("t_api"))
+    ran = []
+
+    def fake_job(name):
+        ran.append(name)
+        return name != "backup", f"{name}: the last line"
+
+    def history(**set_to):
+        with database.connect() as c:
+            if set_to:
+                c.execute(text("update jobs set " + ", ".join(f"{k} = {v}" for k, v in set_to.items())))
+            return {r.name: (r.last_result, r.last_detail) for r in c.execute(text("select * from jobs"))}
+
+    now = datetime.now(UTC)
+    minute = (now.hour * 60 + now.minute - 5) % 1440                       # five minutes ago, in UTC
+    try:
+        history(at_minute=minute, timezone="'UTC'", enabled="true", changed_at="null", last_started_at="null",
+                last_finished_at="null", last_result="null", last_detail="null")
+        assert run_due(purger, datetime.now(UTC), fake_job) == ["purge", "backup", "rates"] == ran   # never ran
+        assert history() == {"purge": ("done", "purge: the last line"), "backup": ("failed", "backup: the last line"),
+                             "rates": ("done", "rates: the last line")}
+        assert run_due(purger, datetime.now(UTC), fake_job) == []          # started since today's time
+        history(last_started_at="now() - interval '1 day'", enabled="name <> 'rates'")
+        assert run_due(purger, datetime.now(UTC), fake_job) == ["purge", "backup"]   # the next day; the rates are off
+        history(last_started_at="now() - interval '1 day'", changed_at="now()", enabled="true")
+        assert run_due(purger, datetime.now(UTC), fake_job) == []          # a schedule changed since: tomorrow
+
+        with api.connect() as c, pytest.raises(DBAPIError, match="permission denied"):
+            c.execute(text("select job_finished('backup', true, 'faked')"))
+        with purger.connect() as c, pytest.raises(DBAPIError, match="permission denied"):
+            c.execute(text("select * from jobs"))
+    finally:
+        history(at_minute="null", timezone="null", enabled="true", changed_at="null", last_started_at="null",
+                last_finished_at="null", last_result="null", last_detail="null")
+        purger.dispose()
+        api.dispose()
