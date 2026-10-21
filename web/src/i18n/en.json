@@ -100,7 +100,9 @@
     "installmentFeeHint": "A one-off fee, added once, to the first payment (0 % installment contracts often have one).",
     "notIncluded_one": "{{count}} not included",
     "notIncluded_other": "{{count}} not included",
-    "fold": "Fold or unfold {{kind}}"
+    "fold": "Fold or unfold {{kind}}",
+    "pin": "Pin to the Overview",
+    "unpin": "Unpin from the Overview"
   },
   "bill": {
     "cardTitle": "Statement {{from}} – {{to}}",
@@ -318,7 +320,8 @@
     "budgets": "Budgets",
     "people": "Who owes whom",
     "emptyViewer": "Nothing in this book yet.",
-    "ratesBy": "Exchange rates:"
+    "ratesBy": "Exchange rates:",
+    "pinHint": "Pin accounts on Accounts to choose these."
   },
   "budget": {
     "title": "Budgets",

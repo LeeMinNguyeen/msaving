@@ -109,6 +109,8 @@ export function Dashboard({ book }: { book: Book }) {
   }
 
   const empty = d.accounts.length === 0
+  const pinned = d.accounts.filter((a) => a.pinned)
+  const shownAccounts = (pinned.length ? pinned : d.accounts).slice(0, 5)
   // The open exchange rate source's terms ask for this credit wherever its rates are used.
   const converts = d.accounts.some((a) => a.currency !== book.base_currency)
   const credit = converts ? RATE_CREDITS[d.rates_source ?? ''] : undefined
@@ -126,7 +128,7 @@ export function Dashboard({ book }: { book: Book }) {
         <Tile label={t('dash.incomeThisMonth')} value={money(d.income_this_month)} />
       </Box>
 
-      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '3fr 2fr' }, alignItems: 'start' }}>
+      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, alignItems: 'start' }}>
         <Card title={t('dash.cashflow')}>
           <CashflowChart
             data={cashflow}
@@ -158,42 +160,36 @@ export function Dashboard({ book }: { book: Book }) {
             ))}
           </Stack>
         </Card>
-      </Box>
 
-      {(d.budgets.length > 0 || d.people.length > 0) && (
-        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, alignItems: 'start' }}>
-          {d.budgets.length > 0 && (
-            <Card title={t('dash.budgets')} action={<Button size="small" component={RouterLink} to={`/books/${book.id}/categories`}>{t('dash.seeAll')}</Button>}>
-              <Stack spacing={2}>
-                {d.budgets.slice(0, 6).map((b) => (
-                  <BudgetBar key={b.budget_id} label={`${b.category} · ${t(`budget.periods.${b.period}`)}`} spent={b.spent} budget={b.budget}
-                    percent={b.percent_used ?? 0} format={(v) => money(v)} />
-                ))}
-              </Stack>
-            </Card>
-          )}
-          {d.people.length > 0 && (
-            <Card title={t('dash.people')} action={<Button size="small" component={RouterLink} to={`/books/${book.id}/people`}>{t('dash.seeAll')}</Button>}>
-              <List disablePadding dense>
-                {d.people.map((p) => (
-                  <ListItemButton key={`${p.contact_id}-${p.currency}`} sx={{ px: 0 }} onClick={() => navigate(`/books/${book.id}/people`)}>
-                    <ListItemText primary={p.name} />
-                    <Stack sx={{ textAlign: 'right' }}>
-                      {p.owed_to_you > 0 && <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>{t('people.owesYou', { amount: money(p.owed_to_you, p.currency) })}</Typography>}
-                      {p.you_owe > 0 && <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>{t('people.youOwe', { amount: money(p.you_owe, p.currency) })}</Typography>}
-                    </Stack>
-                  </ListItemButton>
-                ))}
-              </List>
-            </Card>
-          )}
-        </Box>
-      )}
+        {d.budgets.length > 0 && (
+          <Card title={t('dash.budgets')} action={<Button size="small" component={RouterLink} to={`/books/${book.id}/categories`}>{t('dash.seeAll')}</Button>}>
+            <Stack spacing={2}>
+              {d.budgets.slice(0, 6).map((b) => (
+                <BudgetBar key={b.budget_id} label={`${b.category} · ${t(`budget.periods.${b.period}`)}`} spent={b.spent} budget={b.budget}
+                  percent={b.percent_used ?? 0} format={(v) => money(v)} />
+              ))}
+            </Stack>
+          </Card>
+        )}
+        {d.people.length > 0 && (
+          <Card title={t('dash.people')} action={<Button size="small" component={RouterLink} to={`/books/${book.id}/people`}>{t('dash.seeAll')}</Button>}>
+            <List disablePadding dense>
+              {d.people.map((p) => (
+                <ListItemButton key={`${p.contact_id}-${p.currency}`} sx={{ px: 0 }} onClick={() => navigate(`/books/${book.id}/people`)}>
+                  <ListItemText primary={p.name} />
+                  <Stack sx={{ textAlign: 'right' }}>
+                    {p.owed_to_you > 0 && <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>{t('people.owesYou', { amount: money(p.owed_to_you, p.currency) })}</Typography>}
+                    {p.you_owe > 0 && <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>{t('people.youOwe', { amount: money(p.you_owe, p.currency) })}</Typography>}
+                  </Stack>
+                </ListItemButton>
+              ))}
+            </List>
+          </Card>
+        )}
 
-      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, alignItems: 'start' }}>
         <Card title={t('dash.accounts')} action={<Button size="small" component={RouterLink} to={`/books/${book.id}/accounts`}>{t('dash.seeAll')}</Button>}>
           <List disablePadding dense>
-            {d.accounts.map((a) => (
+            {shownAccounts.map((a) => (
               <ListItemButton key={a.account_id} onClick={() => navigate(`/books/${book.id}/transactions?account_id=${a.account_id}`)}
                 sx={{ px: 0, opacity: a.in_net_worth ? 1 : 0.55 }}>
                 <ListItemText primary={a.name} secondary={t(`accounts.kinds.${a.kind}`)} />
@@ -208,11 +204,14 @@ export function Dashboard({ book }: { book: Book }) {
               </ListItemButton>
             ))}
           </List>
+          {!pinned.length && d.accounts.length > 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{t('dash.pinHint')}</Typography>
+          )}
         </Card>
 
         <Card title={t('dash.recent')} action={<Button size="small" component={RouterLink} to={`/books/${book.id}/transactions`}>{t('dash.seeAll')}</Button>}>
           <List disablePadding dense>
-            {d.recent_transactions.map((r) => (
+            {d.recent_transactions.slice(0, 5).map((r) => (
               <ListItemButton key={r.id} onClick={() => openRecent(r.id)} sx={{ px: 0 }}>
                 <ListItemText primary={r.payee || t(`txn.types.${r.type}`)}
                   secondary={[dayFmt.format(new Date(`${r.occurred_on}T00:00:00`)), r.category].filter(Boolean).join(' · ')} />

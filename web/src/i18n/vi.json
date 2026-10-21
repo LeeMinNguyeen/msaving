@@ -100,7 +100,9 @@
     "installmentFeeHint": "Phí trả một lần, cộng vào lần trả đầu tiên (các gói trả góp 0 % thường có phí này).",
     "notIncluded_one": "{{count}} tài khoản chưa tính",
     "notIncluded_other": "{{count}} tài khoản chưa tính",
-    "fold": "Thu gọn hoặc mở {{kind}}"
+    "fold": "Thu gọn hoặc mở {{kind}}",
+    "pin": "Ghim vào Tổng quan",
+    "unpin": "Bỏ ghim khỏi Tổng quan"
   },
   "bill": {
     "cardTitle": "Sao kê {{from}} – {{to}}",
@@ -318,7 +320,8 @@
     "budgets": "Ngân sách",
     "people": "Ai nợ ai",
     "emptyViewer": "Sổ này chưa có gì.",
-    "ratesBy": "Tỷ giá:"
+    "ratesBy": "Tỷ giá:",
+    "pinHint": "Ghim tài khoản ở trang Tài khoản để chọn những tài khoản hiện ở đây."
   },
   "budget": {
     "title": "Ngân sách",

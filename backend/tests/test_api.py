@@ -1,4 +1,5 @@
 """Users sign up through the API: the test database has open sign-up. Invite-only and setup are in test_sign_in.py."""
+import csv
 import re
 import uuid
 
@@ -536,6 +537,41 @@ def test_dashboard_converts_at_todays_rate(client, database):
 
     listed = {a["name"]: a for a in client.get(f"/v1/books/{bid}/accounts", headers=auth(u)).json()}
     assert [listed[n]["converted_balance"] for n in ("Ví", "US bank", "Kuwait")] == [950_000, 2_470_000, None]
+
+
+def test_pinned_accounts(client, database):
+    """R-DASH-2: each member pins the accounts their Overview shows; pins are their own, a viewer pins too, and
+    leaving the book drops them."""
+    names = {k: f"{k}_{uuid.uuid4().hex[:8]}" for k in ("owner", "viewer")}
+    owner, viewer = (signed_up(client, names[k]) for k in ("owner", "viewer"))
+    bid, accts = new_book_with_accounts(client, owner)
+    client.post(f"/v1/books/{bid}/members", headers=auth(owner), json={"username": names["viewer"], "role": "viewer"})
+    client.post(f"/v1/me/book-invites/{bid}/accept", headers=auth(viewer))
+    base = f"/v1/books/{bid}/accounts"
+
+    def pinned(u):
+        return {a["name"] for a in client.get(base, headers=auth(u)).json() if a["pinned"]}
+
+    assert client.put(f"{base}/{accts['Cash']}/pin", headers=auth(owner)).status_code == 204
+    assert client.put(f"{base}/{accts['Cash']}/pin", headers=auth(owner)).status_code == 204      # twice is fine
+    assert (pinned(owner), pinned(viewer)) == ({"Cash"}, set())
+    assert client.put(f"{base}/{accts['Bank']}/pin", headers=auth(viewer)).status_code == 204
+    assert (pinned(owner), pinned(viewer)) == ({"Cash"}, {"Bank"})
+    dash = client.get(f"/v1/books/{bid}/dashboard", headers=auth(owner)).json()
+    assert {a["name"]: a["pinned"] for a in dash["accounts"]} == {"Cash": True, "Bank": False}
+
+    import io
+    import zipfile
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(owner)).content))
+    rows = list(csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig"))))
+    assert {r["Account"]: r["Pinned"] for r in rows} == {"Cash": "Yes", "Bank": "No"}
+
+    assert client.delete(f"{base}/{accts['Cash']}/pin", headers=auth(owner)).status_code == 204
+    assert pinned(owner) == set()
+    assert client.put(f"{base}/{accts['Cash']}/pin", headers=auth(signed_up(client))).status_code == 404
+    assert client.delete(f"/v1/books/{bid}/members/{viewer}", headers=auth(viewer)).status_code == 204
+    with database.connect() as c:
+        assert c.execute(text("select count(*) from account_pins where user_id = :u"), {"u": viewer}).scalar() == 0
 
 
 def test_people_and_lending(client):
