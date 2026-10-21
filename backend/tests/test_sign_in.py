@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import psycopg
@@ -626,12 +626,13 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     assert client.get("/v1/admin/update", headers=bearer(member_token)).json() == {"detail": "admin_only"}
 
     monkeypatch.setattr(updates, "UPDATES", tmp_path)
+    monkeypatch.delenv("PROJECT_SITE_URL", raising=False)
     monkeypatch.setattr(updates, "current_version", lambda: "1.2.0")
     monkeypatch.setattr(updates, "_cache", (0.0, None))
     monkeypatch.setattr(updates, "_github", lambda url: {"tag_name": "v1.3.0", "html_url": "https://github.com/x/releases/v1.3.0"})
     info = client.get("/v1/admin/update", headers=bearer(admin_token)).json()
     assert info | {"status": None} == {"current_version": "1.2.0", "latest_version": "1.3.0", "update_available": True,
-                                       "release_url": "https://github.com/x/releases/v1.3.0",
+                                       "release_url": "https://github.com/x/releases/v1.3.0", "changelog_url": None,
                                        "updater": False, "status": None}
     refused = client.post("/v1/admin/update", headers=bearer(admin_token))
     assert (refused.status_code, refused.json()) == (409, {"detail": "updater_off"})
@@ -654,6 +655,21 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     assert status_after(old, "2026-10-19T16:00:00+00:00") == old                   # failed while this server ran
     assert status_after("done 2026-10-20T16:28:05Z", "2026-10-20T16:28:30+00:00") == "done 2026-10-20T16:28:05Z"
     assert status_after("running 2026-10-20T16:20:00Z", "2026-10-20T16:27:30+00:00") is None
+
+    # The helper doesn't touch its heartbeat while it updates: a recent "running" counts as alive.
+    os.utime(tmp_path / "updater_alive", (0, 0))
+
+    def updater_with(line):
+        (tmp_path / "status").write_text(line + "\n")
+        return client.get("/v1/admin/update", headers=bearer(admin_token)).json()["updater"]
+    now = datetime.now(timezone.utc)
+    assert updater_with(f"running {now - timedelta(minutes=10):%Y-%m-%dT%H:%M:%SZ}") is True
+    assert updater_with(f"running {now - timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}") is False
+    assert updater_with(f"done {now:%Y-%m-%dT%H:%M:%SZ}") is False
+
+    monkeypatch.setenv("PROJECT_SITE_URL", "https://msaving.example/")
+    assert client.get("/v1/admin/update", headers=bearer(admin_token)).json()["changelog_url"] == \
+        "https://msaving.example/docs/changelog/"
 
 
 def test_versions_compare():

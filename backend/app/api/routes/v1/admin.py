@@ -182,6 +182,7 @@ class UpdateInfo(BaseModel):
     current_version: str
     latest_version: str | None        # None: unknown (checking is off, offline, or no release yet)
     release_url: str | None
+    changelog_url: str | None         # the project's changelog (PROJECT_SITE_URL); None: unset
     update_available: bool
     updater: bool                     # the one-click helper is running (COMPOSE_PROFILES=updater)
     status: str | None                # the helper's last run: running / done / failed, with the time
@@ -198,7 +199,7 @@ def update_info(db: Session = Depends(get_db)) -> UpdateInfo:
     latest = updates.latest_release()
     return UpdateInfo(
         current_version=current, latest_version=latest.version if latest else None,
-        release_url=latest.url if latest else None,
+        release_url=latest.url if latest else None, changelog_url=updates.changelog_url(),
         update_available=bool(latest and updates.newer(latest.version, current)),
         updater=updates.updater_running(), status=updates.status())
 

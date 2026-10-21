@@ -59,6 +59,7 @@ services:
       OXR_APP_ID: ${OXR_APP_ID:-}
       JOBS_HOUR: ${JOBS_HOUR:-19}
       UPDATE_CHECK: ${UPDATE_CHECK:-on}
+      PROJECT_SITE_URL: ${PROJECT_SITE_URL:-https://msaving.leminhnguyen.com}
     volumes:
       - secrets:/secrets
       - backups:/backups

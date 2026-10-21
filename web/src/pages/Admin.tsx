@@ -275,6 +275,7 @@ function Updates() {
   }
 
   if (!d) return null
+  const notes = d.changelog_url ?? d.release_url
   return (
     <Section title={t('admin.updates')}>
       <Typography>
@@ -283,13 +284,13 @@ function Updates() {
       </Typography>
       {!update && d.status?.startsWith('done') ? <Alert severity="success">{t('admin.updateDone')}</Alert> : null}
       {!update && d.status?.startsWith('failed') ? <Alert severity="error">{t('admin.updateFailed', { detail: d.status })}</Alert> : null}
-      {d.update_available && d.release_url && (
-        <Button href={d.release_url} target="_blank" rel="noopener" sx={{ alignSelf: 'start' }}>{t('admin.releaseNotes')}</Button>
+      {d.update_available && notes && (
+        <Button href={notes} target="_blank" rel="noopener" sx={{ alignSelf: 'start' }}>{t('admin.releaseNotes')}</Button>
       )}
       {d.updater ? (
         <Button variant="contained" loading={running} disabled={!d.update_available || !!update}
           onClick={() => setConfirm(true)} sx={{ alignSelf: 'start' }}>{t('admin.updateNow')}</Button>
-      ) : (
+      ) : d.update_available && (
         <>
           <Typography color="text.secondary">{t('admin.updateByHand')}</Typography>
           <Box component="pre" sx={{ m: 0, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, overflowX: 'auto' }}>
