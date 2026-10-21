@@ -352,6 +352,7 @@
     "disable": "Turn off two-step verification",
     "disableConfirm": "Turn off two-step verification? Enter a code from your authenticator app to confirm.",
     "codeOrRecovery": "6-digit code, or a recovery code",
+    "rememberDevice": "Remember this device for 30 days",
     "codesLeft": "{{count}} recovery codes left.",
     "newCodes": "New recovery codes",
     "newCodesConfirm": "The old recovery codes stop working. Enter a code from your authenticator app to continue.",

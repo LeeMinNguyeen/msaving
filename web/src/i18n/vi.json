@@ -352,6 +352,7 @@
     "disable": "Tắt xác minh hai bước",
     "disableConfirm": "Tắt xác minh hai bước? Nhập mã từ ứng dụng xác thực để xác nhận.",
     "codeOrRecovery": "Mã 6 số, hoặc mã khôi phục",
+    "rememberDevice": "Ghi nhớ thiết bị này trong 30 ngày",
     "codesLeft": "Còn {{count}} mã khôi phục.",
     "newCodes": "Mã khôi phục mới",
     "newCodesConfirm": "Các mã khôi phục cũ sẽ hết hiệu lực. Nhập mã từ ứng dụng xác thực để tiếp tục.",

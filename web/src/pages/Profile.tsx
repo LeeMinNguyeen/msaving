@@ -29,6 +29,7 @@ import { keys, useMe } from '../lib/queries'
 const IDLE_CHOICES = [0, 5, 10, 15, 30, 60] // minutes; 0: never (30 days unused)
 import { newAccountBody } from '../auth/forms'
 import { PasswordFields } from '../components/AccountForm'
+import { rememberedDevice } from '../auth/rememberedDevice'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -323,7 +324,8 @@ function Devices({ profile }: { profile: ProfileT }) {
       )}
       {others.length > 0 && (
         <Button variant="outlined" loading={busy === 'others'} sx={{ alignSelf: 'start' }}
-          onClick={() => run('others', () => send('POST', '/v1/auth/sign-out-others'), t('profile.signedOutOthers'))}>
+          onClick={() => run('others', () => send('POST', '/v1/auth/sign-out-others', { device_token: rememberedDevice.get(profile.username) }),
+            t('profile.signedOutOthers'))}>
           {t('profile.signOutOthers')}
         </Button>
       )}
