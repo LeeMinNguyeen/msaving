@@ -16,6 +16,10 @@ as its own process, so one failing doesn't stop the others. Its output goes to
 the log (docker compose logs msaving); its result and last line to Server admin.
 The scheduler logs in as purge_login, which can also read the schedule and
 record the results (job_schedule(), job_started(), job_finished()).
+
+With --once (`python -m app.launch jobs`) it looks once and exits: on a
+platform that pauses the server between requests (Cloud Run), a scheduled
+task runs it every hour instead, and the server has RUN_JOBS=off.
 """
 import os
 import subprocess
@@ -59,8 +63,24 @@ def run_due(engine: Engine, now: datetime, run: Callable[[str], tuple[bool, str]
     return ran
 
 
+def once(engine: Engine, now: datetime, run: Callable[[str], tuple[bool, str]] = run_job) -> int:
+    """One look (--once, for `python -m app.launch jobs`): 1 if a job that was due failed, else 0."""
+    failed = []
+
+    def run_and_note(name: str) -> tuple[bool, str]:
+        done, detail = run(name)
+        if not done:
+            failed.append(name)
+        return done, detail
+    ran = run_due(engine, now, run_and_note)
+    print(f"jobs: {', '.join(ran) or 'none due'}", flush=True)
+    return 1 if failed else 0
+
+
 def main() -> None:
     engine = create_engine(os.environ["PURGE_DATABASE_URL"], pool_pre_ping=True)
+    if sys.argv[1:] == ["--once"]:
+        sys.exit(once(engine, datetime.now(UTC)))
     while True:
         try:
             run_due(engine, datetime.now(UTC))
