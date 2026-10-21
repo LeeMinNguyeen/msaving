@@ -427,6 +427,51 @@ def test_transactions_have_a_time_of_day(client):
     assert (times["Dinner"], times["Coffee"], times["Old app"]) == ("18:45", "21:00", "00:00")
 
 
+def test_suggestions_from_my_own_history(client):
+    """R-TXN-7: a new transaction is filled in from the user's own recent ones of the same type and a close amount
+    (within 10 %, the last 90 days): the account, category and payee that make up at least 2 of the last 3."""
+    from datetime import date, timedelta
+    names = {k: f"{k}_{uuid.uuid4().hex[:8]}" for k in ("owner", "editor")}
+    owner, editor = (signed_up(client, names[k]) for k in ("owner", "editor"))
+    bid, accts = new_book_with_accounts(client, owner)
+    client.post(f"/v1/books/{bid}/members", headers=auth(owner), json={"username": names["editor"], "role": "editor"})
+    client.post(f"/v1/me/book-invites/{bid}/accept", headers=auth(editor))
+    parking = add_category(client, owner, bid, "Gửi xe")["id"]
+    food = add_category(client, owner, bid, "Ăn uống")["id"]
+    today = date.today()
+
+    def add(u, amount, account, category, payee, days_ago=0, type_="expense"):
+        r = client.post(f"/v1/books/{bid}/transactions", headers=auth(u), json={
+            "id": str(uuid.uuid4()), "type": type_, "occurred_on": (today - timedelta(days=days_ago)).isoformat(),
+            "category_id": category, "payee": payee,
+            "entries": [{"account_id": accts[account], "amount": -amount if type_ == "expense" else amount}]})
+        assert r.status_code == 201, r.text
+
+    def suggest(u, amount, type_="expense"):
+        r = client.get(f"/v1/books/{bid}/transactions/suggest", headers=auth(u), params={"type": type_, "amount": amount})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    add(owner, 5_000, "Cash", parking, "Gửi xe", days_ago=3)
+    add(owner, 5_200, "Bank", food, "Bánh mì", days_ago=2)
+    add(owner, 4_800, "Cash", parking, "Gửi xe", days_ago=1)
+    assert suggest(owner, 5_000) == {"account_id": accts["Cash"], "category_id": parking, "payee": "Gửi xe"}
+    assert suggest(owner, 4_600) == suggest(owner, 5_000)                  # close amounts count
+    assert suggest(owner, 9_000) is None                                    # nothing close
+    assert suggest(owner, 5_000, "income") is None                          # another type
+
+    for _ in range(3):                                                      # someone else's habits aren't mine
+        add(editor, 20_000, "Bank", food, "Cơm")
+    assert suggest(owner, 20_000) is None
+    assert suggest(editor, 20_000) == {"account_id": accts["Bank"], "category_id": food, "payee": "Cơm"}
+
+    for _ in range(3):                                                      # older than 90 days
+        add(owner, 77_000, "Bank", food, "Old habit", days_ago=120)
+    assert suggest(owner, 77_000) is None
+    assert client.get(f"/v1/books/{bid}/transactions/suggest", headers=auth(signed_up(client)),
+                      params={"type": "expense", "amount": 5_000}).status_code == 404
+
+
 def test_transactions_and_two_browsers(client):
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)

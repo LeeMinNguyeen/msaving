@@ -64,6 +64,9 @@ export type AccountStatus = { deletion_requested_at: string | null; deletes_on: 
 export const send = <T>(method: string, path: string, body?: unknown) =>
   api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) })
 
+// Filled into a new transaction from the user's own recent ones (GET .../transactions/suggest).
+export type Suggestion = { account_id: string; category_id: string | null; payee: string | null }
+
 export type Language = 'vi' | 'en'
 
 export type Profile = {

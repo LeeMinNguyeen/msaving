@@ -15,10 +15,10 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTheme } from '@mui/material/styles'
-import { useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { currentLanguage } from '../i18n'
-import { api, ApiError, categoryKindFor, send, type Account, type Book, type Entry, type Transaction, type TxnType } from '../lib/api'
+import { api, ApiError, categoryKindFor, send, type Account, type Book, type Entry, type Suggestion, type Transaction, type TxnType } from '../lib/api'
 import { categoryTree } from '../lib/categories'
 import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
@@ -77,6 +77,12 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }))
+  // What the user set themselves, which a suggestion never overwrites; an account given by the caller counts.
+  const touched = useRef(new Set<'account' | 'category' | 'payee'>(defaults?.account ? ['account'] : []))
+  const choose = (field: 'account' | 'category' | 'payee', value: string) => {
+    touched.current.add(field)
+    set({ [field]: value })
+  }
 
   const accountList = accounts.data ?? []
   const byId = new Map(accountList.map((a) => [a.id, a]))
@@ -108,6 +114,32 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
     return [{ account_id: account, amount: -abs }, { account_id: form.toAccount, amount: Math.abs(received) }]
   }
   const entries = money()
+
+  // A new expense or income fills in from the user's own history once the amount is typed.
+  const suggestible = !txn && (form.type === 'expense' || form.type === 'income')
+  const typed = suggestible ? parseAmount(form.amount, minorOf(from?.currency ?? book.base_currency), lang) : null
+  useEffect(() => {
+    if (!typed || typed <= 0) return
+    let current = true
+    const timer = setTimeout(async () => {
+      try {
+        const s = await api<Suggestion | null>(`/v1/books/${book.id}/transactions/suggest?type=${form.type}&amount=${typed}`)
+        if (!current || !s) return
+        const patch: Partial<Form> = {}
+        if (!touched.current.has('account') && accountList.some((a) => a.id === s.account_id && !a.archived_at)) patch.account = s.account_id
+        if (!touched.current.has('category') && s.category_id && options.some((o) => o.category.id === s.category_id)) patch.category = s.category_id
+        if (!touched.current.has('payee') && s.payee) patch.payee = s.payee
+        setForm((f) => ({ ...f, ...patch }))
+      } catch {
+        // A suggestion is a convenience: without one the form stays as it is.
+      }
+    }, 400)
+    return () => {
+      current = false
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- asks again only when the amount or the type changes
+  }, [typed, form.type])
 
   async function reload(message: unknown) {
     // Another device saved first: show the newer version and say so.
@@ -229,7 +261,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
               required
               label={t(transfer ? 'txn.fromAccount' : 'txn.account')}
               value={byId.has(account) ? account : ''}
-              onChange={(e) => set({ account: e.target.value })}
+              onChange={(e) => choose('account', e.target.value)}
               disabled={openingBalance}
             >
               {open.map((a) => (
@@ -265,7 +297,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
               />
             )}
             {kind && (
-              <TextField select label={t('txn.category')} value={form.category} onChange={(e) => set({ category: e.target.value })}>
+              <TextField select label={t('txn.category')} value={form.category} onChange={(e) => choose('category', e.target.value)}>
                 <MenuItem value="">
                   <em>{t('txn.noCategory')}</em>
                 </MenuItem>
@@ -277,7 +309,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
                 ))}
               </TextField>
             )}
-            <TextField label={t('txn.payee')} value={form.payee} onChange={(e) => set({ payee: e.target.value })} />
+            <TextField label={t('txn.payee')} value={form.payee} onChange={(e) => choose('payee', e.target.value)} />
             <TextField label={t('txn.note')} value={form.note} onChange={(e) => set({ note: e.target.value })} multiline minRows={1} maxRows={4} />
             {txn?.created_by && (
               <Typography variant="body2" color="text.secondary">
