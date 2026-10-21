@@ -58,7 +58,7 @@ def test_me_returns_only_my_profile(client):
     profile = r.json()["profile"]
     assert profile["username"].startswith("me_") and profile["language"] == "vi" and profile["is_admin"] is False
     assert set(profile) == {"username", "display_name", "timezone", "language", "created_at", "deletion_requested_at",
-                            "is_admin"}
+                            "is_admin", "idle_sign_out_minutes"}
     assert client.get("/v1/me", headers=auth(other)).json()["id"] == str(other)
 
 

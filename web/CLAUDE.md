@@ -22,7 +22,7 @@ src/
   lib/money.ts       format and parse amounts in minor units by language, no floats
   components/        Shell (sidebar, book switcher, admin link), AccountForm (fields before sign-in), pickers, errors
   i18n/              vi.json (default), en.json, i18next setup; strings.test.ts checks the keys match
-  test/              setup (cleanup after each test), fakeApi (answers fetch from a table, records calls),
+  test/              setup (cleanup after each test, 5 s for findBy), fakeApi (answers fetch from a table, records calls),
                      render (the app's providers; desktop() for the sidebar layout)
   pages/             one file per screen; App.tsx routes (sign-in, join, reset, setup when the server has no admin)
 ```

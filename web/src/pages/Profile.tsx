@@ -1,12 +1,16 @@
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
+import List from '@mui/material/List'
+import ListItem from '@mui/material/ListItem'
+import ListItemText from '@mui/material/ListItemText'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -17,9 +21,11 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../components/errors'
 import { TimezonePicker } from '../components/TimezonePicker'
-import { languages, setLanguage, type Language } from '../i18n'
-import { api, download, send, type Me, type Profile as ProfileT } from '../lib/api'
+import { currentLanguage, languages, setLanguage, type Language } from '../i18n'
+import { api, download, send, type DeviceSession, type Me, type Profile as ProfileT } from '../lib/api'
 import { keys, useMe } from '../lib/queries'
+
+const IDLE_CHOICES = [0, 5, 10, 15, 30, 60] // minutes; 0: never (30 days unused)
 import { newAccountBody } from '../auth/forms'
 import { PasswordFields } from '../components/AccountForm'
 
@@ -32,7 +38,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-// Profile and security: profile, password, two-step verification, devices, export, delete.
+// Profile and security: profile, password, two-step verification, signed-in devices, export, delete.
 export function Profile() {
   const { t } = useTranslation()
   const me = useMe()
@@ -42,6 +48,7 @@ export function Profile() {
       <Typography variant="h5">{t('profile.title')}</Typography>
       <ProfileForm profile={me.data.profile} />
       <Security />
+      <Devices profile={me.data.profile} />
       <YourData profile={me.data.profile} />
     </Stack>
   )
@@ -199,13 +206,6 @@ function Security() {
           <Button type="submit" variant="contained" loading={busy} disabled={code.length !== 6} sx={{ alignSelf: 'start' }}>{t('mfa.verify')}</Button>
         </Stack>
       )}
-      <Divider />
-      <Typography variant="subtitle1">{t('profile.devices')}</Typography>
-      <Typography color="text.secondary">{t('profile.devicesHint')}</Typography>
-      <Button variant="outlined" sx={{ alignSelf: 'start' }}
-        onClick={() => run(async () => { await send('POST', '/v1/auth/sign-out-others'); setNotice(t('profile.signedOutOthers')) })}>
-        {t('profile.signOutOthers')}
-      </Button>
       {notice && <Alert severity="success">{notice}</Alert>}
       {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
 
@@ -242,6 +242,77 @@ function Security() {
           <Button variant="contained" onClick={() => setRecovery(null)}>{t('mfa.recoverySaved')}</Button>
         </DialogActions>
       </Dialog>
+    </Section>
+  )
+}
+
+// Where this account is signed in (msaving#5): this device first, any other one signed out alone or all at once.
+// And the user's own sign-out after inactivity (msaving#26), for every device, saved as soon as it's picked.
+function Devices({ profile }: { profile: ProfileT }) {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
+  const qc = useQueryClient()
+  const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => api<DeviceSession[]>('/v1/auth/sessions') })
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const [notice, setNotice] = useState('')
+  const when = new Intl.DateTimeFormat(currentLanguage() === 'vi' ? 'vi-VN' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+  const name = (s: DeviceSession) => s.device ?? t('profile.unknownDevice')
+  const others = (sessions.data ?? []).filter((s) => !s.current)
+  const idle = profile.idle_sign_out_minutes ?? 0
+  const idleChoices = IDLE_CHOICES.includes(idle) ? IDLE_CHOICES : [...IDLE_CHOICES, idle].sort((a, b) => a - b)
+
+  async function run(key: string, fn: () => Promise<unknown>, done: string) {
+    setBusy(key)
+    setError(null)
+    setNotice('')
+    try {
+      await fn()
+      setNotice(done)
+    } catch (err) {
+      setError(err)
+    } finally {
+      setBusy(null)
+      await qc.invalidateQueries({ queryKey: ['sessions'] })
+    }
+  }
+
+  return (
+    <Section title={t('profile.devices')}>
+      <TextField select label={t('profile.idleSignOut')} value={idle} helperText={t('profile.idleSignOutHint')} disabled={busy === 'idle'}
+        onChange={(e) => run('idle', async () => {
+          await send('PATCH', '/v1/me', { idle_sign_out_minutes: Number(e.target.value) || null })
+          await qc.invalidateQueries({ queryKey: keys.me })
+        }, t('profile.saved'))}>
+        {idleChoices.map((m) => <MenuItem key={m} value={m}>{m ? t('profile.idleMinutes', { minutes: m }) : t('profile.idleOff')}</MenuItem>)}
+      </TextField>
+      <Typography color="text.secondary">{t('profile.devicesHint')}</Typography>
+      {sessions.isError && <Alert severity="error">{errorText(sessions.error)}</Alert>}
+      {sessions.data && (
+        <List disablePadding>
+          {sessions.data.map((s) => (
+            <ListItem key={s.id} disableGutters divider secondaryAction={!s.current && (
+              <Button size="small" color="error" loading={busy === s.id}
+                onClick={() => run(s.id, () => send('DELETE', `/v1/auth/sessions/${s.id}`), t('profile.signedOutDevice', { device: name(s) }))}>
+                {t('profile.signOutDevice')}
+              </Button>
+            )}>
+              <ListItemText
+                primary={<>{name(s)}{s.current && <Chip size="small" color="primary" label={t('profile.thisDevice')} sx={{ ml: 1 }} />}</>}
+                secondary={t('profile.deviceTimes', { signedIn: when.format(new Date(s.created_at)), lastUsed: when.format(new Date(s.last_used_at)) })}
+                sx={{ pr: s.current ? 0 : 10 }} />
+            </ListItem>
+          ))}
+        </List>
+      )}
+      {others.length > 0 && (
+        <Button variant="outlined" loading={busy === 'others'} sx={{ alignSelf: 'start' }}
+          onClick={() => run('others', () => send('POST', '/v1/auth/sign-out-others'), t('profile.signedOutOthers'))}>
+          {t('profile.signOutOthers')}
+        </Button>
+      )}
+      {notice && <Alert severity="success">{notice}</Alert>}
+      {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
     </Section>
   )
 }

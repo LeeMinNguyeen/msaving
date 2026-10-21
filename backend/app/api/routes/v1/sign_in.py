@@ -11,6 +11,7 @@ Each returns a session token for `Authorization: Bearer`.
 """
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -50,10 +51,15 @@ def _limit(*checks: tuple[si.RateLimit, str]) -> None:
             raise HTTPException(429, "rate_limited")
 
 
-def _start_session(user_id: uuid.UUID) -> Token:
+def _device(request: Request) -> str | None:
+    return si.device_label(request.headers.get("user-agent"))
+
+
+def _start_session(user_id: uuid.UUID, device: str | None) -> Token:
     token, digest = si.new_token()
     with user_session(user_id) as s:
-        s.execute(text("insert into sessions (token_sha256, user_id) values (:h, :u)"), {"h": digest, "u": user_id})
+        s.execute(text("insert into sessions (token_sha256, user_id, device) values (:h, :u, :d)"),
+                  {"h": digest, "u": user_id, "d": device})
     return Token(token=token)
 
 
@@ -65,8 +71,8 @@ class NewAccount(BaseModel):
     timezone: Timezone = "UTC"
 
 
-def _create_account(body: NewAccount, before_insert: str | None, after_insert: str | None, code: bytes | None,
-                    then: Callable[[Session], object] | None = None) -> Token:
+def _create_account(body: NewAccount, device: str | None, before_insert: str | None, after_insert: str | None,
+                    code: bytes | None, then: Callable[[Session], object] | None = None) -> Token:
     """The users row and its password in one transaction, with the setup or
     invite claimed in it. The database refuses an account with no way in
     (users_need_a_way_in). A taken username is 409 username_taken."""
@@ -84,7 +90,7 @@ def _create_account(body: NewAccount, before_insert: str | None, after_insert: s
                   {"i": user_id, "h": si.hash_password(body.password)})
         if then:
             then(s)
-    return _start_session(user_id)
+    return _start_session(user_id, device)
 
 
 class Setup(NewAccount):
@@ -98,7 +104,7 @@ def setup(body: Setup, request: Request) -> Token:
     wrong code or a server that already has its admin."""
     _limit((si.per_ip, f"setup:{_client_ip(request)}"))
     name = body.server_name
-    return _create_account(body, "select claim_setup(:c)", None, si.code_hash(body.setup_code),
+    return _create_account(body, _device(request), "select claim_setup(:c)", None, si.code_hash(body.setup_code),
                            then=lambda s: name and s.execute(text("select admin_set_instance(:n, null)"), {"n": name}))
 
 
@@ -128,8 +134,8 @@ def sign_up(body: SignUp, request: Request) -> Token:
     ip = _client_ip(request)
     _limit((si.sign_ups_per_ip, ip), (si.per_ip, f"invite:{ip}"))
     if body.invite_code:
-        return _create_account(body, None, "select claim_invite(:c)", si.code_hash(body.invite_code))
-    return _create_account(body, None, None, None)
+        return _create_account(body, _device(request), None, "select claim_invite(:c)", si.code_hash(body.invite_code))
+    return _create_account(body, _device(request), None, None, None)
 
 
 class SignIn(BaseModel):
@@ -155,12 +161,42 @@ def sign_in(body: SignIn, request: Request, db: Session = Depends(get_public_db)
         db.commit()
         if not ok:
             raise HTTPException(401, "invalid_code")
-    return _start_session(row["user_id"])
+    return _start_session(row["user_id"], _device(request))
 
 
 @router.post("/auth/sign-out", status_code=204)
 def sign_out(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> Response:
     db.execute(text("delete from sessions where token_sha256 = :h"), {"h": caller.token_sha256})
+    db.commit()
+    return Response(status_code=204)
+
+
+class DeviceSession(BaseModel):
+    id: uuid.UUID
+    device: str | None          # "Chrome · Windows"; None: not recognised, or signed in before devices were kept
+    created_at: datetime        # signed in
+    last_used_at: datetime      # updated at most once a minute
+    current: bool               # the device making this request
+
+
+@router.get("/auth/sessions")
+def sessions(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> list[DeviceSession]:
+    """Where this user is signed in (msaving#5): this device first, then by last use. Never a token or its hash.
+    Sessions past their lifetime (30 days unused, or the user's own sign-out after inactivity) aren't listed,
+    even before they're deleted."""
+    rows = db.execute(text("select id, device, created_at, last_used_at, token_sha256 = :h as current from sessions"
+                           " where user_id = :u and last_used_at > now() - session_lifetime(:u)"
+                           " order by token_sha256 = :h desc, last_used_at desc"),
+                      {"u": caller.id, "h": caller.token_sha256}).mappings()
+    return [DeviceSession(**r) for r in rows]
+
+
+@router.delete("/auth/sessions/{session_id}", status_code=204)
+def end_session(session_id: uuid.UUID, caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> Response:
+    """Signs out one device; this one too, which is signing out. 404 for a session that isn't the caller's."""
+    n = db.execute(text("delete from sessions where id = :i and user_id = :u"), {"i": session_id, "u": caller.id}).rowcount
+    if not n:
+        raise HTTPException(404, "not_found")
     db.commit()
     return Response(status_code=204)
 
@@ -209,7 +245,7 @@ def reset_password(body: Reset, request: Request, db: Session = Depends(get_publ
     with user_session(user_id) as s:
         s.execute(text("update local_credentials set password_hash = :h, updated_at = now() where user_id = :u"),
                   {"h": si.hash_password(body.new_password), "u": user_id})
-    return _start_session(user_id)
+    return _start_session(user_id, _device(request))
 
 
 # ---------------------------------------------------------------- two-factor sign-in (optional)

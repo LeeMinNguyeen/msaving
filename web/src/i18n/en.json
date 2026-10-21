@@ -333,10 +333,15 @@
     "save": "Save",
     "saved": "Saved.",
     "security": "Security",
-    "devices": "Devices",
-    "devicesHint": "Sign out every other device signed in to this account. This device stays signed in.",
+    "devices": "Signed-in devices",
+    "devicesHint": "Where this account is signed in. Sign out a device you no longer use, or every other one at once.",
     "signOutOthers": "Sign out other devices",
     "signedOutOthers": "Other devices are signed out.",
+    "thisDevice": "This device",
+    "unknownDevice": "Unknown device",
+    "deviceTimes": "Signed in {{signedIn}} · last used {{lastUsed}}",
+    "signOutDevice": "Sign out",
+    "signedOutDevice": "{{device}} is signed out.",
     "yourData": "Your data",
     "exportHint": "Download all your data as readable CSV files in one ZIP file.",
     "export": "Download my data",
@@ -347,7 +352,11 @@
     "password": "Password",
     "currentPassword": "Current password",
     "changePassword": "Change password",
-    "passwordChanged": "Password changed. Other devices are signed out."
+    "passwordChanged": "Password changed. Other devices are signed out.",
+    "idleSignOut": "Sign me out after inactivity",
+    "idleSignOutHint": "On every device: after this long with no click, key or touch, you're signed out, with a warning a minute before.",
+    "idleOff": "Never (only after 30 days unused)",
+    "idleMinutes": "After {{minutes}} minutes"
   },
   "closing": {
     "title": "Your account is closing",
@@ -425,7 +434,25 @@
     "updateConfirm": "Install version {{version}}? The server builds it, takes a backup, then restarts; everyone is offline for a moment, and the whole update takes a few minutes.",
     "updatingReload": "Updating to {{version}}. The server rebuilds and restarts, so this page may stop working for a few minutes. Reload it in about 5 minutes.",
     "updatedReload": "Updated to {{version}}. Reload the page to use the new version.",
-    "reload": "Reload"
+    "reload": "Reload",
+    "jobs": "Daily jobs",
+    "jobsHint": "Each runs once a day at its time, in your timezone ({{timezone}}). One missed while the server was off runs when it starts again.",
+    "job": "Job",
+    "jobTime": "Time",
+    "jobTimeOf": "Time of {{job}}",
+    "jobLast": "Last run",
+    "jobNames": {
+      "purge": "Delete closed accounts and old sign-ins",
+      "backup": "Back up the database",
+      "rates": "Update exchange rates"
+    },
+    "jobRatesOn": "Update exchange rates every day",
+    "jobOn": "On",
+    "jobOff": "Off: rates stay as they are",
+    "jobNever": "Not run yet",
+    "jobRunning": "Running since {{when}}",
+    "jobDone": "Done {{when}}",
+    "jobFailed": "Failed {{when}}"
   },
   "members": {
     "title": "Members",
@@ -452,5 +479,11 @@
     "invitedYou": "{{who}} invited you to the book \"{{book}}\" as {{role}}.",
     "accept": "Accept",
     "decline": "Decline"
+  },
+  "idle": {
+    "title": "Still there?",
+    "warning": "You'll be signed out in {{seconds}} seconds, as nothing has happened here for a while.",
+    "stay": "Stay signed in",
+    "signedOut": "You were signed out after {{minutes}} minutes without activity."
   }
 }

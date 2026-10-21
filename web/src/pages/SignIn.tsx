@@ -1,3 +1,4 @@
+import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
@@ -9,12 +10,14 @@ import { useSignedInForm } from '../auth/forms'
 import { Centered } from '../components/Centered'
 import { FormError, PublicHeader } from '../components/AccountForm'
 import { ApiError, send, type Token } from '../lib/api'
+import { useIdleNotice } from '../lib/idle'
 import { useInstance } from '../lib/queries'
 // Sign in: username, password, and the authenticator's code (or a recovery
 // code) once the server says two-factor is on.
 export function SignIn() {
   const { t } = useTranslation()
   const instance = useInstance()
+  const idleMinutes = useIdleNotice()
   const [needsCode, setNeedsCode] = useState(false)
   const { submit, error, busy } = useSignedInForm()
 
@@ -35,6 +38,7 @@ export function SignIn() {
     <Centered>
       <Stack component="form" spacing={2} onSubmit={(e) => submit(e, signIn)}>
         <PublicHeader title={t('auth.signInTitle')} />
+        {idleMinutes && <Alert severity="info">{t('idle.signedOut', { minutes: idleMinutes })}</Alert>}
         <TextField name="username" label={t('auth.username')} required autoComplete="username"
           slotProps={{ htmlInput: { autoCapitalize: 'none' } }} />
         <TextField name="password" label={t('auth.password')} type="password" required autoComplete="current-password" />
