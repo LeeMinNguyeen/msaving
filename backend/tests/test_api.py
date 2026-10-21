@@ -25,10 +25,10 @@ def auth(uid):
     return {"Authorization": f"Bearer {TOKENS[uid]}"}
 
 
-def signed_up(client, name=None, language="vi"):
+def signed_up(client, name=None, language=None):
     name = name or f"u{uuid.uuid4().hex[:10]}"
-    r = client.post("/v1/auth/sign-up", json={"username": name, "password": PASSWORD, "language": language,
-                                              "timezone": "Asia/Ho_Chi_Minh"})
+    body = {"username": name, "password": PASSWORD, "timezone": "Asia/Ho_Chi_Minh"}
+    r = client.post("/v1/auth/sign-up", json=body | ({"language": language} if language else {}))
     assert r.status_code == 201, r.text
     token = r.json()["token"]
     uid = uuid.UUID(client.get("/v1/me", headers={"Authorization": f"Bearer {token}"}).json()["id"])
@@ -53,7 +53,7 @@ def test_me_returns_only_my_profile(client):
     r = client.get("/v1/me", headers=auth(mine))
     assert r.status_code == 200 and r.json()["id"] == str(mine)
     profile = r.json()["profile"]
-    assert profile["username"].startswith("me_") and profile["language"] == "vi" and profile["is_admin"] is False
+    assert profile["username"].startswith("me_") and profile["language"] == "en" and profile["is_admin"] is False
     assert set(profile) == {"username", "display_name", "timezone", "language", "created_at", "deletion_requested_at",
                             "is_admin", "idle_sign_out_minutes"}
     assert client.get("/v1/me", headers=auth(other)).json()["id"] == str(other)
@@ -115,7 +115,7 @@ def test_currencies(client):
 
 
 def test_books(client):
-    owner, stranger = signed_up(client), signed_up(client, language="en")
+    owner, stranger = signed_up(client, language="vi"), signed_up(client)
     bid = str(uuid.uuid4())
     new = {"id": bid, "name": "Gia đình", "base_currency": "VND", "timezone": "Asia/Ho_Chi_Minh"}
     r = client.post("/v1/books", headers=auth(owner), json=new)
@@ -233,19 +233,19 @@ def test_account_details_by_kind(client):
     cash = client.patch(url, headers=auth(u), json={"version": loan["version"], "kind": "cash"}).json()
     assert (cash["kind"], cash["interest_rate_bp"], cash["payment_due_day"]) == ("cash", None, None)
 
-    # The export has them, readable: amounts in the currency, the rate as a percentage (Vietnamese headers).
+    # The export has them, readable: amounts in the currency, the rate as a percentage.
     import csv
     import io
     import zipfile
     create("credit_card", note="Thẻ phụ", credit_limit=20_000_000, statement_day=5, payment_due_day=20, interest_rate_bp=2_550)
     create("loan", note="Điện thoại", installment=1_000_000, installment_fee=240_000, payment_due_day=15)
     z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
-    rows = {r["Ghi chú"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
-    assert {k: rows["Thẻ phụ"][k] for k in ("Hạn mức tín dụng", "Phí thường niên", "Ngày sao kê", "Ngày đến hạn thanh toán",
-                                            "Lãi suất (%/năm)")} == {"Hạn mức tín dụng": "20000000", "Phí thường niên": "",
-        "Ngày sao kê": "5", "Ngày đến hạn thanh toán": "20", "Lãi suất (%/năm)": "25.50"}
-    assert {k: rows["Điện thoại"][k] for k in ("Trả góp hằng tháng", "Phí trả góp", "Ngày đến hạn thanh toán")} == {
-        "Trả góp hằng tháng": "1000000", "Phí trả góp": "240000", "Ngày đến hạn thanh toán": "15"}
+    rows = {r["Note"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
+    assert {k: rows["Thẻ phụ"][k] for k in ("Credit limit", "Annual fee", "Statement day", "Payment due day",
+                                            "Interest rate (% a year)")} == {"Credit limit": "20000000", "Annual fee": "",
+        "Statement day": "5", "Payment due day": "20", "Interest rate (% a year)": "25.50"}
+    assert {k: rows["Điện thoại"][k] for k in ("Monthly installment", "Installment fee", "Payment due day")} == {
+        "Monthly installment": "1000000", "Installment fee": "240000", "Payment due day": "15"}
 
 
 def test_bill_dates():
@@ -615,8 +615,8 @@ def events(capsys):
 
 def test_profile_and_export(client):
     u = signed_up(client)
-    r = client.patch("/v1/me", headers=auth(u), json={"username": "New_Name_" + u.hex[:6], "language": "en", "display_name": "N"})
-    assert (r.json()["profile"]["username"], r.json()["profile"]["language"]) == (f"new_name_{u.hex[:6]}", "en")
+    r = client.patch("/v1/me", headers=auth(u), json={"username": "New_Name_" + u.hex[:6], "language": "vi", "display_name": "N"})
+    assert (r.json()["profile"]["username"], r.json()["profile"]["language"]) == (f"new_name_{u.hex[:6]}", "vi")
     assert client.patch("/v1/me", headers=auth(u), json={"display_name": ""}).json()["profile"]["display_name"] is None
 
     new_book_with_accounts(client, u)

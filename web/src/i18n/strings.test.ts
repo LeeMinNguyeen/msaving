@@ -10,12 +10,12 @@ function keys(obj: object, prefix = ''): string[] {
 }
 
 describe('string files', () => {
-  it('vi and en have the same keys', () => {
+  it('en and vi have the same keys', () => {
     expect(keys(en).sort()).toEqual(keys(vi).sort())
   })
 
   it('no string is empty', () => {
-    for (const file of [vi, en]) {
+    for (const file of [en, vi]) {
       const values = keys(file).map((k) => k.split('.').reduce<unknown>((o, p) => (o as Record<string, unknown>)[p], file))
       expect(values.every((v) => typeof v === 'string' && v.trim() !== '')).toBe(true)
     }

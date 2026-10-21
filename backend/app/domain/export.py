@@ -8,7 +8,7 @@ memberships, their own activity) and what was derived from it
 (balances). Written for people, not as a schema dump: named columns, amounts as
 decimals in their currency, usernames instead of ids ("Deleted user" for
 purged accounts), no internal ids. In the user's language (users.language):
-Vietnamese by default, or English. Only the labels are translated; what users
+English by default, or Vietnamese. Only the labels are translated; what users
 typed (names, payees, notes) is exported as typed.
 Not included: secrets (password hash, two-factor secret, recovery codes,
 sessions).
@@ -128,7 +128,7 @@ def build_export(db: Session) -> bytes:
     files: dict[str, bytes] = {}
 
     profile = _rows(db, "select * from my_profile()")
-    lang = profile[0]["language"] if profile else "vi"
+    lang = profile[0]["language"] if profile else "en"
 
     def t(s):
         """Translate a fixed label or value into the user's language."""

@@ -64,7 +64,7 @@ def create_book(body: CreateBook, user_id: UUID = Depends(current_user), db: Ses
         db.execute(text("insert into books (id, created_by, name, base_currency, timezone) values (:i, :u, :n, :c, :tz)"),
                    {"i": body.id, "u": user_id, "n": body.name, "c": body.base_currency, "tz": body.timezone})
         if body.starter_categories:
-            language = db.execute(text("select language from my_profile()")).scalar() or "vi"
+            language = db.execute(text("select language from my_profile()")).scalar() or "en"
             add_starter_categories(db, body.id, language)
     db.commit()
     return get_book(db, body.id)

@@ -9,7 +9,7 @@ machine or server: nobody else runs it, and the project collects nothing.
 - Who owes whom: money lent and borrowed, by person
 - Daily exchange rates with no account or key needed
 - Download everything as readable CSV files; delete your account any time
-- Vietnamese and English
+- English and Vietnamese
 
 Free and open source ([AGPL-3.0](LICENSE)).
 
