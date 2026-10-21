@@ -1,12 +1,10 @@
-import CssBaseline from '@mui/material/CssBaseline'
-import { ThemeProvider } from '@mui/material/styles'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import type { ReactElement, ReactNode } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { AppTheme } from '../components/AppTheme'
 import { DatesProvider } from '../components/DatesProvider'
 import i18n from '../i18n'
-import { theme } from '../theme'
 
 export const testClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
@@ -28,8 +26,7 @@ export async function renderApp(ui: ReactElement, opts: { route?: string; histor
   const entries = opts.history ?? [opts.route ?? '/']
   // A wrapper, so rerender() keeps the providers.
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <AppTheme>
       <QueryClientProvider client={client}>
         <DatesProvider>
           <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
@@ -39,7 +36,7 @@ export async function renderApp(ui: ReactElement, opts: { route?: string; histor
           </MemoryRouter>
         </DatesProvider>
       </QueryClientProvider>
-    </ThemeProvider>
+    </AppTheme>
   )
   return { ...render(ui, { wrapper }), client }
 }

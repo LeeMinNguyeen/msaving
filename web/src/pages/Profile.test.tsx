@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { useTheme } from '@mui/material/styles'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { DeviceSession, Me } from '../lib/api'
 import { fakeApi } from '../test/fakeApi'
-import { renderApp } from '../test/render'
+import { desktop, renderApp } from '../test/render'
 import { Profile } from './Profile'
 
 const me: Me = {
@@ -89,5 +90,27 @@ describe('signing out after inactivity, the user\'s own choice (msaving#26)', ()
     expect(await setting()).toHaveTextContent('After 30 minutes')
     await pick('Never (only after 30 days unused)')
     await waitFor(() => expect(api.writes()[0]?.body).toEqual({ idle_sign_out_minutes: null }))
+  })
+})
+
+describe('light or dark', () => {
+  function Mode() {
+    return <span data-testid="mode">{useTheme().palette.mode}</span>
+  }
+  afterEach(() => {
+    localStorage.removeItem('msaving.theme')
+    desktop(true)
+  })
+
+  it("follows the device until the user picks one, kept in this browser", async () => {
+    server([laptop])
+    desktop(true, { dark: true })
+    await renderApp(<><Mode /><Profile /></>)
+    expect(await screen.findByRole('combobox', { name: 'Light or dark' })).toHaveTextContent('Same as the device')
+    expect(screen.getByTestId('mode')).toHaveTextContent('dark')
+    await userEvent.click(screen.getByRole('combobox', { name: 'Light or dark' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Light' }))
+    expect(screen.getByTestId('mode')).toHaveTextContent('light')
+    expect(localStorage.getItem('msaving.theme')).toBe('light')
   })
 })

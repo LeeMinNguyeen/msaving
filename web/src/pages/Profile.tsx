@@ -16,6 +16,7 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import { useColorScheme } from '@mui/material/styles'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -46,10 +47,27 @@ export function Profile() {
     <Stack spacing={2} sx={{ maxWidth: 720 }}>
       <Typography variant="h5">{t('profile.title')}</Typography>
       <ProfileForm profile={me.data.profile} />
+      <Appearance />
       <Security />
       <Devices profile={me.data.profile} />
       <YourData profile={me.data.profile} />
     </Stack>
+  )
+}
+
+// For this browser only, so it applies at once rather than on Save.
+function Appearance() {
+  const { t } = useTranslation()
+  const { mode, setMode } = useColorScheme()
+  return (
+    <Section title={t('profile.appearance')}>
+      <TextField select label={t('profile.theme')} value={mode ?? 'system'} helperText={t('profile.themeHint')}
+        onChange={(e) => setMode(e.target.value as 'system' | 'light' | 'dark')}>
+        <MenuItem value="system">{t('profile.themeSystem')}</MenuItem>
+        <MenuItem value="light">{t('profile.themeLight')}</MenuItem>
+        <MenuItem value="dark">{t('profile.themeDark')}</MenuItem>
+      </TextField>
+    </Section>
   )
 }
 
