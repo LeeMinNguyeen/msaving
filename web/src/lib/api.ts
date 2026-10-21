@@ -182,6 +182,7 @@ export type Transaction = {
   id: string
   type: TxnType
   occurred_on: string
+  occurred_time: string // HH:MM:SS
   category_id: string | null
   payee: string | null
   note: string | null
@@ -202,6 +203,7 @@ export type HistoryEntry = {
   changed_by: string | null
   type: TxnType
   occurred_on: string
+  occurred_time: string | null
   category_id: string | null
   payee: string | null
   note: string | null
@@ -221,7 +223,7 @@ export type Dashboard = {
   budgets: { budget_id: string; category_id: string; category: string; period: string; period_start: string; period_end: string; budget: number; spent: number; remaining: number; percent_used: number | null; not_converted: number }[]
   accounts: { account_id: string; name: string; kind: AccountKind; currency: string; balance: number; converted_balance: number | null; in_net_worth: boolean }[]
   people: { contact_id: string; name: string; currency: string; owed_to_you: number; you_owe: number }[]
-  recent_transactions: { id: string; type: TxnType; occurred_on: string; payee: string | null; category: string | null; amount: number | null; currency: string | null }[]
+  recent_transactions: { id: string; type: TxnType; occurred_on: string; occurred_time: string; payee: string | null; category: string | null; amount: number | null; currency: string | null }[]
 }
 
 export type Contact = {

@@ -49,11 +49,11 @@ def dashboard(db: Session, book_id: UUID, today: date | None = None) -> dict:
             "select contact_id, name, currency, owed_to_you, you_owe from contact_balances"
             " where book_id = :b and (owed_to_you <> 0 or you_owe <> 0) order by name"),
         "recent_transactions": rows(
-            "select t.id, t.type::text as type, t.occurred_on, t.payee, c.name as category,"
+            "select t.id, t.type::text as type, t.occurred_on, t.occurred_time, t.payee, c.name as category,"
             "       (select sum(e.amount) from entries e where e.transaction_id = t.id"
             "          and (t.type <> 'transfer' or e.amount < 0))::bigint as amount,"
             "       (select min(a.currency) from entries e join accounts a on a.id = e.account_id"
             "          where e.transaction_id = t.id and (t.type <> 'transfer' or e.amount < 0)) as currency"
             "  from transactions t left join categories c on c.id = t.category_id"
-            " where t.book_id = :b order by t.occurred_on desc, t.created_at desc limit 10"),
+            " where t.book_id = :b order by t.occurred_on desc, t.occurred_time desc, t.created_at desc limit 10"),
     }

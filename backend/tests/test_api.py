@@ -383,6 +383,50 @@ def test_categories(client):
     assert client.patch(f"{base}/{savings['id']}", headers=auth(u), json={"version": 9, "name": "x"}).json() == {"detail": "conflict"}
 
 
+def test_transactions_have_a_time_of_day(client):
+    """R-TXN-6: every transaction has a date and a time of day; lists sort by both; one saved without a time has
+    00:00, and an edit that leaves the time out keeps it."""
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}/transactions"
+
+    def add(payee, time=None):
+        body = {"id": str(uuid.uuid4()), "type": "expense", "occurred_on": "2026-10-05", "payee": payee,
+                "entries": [{"account_id": accts["Cash"], "amount": -10_000}]} | ({"occurred_time": time} if time else {})
+        return client.post(base, headers=auth(u), json=body).json()
+
+    evening, morning, unset = add("Dinner", "18:45"), add("Coffee", "08:05"), add("Old app")
+    assert (evening["occurred_time"], morning["occurred_time"], unset["occurred_time"]) == ("18:45:00", "08:05:00", "00:00:00")
+    listed = client.get(base, headers=auth(u), params={"from": "2026-10-05", "to": "2026-10-05"}).json()["items"]
+    assert [x["payee"] for x in listed] == ["Dinner", "Coffee", "Old app"]
+
+    pages, after = [], None
+    while True:
+        page = client.get(base, headers=auth(u), params={"from": "2026-10-05", "limit": 1} | ({"after": after} if after else {})).json()
+        pages += [x["payee"] for x in page["items"]]
+        if not (after := page["next"]):
+            break
+    assert pages == ["Dinner", "Coffee", "Old app"]
+
+    running = client.get(base, headers=auth(u), params={"account_id": accts["Cash"], "from": "2026-10-05"}).json()["items"]
+    assert [x["running_balance"] for x in running] == [970_000, 980_000, 990_000]
+
+    edit = {k: v for k, v in morning.items() if k in ("type", "occurred_on", "entries", "payee")} | {"version": morning["version"]}
+    kept = client.put(f"{base}/{morning['id']}", headers=auth(u), json=edit).json()
+    assert (kept["occurred_time"], kept["version"]) == ("08:05:00", 1)
+    moved = client.put(f"{base}/{morning['id']}", headers=auth(u), json=edit | {"occurred_time": "21:00"}).json()
+    assert (moved["occurred_time"], moved["version"]) == ("21:00:00", 2)
+    history = client.get(f"{base}/{morning['id']}/history", headers=auth(u)).json()
+    assert [h["occurred_time"] for h in history] == ["08:05:00", "21:00:00"]
+
+    import csv
+    import io
+    import zipfile
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
+    times = {r["Payee"]: r["Time"] for r in csv.DictReader(io.StringIO(z.read("transactions.csv").decode("utf-8-sig")))}
+    assert (times["Dinner"], times["Coffee"], times["Old app"]) == ("18:45", "21:00", "00:00")
+
+
 def test_transactions_and_two_browsers(client):
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)

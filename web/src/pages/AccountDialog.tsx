@@ -26,7 +26,7 @@ import { adjustmentFor, detailsPayload, ledgerBalance, showsLast4 } from '../lib
 import {
   accountKinds, api, ApiError, interestKinds, last4Kinds, liabilityKinds, personKinds, send, type Account, type AccountKind, type Book,
 } from '../lib/api'
-import { todayIn } from '../lib/labels'
+import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { useContacts, useCurrencies, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
@@ -155,7 +155,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
           const diff = adjustmentFor(form.kind, balance, saved.balance)
           if (diff !== 0) {
             await send('POST', `/v1/books/${book.id}/transactions`, {
-              id: adjustment.current.id, type: 'adjustment', occurred_on: todayIn(book.timezone),
+              id: adjustment.current.id, type: 'adjustment', occurred_on: todayIn(book.timezone), occurred_time: timeIn(book.timezone),
               entries: [{ account_id: base.id, amount: diff }], category_id: null, payee: null, note: null,
             })
           }

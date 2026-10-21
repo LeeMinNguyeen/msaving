@@ -159,7 +159,10 @@ export function Transactions({ book }: { book: Book }) {
                 const cat = txn.category_id ? categoryById.get(txn.category_id) : undefined
                 return (
                   <TableRow key={txn.id} hover onClick={() => openTxn(txn)} sx={{ cursor: 'pointer' }}>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{day.format(new Date(`${txn.occurred_on}T00:00:00`))}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {day.format(new Date(`${txn.occurred_on}T00:00:00`))}
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{txn.occurred_time.slice(0, 5)}</Typography>
+                    </TableCell>
                     <TableCell>
                       <Typography variant="body2">{title(txn)}</Typography>
                       {txn.note && <Typography variant="caption" color="text.secondary">{txn.note}</Typography>}
@@ -201,7 +204,8 @@ export function Transactions({ book }: { book: Book }) {
                   <ListItemButton divider onClick={() => openTxn(txn)}>
                     <ListItemText
                       primary={title(txn)}
-                      secondary={[txn.category_id ? categoryById.get(txn.category_id)?.name : '', accountsOf(txn)].filter(Boolean).join(' · ')}
+                      secondary={[txn.occurred_time.slice(0, 5), txn.category_id ? categoryById.get(txn.category_id)?.name : '', accountsOf(txn)]
+                        .filter(Boolean).join(' · ')}
                     />
                     <Typography sx={{ ml: 2, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: txn.type === 'transfer' && !filteredAccount ? undefined : color(money.amount) }}>
                       {money.text}

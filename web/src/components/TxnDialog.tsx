@@ -20,12 +20,13 @@ import { useTranslation } from 'react-i18next'
 import { currentLanguage } from '../i18n'
 import { api, ApiError, categoryKindFor, send, type Account, type Book, type Entry, type Transaction, type TxnType } from '../lib/api'
 import { categoryTree } from '../lib/categories'
-import { todayIn } from '../lib/labels'
+import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { personName } from '../lib/people'
 import { useAccounts, useCategories, useCurrencies, useInvalidateBook } from '../lib/queries'
 import { AmountField } from './AmountField'
 import { DateField } from './DateField'
+import { TimeField } from './TimeField'
 import { useErrorText } from './errors'
 import { HistoryDialog } from './HistoryDialog'
 import { newId } from '../lib/uuid'
@@ -36,6 +37,7 @@ const otherTypes: TxnType[] = ['refund', 'adjustment']
 type Form = {
   type: TxnType
   date: string
+  time: string
   account: string
   toAccount: string
   amount: string
@@ -122,12 +124,13 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!entries) return
+    if (!entries || !form.time) return
     setBusy(true)
     setError(null)
     const body = {
       type: form.type,
       occurred_on: form.date,
+      occurred_time: form.time,
       entries,
       category_id: form.category || null,
       payee: form.payee.trim() || null,
@@ -219,6 +222,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
                 helperText={form.type === 'adjustment' ? t('txn.adjustmentHint') : from?.currency}
               />
               <DateField label={t('txn.date')} required value={form.date} onChange={(date) => set({ date })} sx={{ maxWidth: { sm: 190 } }} />
+              <TimeField label={t('txn.time')} required value={form.time} onChange={(time) => set({ time })} sx={{ maxWidth: { sm: 110 } }} />
             </Stack>
             <TextField
               select
@@ -299,7 +303,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
           <Box sx={{ flex: 1 }} />
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           {!readOnly && (
-            <Button type="submit" variant="contained" loading={busy} disabled={!entries || !form.date}>
+            <Button type="submit" variant="contained" loading={busy} disabled={!entries || !form.date || !form.time}>
               {t('txn.save')}
             </Button>
           )}
@@ -321,7 +325,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
 
 function toForm(txn: Transaction | null | undefined, book: Book, minorOf: (currency: string) => number, defaults?: TxnDefaults): Form {
   if (!txn) {
-    return { type: 'expense', date: todayIn(book.timezone), account: defaults?.account ?? '', toAccount: '', amount: '', amountReceived: '', category: '', payee: '', note: '' }
+    return { type: 'expense', date: todayIn(book.timezone), time: timeIn(book.timezone), account: defaults?.account ?? '', toAccount: '', amount: '', amountReceived: '', category: '', payee: '', note: '' }
   }
   const lang = currentLanguage()
   const text = (e: Entry, signed = false) => amountText(signed ? e.amount : Math.abs(e.amount), minorOf(e.currency ?? ''), lang)
@@ -331,6 +335,7 @@ function toForm(txn: Transaction | null | undefined, book: Book, minorOf: (curre
   return {
     type: txn.type,
     date: txn.occurred_on,
+    time: txn.occurred_time.slice(0, 5),
     account: transfer ? out.account_id : txn.entries[0].account_id,
     toAccount: transfer && into ? into.account_id : '',
     amount: text(transfer ? out : txn.entries[0], txn.type === 'adjustment'),
