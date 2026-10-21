@@ -4,7 +4,6 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import MenuItem from '@mui/material/MenuItem'
@@ -30,6 +29,8 @@ import { TimeField } from './TimeField'
 import { useErrorText } from './errors'
 import { HistoryDialog } from './HistoryDialog'
 import { newId } from '../lib/uuid'
+import { DialogFooter } from './DialogFooter'
+import { useToast } from '../lib/toast'
 
 const mainTypes: TxnType[] = ['expense', 'income', 'transfer']
 const otherTypes: TxnType[] = ['refund', 'adjustment']
@@ -63,6 +64,7 @@ export function TxnDialog(props: Props) {
 // is money out). Adjustments take a sign.
 function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { minorOf: (currency: string) => number }) {
   const { t } = useTranslation()
+  const toast = useToast()
   const errorText = useErrorText()
   const lang = currentLanguage()
   const fullScreen = useMediaQuery(useTheme().breakpoints.down('sm'))
@@ -140,6 +142,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
       if (txn) await send('PUT', `/v1/books/${book.id}/transactions/${txn.id}`, { ...body, version: txn.version })
       else await send('POST', `/v1/books/${book.id}/transactions`, { ...body, id: id.current })
       await invalidate(book.id)
+      toast(t('toast.txnSaved'))
       onClose()
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && txn) await reload(err)
@@ -155,6 +158,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
     try {
       await send('DELETE', `/v1/books/${book.id}/transactions/${txn.id}?version=${txn.version}`)
       await invalidate(book.id)
+      toast(t('toast.txnDeleted'))
       onClose()
     } catch (err) {
       setConfirmDelete(false)
@@ -287,7 +291,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
             {error ? <Alert severity={error instanceof ApiError && error.status === 409 ? 'warning' : 'error'}>{errorText(error)}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogFooter>
           {txn && (
             <>
               <Button startIcon={<HistoryIcon />} onClick={() => setShowHistory(true)}>
@@ -307,16 +311,16 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
               {t('txn.save')}
             </Button>
           )}
-        </DialogActions>
+        </DialogFooter>
       </form>
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)}>
         <DialogTitle>{t('txn.deleteConfirm')}</DialogTitle>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={() => setConfirmDelete(false)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" loading={busy} onClick={remove}>
             {t('txn.delete')}
           </Button>
-        </DialogActions>
+        </DialogFooter>
       </Dialog>
       {showHistory && txn && <HistoryDialog book={book} txnId={txn.id} onClose={() => setShowHistory(false)} />}
     </Dialog>

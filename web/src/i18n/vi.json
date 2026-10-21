@@ -529,5 +529,14 @@
     "warning": "Bạn sẽ bị đăng xuất sau {{seconds}} giây vì đã lâu không có thao tác nào.",
     "stay": "Vẫn đăng nhập",
     "signedOut": "Bạn đã bị đăng xuất sau {{minutes}} phút không hoạt động."
+  },
+  "toast": {
+    "budgetAdded": "Đã thêm ngân sách",
+    "txnSaved": "Đã lưu giao dịch",
+    "txnDeleted": "Đã xóa giao dịch",
+    "accountSaved": "Đã lưu tài khoản",
+    "categorySaved": "Đã lưu danh mục",
+    "personSaved": "Đã lưu",
+    "paymentSaved": "Đã lưu khoản thanh toán"
   }
 }

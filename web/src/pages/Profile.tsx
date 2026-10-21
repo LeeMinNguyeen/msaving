@@ -3,7 +3,6 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -30,6 +29,7 @@ const IDLE_CHOICES = [0, 5, 10, 15, 30, 60] // minutes; 0: never (30 days unused
 import { newAccountBody } from '../auth/forms'
 import { PasswordFields } from '../components/AccountForm'
 import { rememberedDevice } from '../auth/rememberedDevice'
+import { DialogFooter } from '../components/DialogFooter'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -236,13 +236,13 @@ function Security() {
             {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={() => setConfirm(null)}>{t('common.cancel')}</Button>
           <Button color={confirm === 'off' ? 'error' : 'primary'} variant="contained" loading={busy} disabled={code.length !== 6}
             onClick={withCode}>
             {t(confirm === 'off' ? 'mfa.disable' : 'mfa.newCodes')}
           </Button>
-        </DialogActions>
+        </DialogFooter>
       </Dialog>
 
       <Dialog open={!!recovery} fullWidth maxWidth="xs">
@@ -255,10 +255,10 @@ function Security() {
             </Box>
           </Stack>
         </DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={() => navigator.clipboard?.writeText(recovery?.join('\n') ?? '')}>{t('common.copy')}</Button>
           <Button variant="contained" onClick={() => setRecovery(null)}>{t('mfa.recoverySaved')}</Button>
-        </DialogActions>
+        </DialogFooter>
       </Dialog>
     </Section>
   )
@@ -380,13 +380,13 @@ function YourData({ profile }: { profile: ProfileT }) {
             <TextField label={t('profile.deleteConfirmLabel')} value={typed} onChange={(e) => setTyped(e.target.value)} />
           </Stack>
         </DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={() => setConfirm(false)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" loading={busy}
             disabled={typed.trim().toLowerCase() !== profile.username} onClick={close}>
             {t('profile.delete')}
           </Button>
-        </DialogActions>
+        </DialogFooter>
       </Dialog>
     </Section>
   )
