@@ -74,10 +74,9 @@ function BookSwitcher({ book }: { book: Book }) {
   )
 }
 
-// Desktop first (a project decision): a fixed sidebar with the book switcher
-// and the book's pages. Phones get the book's name on top and the pages in a
-// bar at the bottom (msaving#28) until the mobile app is in the stores
-// (main.tsx sends phones there then).
+// Desktop first: a fixed sidebar with the book switcher and the book's pages.
+// Phones get the book's name on top and the pages in a bar at the bottom until
+// the mobile app is in the stores (main.tsx sends phones there then).
 export function Shell({ book, children }: { book: Book; children: ReactNode }) {
   useBookChanges(book.id)
   const [dialog, setDialog] = useState<{ txn: Transaction | null; defaults?: TxnDefaults } | null>(null)

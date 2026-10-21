@@ -1,16 +1,9 @@
-"""The daily jobs' schedule (msaving#6, docs: Background jobs): when each one
-runs, and whether it's due.
+"""Each job runs once a day at the time the admin set, in the admin's timezone (kept with it, so daylight saving time
+doesn't move it), or at JOBS_HOUR (UTC) until then.
 
-Each job runs once a day at its time of day: the one the admin set on Server
-admin, in their own timezone (kept with it, so daylight saving time doesn't
-move it), or JOBS_HOUR (UTC, default 19 = 02:00 in Vietnam) until then. A job
-is due once its time has come since it last started and since its schedule
-last changed: a server that was off at that time catches up when it starts, a
-new one runs every job at its first start, and moving a time to earlier in
-the day doesn't run the job straight away. A job that failed runs again an
-hour after it started, until it works. The scheduler
-(app/jobs/scheduler.py) asks every half minute; Server admin shows the next
-run.
+A job is due once its time has come since it last started and since its schedule last changed: a server that was off
+catches up when it starts, a new one runs every job at its first start, and moving a time earlier in the day doesn't
+run the job straight away.
 """
 import os
 from collections.abc import Mapping
@@ -51,8 +44,7 @@ def next_time(now: datetime, at_minute: int | None, timezone: str | None) -> dat
 
 
 def is_due(now: datetime, job: Mapping) -> bool:
-    """A row of job_schedule(): on, and its time has come since it last started and since its schedule changed,
-    or its last run failed an hour or more ago."""
+    """`job` is a row of job_schedule()."""
     if not job["enabled"]:
         return False
     if job.get("last_result") == "failed" and job["last_started_at"] and now - job["last_started_at"] >= RETRY:

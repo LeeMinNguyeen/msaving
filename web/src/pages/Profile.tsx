@@ -38,7 +38,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-// Profile and security: profile, password, two-step verification, signed-in devices, export, delete.
 export function Profile() {
   const { t } = useTranslation()
   const me = useMe()
@@ -246,8 +245,7 @@ function Security() {
   )
 }
 
-// Where this account is signed in (msaving#5): this device first, any other one signed out alone or all at once.
-// And the user's own sign-out after inactivity (msaving#26), for every device, saved as soon as it's picked.
+// Signed-in devices, and the user's own sign-out after inactivity for every device, saved as soon as it's picked.
 function Devices({ profile }: { profile: ProfileT }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

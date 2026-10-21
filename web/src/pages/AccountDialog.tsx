@@ -50,11 +50,9 @@ export function AccountDialog(props: Props) {
   return <AccountForm {...props} minorOf={(code) => map.get(code)?.minor_unit ?? 2} />
 }
 
-// Add (account = null), show or edit an account. An existing account opens
-// with every field greyed out; Edit turns them on (msaving#23). Amounts owed
-// (credit card, loan) are typed positive and saved negative. Editing the
-// current balance adds an adjustment transaction for the difference, dated
-// today, since balances only ever come from transactions (msaving#24).
+// Add (account = null), show or edit an account. Amounts owed are typed
+// positive and saved negative. Editing the current balance adds an adjustment
+// for the difference, dated today, since balances only come from transactions.
 function AccountForm({ book, account, editing: startEditing = false, onTransactions, onClose, minorOf }: Props & { minorOf: (currency: string) => number }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

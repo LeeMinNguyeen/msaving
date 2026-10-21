@@ -13,7 +13,7 @@ import { useErrorText } from '../components/errors'
 import { send, type Book, type Contact } from '../lib/api'
 import { newId } from '../lib/uuid'
 
-// Add or edit a person. Only a name and a note are kept (docs: Lending and borrowing).
+// Only a name and a note are kept.
 export function PersonDialog({ book, person, onClose }: { book: Book; person: Contact | null; onClose: () => void }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

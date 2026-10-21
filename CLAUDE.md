@@ -50,6 +50,28 @@ Faster loops: `backend/CLAUDE.md` (pytest, uvicorn --reload) and `web/CLAUDE.md`
 - **Security is a hard requirement:** least-privilege database logins (the API never gets the owner's password),
   RLS, hashed passwords and tokens, rate limits, strict CSP, no third-party scripts, no tracking.
 
+## Code comments
+
+As few as possible. Claude Code adds far too many by default, in every language, and keeps doing it after being
+told to stop: this section overrides that habit.
+
+- **Default to none.** A comment is only for what the code can't say: why something non-obvious is done, a
+  constraint from outside (a Postgres or library quirk, a security reason, a source's terms), or a trap.
+- **Never restate the code:** what the next line does, a section label (`# ---- profile`), a type, unit or default
+  the code already shows.
+- **Never narrate history or the conversation:** no "now", "new", "no longer", "fixed", "as asked", "the owner
+  decided", review notes, issue or milestone numbers, or your own reasoning. That goes in the commit message and
+  the PR.
+- **Docstrings** only for a contract the signature can't show (what None means, what it raises, an order), in one
+  line where possible.
+- **Don't touch comments in code you aren't otherwise changing**, and never edit a released migration for its
+  comments.
+- **Before you finish, read your diff and delete every comment that breaks these rules.** When in doubt, delete it.
+
+Keep: tool directives (`noqa`, `oxlint-disable`, `eslint-disable`, `type: ignore`, shebangs), the operator notes in
+`.env.example`, `docker-compose.yml` and the `Dockerfile`, the usage text in `backend/app/admin.py`, and the restore
+steps in `backend/app/jobs/backup.py`'s docstring (the tests run them).
+
 ## Branches and releases
 
 Feature branches from `dev`; `dev` and `main` are protected (PR with passing CI). A release: a PR into `main`

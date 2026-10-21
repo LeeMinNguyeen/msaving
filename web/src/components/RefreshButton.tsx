@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useRefreshBook } from '../lib/queries'
 
-// Fetch the book's data again now, without waiting for the automatic refresh (msaving#25).
+// Fetch the book's data again now, without waiting for the automatic refresh.
 export function RefreshButton({ bookId }: { bookId: string }) {
   const { t } = useTranslation()
   const refresh = useRefreshBook()

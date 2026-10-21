@@ -1,10 +1,6 @@
-"""Per-request database session for the FastAPI backend.
-
-Every request runs in one DB transaction with app.user_id set *locally* to the
-user from the verified token. Postgres row-level security then limits every
-query to the books that user is a member of, with what their role allows.
-Because the setting is transaction-local, a pooled connection carries no user
-once the request ends, even if it errored.
+"""Every request runs in one transaction with app.user_id set *locally* to the user from the verified token, and
+row-level security limits every query to that user's books. Because the setting is transaction-local, a pooled
+connection carries no user once the request ends, even if it errored.
 """
 import os
 from collections.abc import Iterator

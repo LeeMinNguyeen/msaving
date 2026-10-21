@@ -1,19 +1,7 @@
-"""Account deletion: close now, restore within 30 days, then delete for good.
+"""The daily purge, as purge_login, which can run the purge and nothing else: accounts closed more than 30 days ago,
+then expired sessions, invites and reset links.
 
-API (as the signed-in user): POST /v1/me/delete, POST /v1/me/restore,
-GET /v1/me/status (app/api/routes/v1/me.py).
-
-Daily job (python -m app.jobs.account_deletion, from the scheduler), connected
-as purge_login, a member of account_purger, which can run the purge and
-nothing else:
-    1. purge_deleted_accounts() deletes accounts closed more than 30 days ago,
-       with their password, two-factor secret, recovery codes and sessions;
-    2. their ids are appended to PURGE_LOG, kept outside the database (in the
-       backups folder), before the purge commits, so no purged id is ever
-       missing from it;
-    3. purge_expired_sign_in() deletes sessions unused for 30 days and old
-       invites and reset links.
-If a backup from before a purge is ever restored, `--repurge` deletes those
+Purged ids go to PURGE_LOG, outside the database, so that after restoring an older backup `--repurge` deletes those
 accounts again. Keep PURGE_LOG at least as long as your oldest backup.
 """
 import json

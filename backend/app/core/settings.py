@@ -1,7 +1,4 @@
-"""Settings read from the environment, once, at import. Every one is optional:
-docker-compose.yml sets what the server needs, and the defaults suit it.
-No URL is written into code.
-"""
+"""Read from the environment once, at import. Every setting is optional."""
 import os
 from dataclasses import dataclass
 from pathlib import Path

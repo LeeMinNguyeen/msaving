@@ -59,7 +59,7 @@ function lastSixMonths(today: string): string[] {
   })
 }
 
-// Screen 4, the home screen: everything from one API call, in the book's currency.
+// Everything from one API call, in the book's currency.
 export function Dashboard({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

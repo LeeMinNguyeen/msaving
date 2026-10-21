@@ -34,9 +34,7 @@ import { RefreshButton } from '../components/RefreshButton'
 
 const FILTERS = ['account_id', 'category_id', 'type', 'from', 'to', 'q'] as const
 
-// Screen 6: the book's transactions, newest first, with filters kept in the
-// URL (so an account can link to its own list). Tap one to edit it or see
-// its history.
+// Filters are kept in the URL, so an account can link to its own list.
 export function Transactions({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

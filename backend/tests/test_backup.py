@@ -1,12 +1,5 @@
-"""Tests for the nightly backup job (app/jobs/backup.py), against a real Postgres.
-
-Run like tests/test_schema.py (TEST_ADMIN_URL, a superuser), with pg_dump,
-pg_restore and psql of the server's version on PATH. Builds a throwaway
-database with the server's migration runner, runs `python -m app.jobs.backup` on it,
-restores the dump into a second throwaway database with the `$` commands in
-backup.py's docstring, and checks that everything came back. Drops every
-database it creates, and the roles it created that weren't there before.
-"""
+"""Needs pg_dump, pg_restore and psql of the server's version on PATH. Restores with the `$` commands in backup.py's
+docstring. Drops every database it creates, and the roles it created that weren't there before."""
 import ast
 import os
 import shutil
@@ -196,7 +189,7 @@ def test_errors_never_show_the_password(source, tmp_path):
 
 
 def test_old_dumps_are_deleted_after_a_good_one(source, tmp_path):
-    """The 7-day backup promise: dumps older than 5 days 12 hours go once a new dump exists."""
+    """Dumps older than 5 days 12 hours go once a new dump exists."""
     bucket = tmp_path / "bucket"
     bucket.mkdir()
     five_days_ago = datetime.now(timezone.utc) - timedelta(days=5)

@@ -1,11 +1,9 @@
 import { useSyncExternalStore } from 'react'
 
-// Signing out after inactivity (msaving#26). The admin sets the minutes for
-// everyone on the server (GET /v1/instance). The server ends a session unused
-// that long, but a tab left open on screen keeps its session in use with its
-// background refreshes, so the web app also watches for the user
-// (components/IdleSignOut.tsx): a click, key, touch, scroll or mouse move in
-// any tab of this browser counts.
+// The server ends a session unused for the user's chosen minutes, but a tab left
+// open keeps its session in use with its background refreshes, so the web app
+// also watches for the user (components/IdleSignOut.tsx): a click, key, touch,
+// scroll or mouse move in any tab of this browser counts.
 
 const WARN_MS = 60_000 // the warning comes a minute before, or halfway through a shorter setting
 

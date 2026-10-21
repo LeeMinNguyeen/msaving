@@ -11,7 +11,6 @@ import { session } from './auth/session'
 import './i18n'
 import { theme } from './theme'
 
-// Several devices at once: refetch when the window regains focus and about every minute.
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: true, refetchInterval: 60_000, retry: 1 } },
 })
@@ -21,7 +20,6 @@ session.subscribe(() => {
   if (!session.token()) queryClient.clear()
 })
 
-// Phones go to the mobile app's store page once it's published.
 const store = storeUrlFor(navigator.userAgent, config)
 if (store) window.location.replace(store)
 

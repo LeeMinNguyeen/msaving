@@ -1,4 +1,3 @@
-"""Shared reference data: currencies."""
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import text

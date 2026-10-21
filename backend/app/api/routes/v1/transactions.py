@@ -1,12 +1,5 @@
-"""Transactions: add, edit, delete, list with filters, edit history.
-
-Ids come from the client (made when the user taps Save, reused on retry), so a
-retry or a double tap can't save twice. Edits and deletes send the version the
-client loaded; if another device saved in between, nothing is written and the
-answer is 409 conflict (docs: The ledger, several devices). The shape rules
-(a transfer has two entries, an expense is negative) are checked by the
-database when the route commits.
-"""
+"""The shape rules (a transfer has two entries, an expense is negative) are checked by the database when the route
+commits."""
 import base64
 import json
 from datetime import date, datetime
@@ -31,7 +24,7 @@ Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 
 class Entry(BaseModel):
     account_id: UUID
-    amount: int                                # minor units of the account's currency, signed
+    amount: int                                # signed, in the account's currency
     currency: str | None = None                # filled in on the way out
 
 
@@ -100,7 +93,6 @@ def list_transactions(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     db: Session = Depends(get_db),
 ) -> Page:
-    """Newest first (date, then when it was entered)."""
     get_book(db, book_id)
     c_on, c_at, c_id = _uncursor(after) if after else (None, None, None)
     rows = db.execute(text(SELECT + """,

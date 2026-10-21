@@ -8,15 +8,12 @@ from app.core.db import SessionLocal, request_session
 
 
 def get_db(caller: Caller = Depends(current_caller)) -> Iterator[Session]:
-    """One database transaction per request, as the signed-in user. Routes that
-    write call db.commit() before returning (see request_session). Two-factor,
-    when on, was checked at sign-in, before the session existed."""
+    """One transaction per request, as the signed-in user. Routes that write must call db.commit()."""
     with request_session(caller.id) as session:
         yield session
 
 
 def get_public_db() -> Iterator[Session]:
-    """No signed-in user: row-level security shows no user data, only shared
-    reference tables and the sign-in functions. For routes used before signing in."""
+    """For routes used before sign-in: with no user, row-level security shows no user data."""
     with SessionLocal() as session:
         yield session

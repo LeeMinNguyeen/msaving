@@ -1,17 +1,7 @@
-"""Accounts in a book, with balances (always SUM of entries, never stored).
+"""Accounts in a book, with balances (the SUM of their entries, never stored).
 
-Creating an account can include its opening balance, saved as an
-opening_balance transaction whose id is derived from the account's, so a
-retried create can't add it twice. Liabilities are negative: a card with
-450.00 owed opens at -45000 (the app turns "amount owed" into the sign).
-
-Details by kind (msaving#17): a note on any account; a credit card's limit,
-annual fee, statement day and payment due day; a loan's monthly installment,
-payment day and installment fee (msaving#37); a yearly interest rate on
-savings, credit cards, loans and money lent. A detail sent for a kind it
-doesn't belong to is refused (422 invalid); changing an account's kind
-clears the ones that stop applying. A card's or loan's monthly bill: GET
-.../{account_id}/bill (app/domain/bills.py).
+An opening balance is an opening_balance transaction whose id is derived from the account's, so a retried create
+can't add it twice. Liabilities are negative: a card with 450.00 owed opens at -45000.
 """
 import uuid
 from datetime import date, datetime
@@ -34,9 +24,9 @@ router = APIRouter(prefix="/books/{book_id}/accounts")
 
 Kind = Literal["cash", "checking", "savings", "investment", "credit_card", "loan", "lent", "other_asset", "other_liability"]
 Last4 = Annotated[str, StringConstraints(pattern=r"^[0-9]{4}$")]   # never a full card or account number
-OPENING = uuid.UUID("4f1c2b8e-6a53-4c1e-9d0b-0b9a51f0c7a2")          # namespace for opening balance ids
+OPENING = uuid.UUID("4f1c2b8e-6a53-4c1e-9d0b-0b9a51f0c7a2")
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
-Money = Annotated[int, Field(ge=0, le=10**15)]                      # minor units of the account's currency
+Money = Annotated[int, Field(ge=0, le=10**15)]
 Day = Annotated[int, Field(ge=1, le=31)]
 Rate = Annotated[int, Field(ge=0, le=100_000)]                      # hundredths of a percent a year: 5.5 % = 550
 
@@ -59,18 +49,17 @@ def detail_fits(field: str, kind: str) -> bool:
 
 
 class Details(BaseModel):
-    note: Note | None = None                   # "" is stored as none
+    note: Note | None = None
     credit_limit: Money | None = None
     annual_fee: Money | None = None
-    statement_day: Day | None = None           # the day of the month the statement closes
+    statement_day: Day | None = None
     payment_due_day: Day | None = None         # a card's repayment day, a loan's payment day
-    installment: Annotated[int, Field(gt=0, le=10**15)] | None = None   # loans: the monthly payment
-    installment_fee: Money | None = None       # loans: a one-off fee, charged with the first payment
+    installment: Annotated[int, Field(gt=0, le=10**15)] | None = None
+    installment_fee: Money | None = None       # one-off, charged with the first payment
     interest_rate_bp: Rate | None = None
 
     def values(self, kind: str, only_sent: bool) -> dict:
-        """The details to write for an account of this kind: 422 for one sent
-        that doesn't fit the kind, none for those that don't fit."""
+        """The details to write for this kind: 422 for one sent that doesn't fit it, None for the others that don't."""
         out = {}
         for f in DETAILS:
             v = getattr(self, f)
@@ -96,18 +85,18 @@ class Account(BaseModel):
     currency: str
     last4: str | None
     in_net_worth: bool
-    contact_id: UUID | None            # the person, for lent and loan accounts
+    contact_id: UUID | None
     note: str | None
-    credit_limit: int | None           # credit cards: minor units of the account's currency
+    credit_limit: int | None
     annual_fee: int | None
     statement_day: int | None
-    payment_due_day: int | None        # credit cards and loans
-    installment: int | None            # loans
+    payment_due_day: int | None
+    installment: int | None
     installment_fee: int | None
-    interest_rate_bp: int | None       # savings, credit cards, loans, money lent
+    interest_rate_bp: int | None
     archived_at: datetime | None
     version: int
-    balance: int           # minor units of the account's currency
+    balance: int
 
 
 ACCOUNT = ("select a.id, a.name, a.kind::text as kind, a.currency, a.last4, a.in_net_worth, a.contact_id, a.archived_at, a.version,"
@@ -140,8 +129,8 @@ class CreateAccount(Details):
     last4: Last4 | None = None
     in_net_worth: bool = True
     contact_id: UUID | None = None             # lent and loan accounts only
-    opening_balance: int = 0                   # minor units, signed
-    opened_on: date | None = None              # the opening balance's date; default today
+    opening_balance: int = 0                   # signed
+    opened_on: date | None = None              # the opening balance's date
 
 
 @router.post("", status_code=201)
@@ -198,7 +187,6 @@ def update_account(book_id: UUID, account_id: UUID, body: UpdateAccount, db: Ses
 
 @router.get("/{account_id}/bill")
 def account_bill(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> Bill | None:
-    """This month's bill of a credit card or a loan (msaving#37), on today's date in the book's timezone; null for
-    another kind of account, or one missing what a bill needs (app/domain/bills.py)."""
+    """Null for an account with no bill: not a card or a loan, or missing what a bill needs."""
     book = get_book(db, book_id)
     return bill_for(db, get_account(db, book_id, account_id), datetime.now(ZoneInfo(book.timezone)).date())

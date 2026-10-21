@@ -57,8 +57,8 @@ export function TxnDialog(props: Props) {
   return <TxnForm {...props} minorOf={(code) => map.get(code)?.minor_unit ?? 0} />
 }
 
-// Screen 5: add or edit a transaction. Amounts are typed as positive numbers;
-// the type decides the sign (an expense is money out). Adjustments take a sign.
+// Amounts are typed as positive numbers; the type decides the sign (an expense
+// is money out). Adjustments take a sign.
 function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { minorOf: (currency: string) => number }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

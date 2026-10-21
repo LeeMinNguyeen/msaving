@@ -20,7 +20,7 @@ import { TimezonePicker } from '../components/TimezonePicker'
 import { send, type Book } from '../lib/api'
 import { keys } from '../lib/queries'
 
-// Screen 9: rename, currency, time zone, members, delete. Settings and delete: owners only.
+// Settings and delete: owners only.
 export function BookSettings({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

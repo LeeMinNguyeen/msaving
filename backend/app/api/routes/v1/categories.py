@@ -1,9 +1,5 @@
-"""Categories in a book: a tree (parent_id), kinds expense / income / transfer.
-
-Transfer categories are labels only: spending, budgets and AI summaries select
-by transaction type, so they never count. Deleting a category that has
-transactions archives it instead (its history keeps pointing at it) and says so.
-"""
+"""Transfer categories are labels only: spending, budgets and AI summaries select by transaction type, so they never
+count. Deleting a category that has transactions archives it instead, since its history keeps pointing at it."""
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID

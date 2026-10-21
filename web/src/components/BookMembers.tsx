@@ -27,8 +27,6 @@ import { useErrorText } from './errors'
 
 const ROLES: Role[] = ['owner', 'editor', 'viewer']
 
-// Who's in a book (Book settings). Owners invite by username, change roles and
-// remove people; everyone can leave. Invitees appear as pending until they accept.
 export function BookMembers({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

@@ -1,7 +1,5 @@
-"""Home screen: everything the dashboard shows, in one call (docs: Home
-screen dashboard). Amounts are minor units of the book's currency unless a row
-says otherwise; *not_converted / missing_rates count what had no exchange rate
-and was left out of a total."""
+"""Amounts are in the book's currency unless a row says otherwise; *not_converted and missing_rates count what had no
+exchange rate and was left out of a total."""
 from datetime import date
 from uuid import UUID
 

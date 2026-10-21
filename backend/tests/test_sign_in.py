@@ -1,8 +1,4 @@
-"""Setting up a server, joining, signing in and the admin's tools
-(docs: Sign-in; Accounts on an instance), plus the migration runner,
-the launcher's helpers and the scheduler. Uses the database from conftest.py;
-tests that need a fresh server (setup) build their own.
-"""
+"""Tests that need a fresh server (setup, the migration runner) build their own database."""
 import json
 import os
 import subprocess
@@ -71,8 +67,6 @@ def me(client, token):
     return client.get("/v1/me", headers=bearer(token))
 
 
-# ---------------------------------------------------------------- joining
-
 def test_invite_only_server_needs_an_invite(client, admin, invite_only):
     assert client.get("/v1/instance").json()["signup"] == "invite"
     assert sign_up(client, status=403) == {"detail": "invite_required"}
@@ -134,8 +128,6 @@ def test_nobody_can_make_themselves_admin(client, database):
         with db.user_session(uuid.UUID(uid)) as s:
             s.execute(text("update users set is_admin = true where id = :u"), {"u": uid})
 
-
-# ---------------------------------------------------------------- signing in
 
 def test_sign_in_and_wrong_credentials(client):
     name, _ = sign_up(client)
@@ -205,7 +197,7 @@ SAFARI_IPHONE = ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWe
 
 
 def test_signed_in_devices(client, database):
-    """msaving#5: a user sees where they're signed in, this device first, and signs out one other device."""
+    """A user sees where they're signed in, this device first, and signs out one other device."""
     name, laptop = sign_up(client, headers={"User-Agent": CHROME_WINDOWS})
     phone = client.post("/v1/auth/sign-in", json={"username": name, "password": PASSWORD},
                         headers={"User-Agent": SAFARI_IPHONE}).json()["token"]
@@ -234,7 +226,7 @@ def test_signed_in_devices(client, database):
 
 
 def test_idle_sign_out(client, database):
-    """msaving#26: each user's sessions end after so many minutes unused, 5 by default, or their own choice,
+    """Each user's sessions end after so many minutes unused, 5 by default, or their own choice,
     never included (30 days); nobody else's setting touches them."""
     name, token = sign_up(client)
     other = sign_in(client, name).json()["token"]
@@ -343,8 +335,6 @@ def test_rate_limits(client):
         si.sign_ups_per_ip = saved
 
 
-# ---------------------------------------------------------------- the admin
-
 def test_admin_disables_and_resets(client, admin):
     _, admin_token = admin
     name, token = sign_up(client)
@@ -385,8 +375,6 @@ def test_purge_removes_sign_in(client, database):
         assert uuid.UUID(uid) in {r[0] for r in c.execute(text("select * from purge_deleted_accounts()"))}
     assert me(client, token).status_code == 401 and sign_in(client, name).status_code == 401
 
-
-# ---------------------------------------------------------------- a fresh server: migrate and setup
 
 @pytest.fixture
 def fresh_server(monkeypatch):
@@ -434,10 +422,9 @@ def test_migrate_builds_a_server_and_is_safe_to_repeat(fresh_server):
 
 
 def test_logins_are_set_again_by_an_owner_that_is_no_superuser(fresh_server):
-    """Supabase's owner (postgres) isn't a superuser, and since PostgreSQL 16 only a superuser may name SUPERUSER
-    or BYPASSRLS in ALTER ROLE: every start after the first failed with "permission denied to alter role". Such an
-    owner (CREATEROLE, with admin option on the logins and roles it made) sets the passwords again, and a login
-    someone made a superuser is refused loudly."""
+    """Supabase's owner isn't a superuser, and since PostgreSQL 16 only a superuser may name SUPERUSER or BYPASSRLS
+    in ALTER ROLE. Such an owner (CREATEROLE, with admin option on the logins and roles it made) sets the passwords
+    again on every start, and a login someone made a superuser is refused loudly."""
     from app.jobs import migrate
     url, passwords = fresh_server
     migrate.run(url, passwords)
@@ -561,7 +548,7 @@ def test_launcher_runs_the_due_jobs_once(fresh_server, tmp_path):
 
 
 def test_job_schedule_times(monkeypatch):
-    """msaving#6: each job at its time of day, the admin's (in their timezone) or JOBS_HOUR (UTC) until then; due
+    """Each job at its time of day, the admin's (in their timezone) or JOBS_HOUR (UTC) until then; due
     once its time has come since it last started and since its schedule changed."""
     from zoneinfo import ZoneInfo
 
@@ -594,7 +581,7 @@ def test_job_schedule_times(monkeypatch):
 
 
 def test_daily_jobs_on_server_admin(client, admin, database):
-    """msaving#6: the admin sees each job's time and last run, sets the time in their own timezone, and can turn
+    """The admin sees each job's time and last run, sets the time in their own timezone, and can turn
     only the exchange rates off."""
     _, admin_token = admin
     _, member = sign_up(client)
@@ -631,8 +618,6 @@ def test_daily_jobs_on_server_admin(client, admin, database):
         with database.connect() as c:
             c.execute(text("update jobs set at_minute = null, timezone = null, enabled = true, changed_at = null"))
 
-
-# ---------------------------------------------------------------- updates
 
 def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     from app.core import updates
