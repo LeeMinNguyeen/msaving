@@ -95,7 +95,7 @@ def _last_payer(db: Session, account_id: UUID) -> UUID | None:
         "select o.account_id from entries e join transactions t on t.id = e.transaction_id"
         "  join entries o on o.transaction_id = t.id and o.account_id <> e.account_id"
         " where e.account_id = :a and e.amount > 0 and t.type = 'transfer'"
-        " order by t.occurred_on desc, t.created_at desc limit 1"), {"a": account_id}).scalar()
+        " order by t.occurred_on desc, t.occurred_time desc, t.created_at desc limit 1"), {"a": account_id}).scalar()
 
 
 def bill_for(db: Session, account, today: date) -> Bill | None:

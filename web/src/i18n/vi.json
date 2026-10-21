@@ -205,6 +205,7 @@
     "category": "Danh mục",
     "noCategory": "Không có danh mục",
     "date": "Ngày",
+    "time": "Giờ",
     "payee": "Người nhận / nơi chi",
     "note": "Ghi chú",
     "adjustmentHint": "Nhập số âm để giảm số dư.",

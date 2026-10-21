@@ -15,10 +15,11 @@ import { useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AmountField } from '../components/AmountField'
 import { DateField } from '../components/DateField'
+import { TimeField } from '../components/TimeField'
 import { useErrorText } from '../components/errors'
 import { currentLanguage } from '../i18n'
 import { liabilityKinds, send, type Account, type Bill, type Book } from '../lib/api'
-import { todayIn } from '../lib/labels'
+import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { useAccounts, useBill, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
@@ -98,6 +99,7 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
   const [from, setFrom] = useState<string | null>(null)
   const [amount, setAmount] = useState(() => amountText(bill.remaining, minorUnit, lang))
   const [date, setDate] = useState(() => todayIn(book.timezone))
+  const [time, setTime] = useState(() => timeIn(book.timezone))
   const [badDate, setBadDate] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -118,7 +120,7 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
     setBusy(true)
     setError(null)
     const post = (id: string, type: 'expense' | 'transfer', entries: { account_id: string; amount: number }[], note: string) =>
-      send('POST', `/v1/books/${book.id}/transactions`, { id, type, occurred_on: date, entries, category_id: null, payee: null, note })
+      send('POST', `/v1/books/${book.id}/transactions`, { id, type, occurred_on: date, occurred_time: time, entries, category_id: null, payee: null, note })
     try {
       if (bill.fee > 0 && bill.fee_transaction_id) {
         await post(bill.fee_transaction_id, 'expense', [{ account_id: account.id, amount: -bill.fee }], t('bill.feeNote'))
@@ -152,7 +154,10 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
           )}
           <AmountField label={t('bill.amount')} required value={amount} onChange={setAmount} minorUnit={minorUnit}
             helperText={account.currency} />
-          <DateField label={t('bill.date')} required value={date} onChange={setDate} onInvalid={setBadDate} />
+          <Stack direction="row" spacing={2}>
+            <DateField label={t('bill.date')} required value={date} onChange={setDate} onInvalid={setBadDate} />
+            <TimeField label={t('txn.time')} required value={time} onChange={setTime} sx={{ maxWidth: 110 }} />
+          </Stack>
           {bill.interest > 0 && <DialogContentText variant="body2">{t('bill.interestPart', { amount: money(bill.interest) })}</DialogContentText>}
           {bill.fee > 0 && <DialogContentText variant="body2">{t('bill.feePart', { amount: money(bill.fee) })}</DialogContentText>}
           {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
