@@ -16,7 +16,7 @@ app/
                          auth.py (session token -> user), db.py (per-request session, app.user_id)
   api/                   main.py (app, web app files, CSP, /v1/instance), deps.py, errors.py, routes/v1/
                          (sign_in: setup, join, sign-in, 2FA, reset; admin; me; books, accounts, ...)
-  domain/                transactions, dashboard, export, book_setup
+  domain/                transactions, bills, dashboard, export, book_setup
   jobs/                  migrate, scheduler (daily), account_deletion, backup, fx_update
 tests/                   conftest.py (throwaway database), test_schema, test_api, test_sign_in, test_backup
 scripts/dev.sh           the API from source with --reload, against the compose stack's database
@@ -35,7 +35,7 @@ export TEST_ADMIN_URL="postgresql+psycopg://postgres@localhost:5499/postgres"
 PATH=/usr/lib/postgresql/17/bin:$PATH python -m pytest -q -p no:cacheprovider tests/
 ```
 
-82 tests are expected to pass. The backup tests need `pg_dump`, `pg_restore` and `psql` 17 on `PATH`
+Every test must pass (the public docs' Tests page has the current count). The backup tests need `pg_dump`, `pg_restore` and `psql` 17 on `PATH`
 (`sudo apt install postgresql-client-17`). `scripts/dev.sh` uses the same database as `docker compose up`;
 `docker compose down -v` resets everything.
 
@@ -46,7 +46,7 @@ PATH=/usr/lib/postgresql/17/bin:$PATH python -m pytest -q -p no:cacheprovider te
 3. PR into `dev`. Servers apply it on their next start, after a backup.
 
 Rules:
-- Never edit a migration that's in a release; write a new one. Until the first release the baseline is edited directly.
+- Never edit a migration that's in a release; write a new one.
 - A new table gets RLS, policies and grants in the same file.
 - Function EXECUTE is revoked from PUBLIC by default: grant every new function to the roles that call it.
 - Every function that reads tables (security definer or trigger) sets `search_path = pg_catalog, public, pg_temp`.
@@ -62,8 +62,8 @@ Rules:
   `set_config('app.user_id', <user>, true)` (`app/core/db.py`).
 - Logins never superuser or BYPASSRLS. The API gets only `api_login`; the owner's URL goes only to the backup
   and migrations (`app/launch.py` strips it from the API's environment).
-- Sign-in data (`local_credentials`, `recovery_codes`, `sessions`, `invites`, `password_resets`,
-  `instance_settings`) is reached only through security definer functions or own-row policies. Nobody can set
+- Sign-in data (`local_credentials`, `recovery_codes`, `sessions`, `remembered_devices`, `invites`,
+  `password_resets`, `instance_settings`) is reached only through security definer functions or own-row policies. Nobody can set
   `is_admin` from the app; admin tools check `am_admin()` in the database.
 - Passwords argon2id; session and reset tokens random, stored as SHA-256; invite, setup and recovery codes
   stored as SHA-256 of their normal form. Never log a token or code (the setup code is the one exception: it's
