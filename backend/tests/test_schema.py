@@ -818,8 +818,43 @@ def test_fx_sources_and_fallback(monkeypatch):
     assert fx_update.fetch_rates()[2] == "currency-api" and len(calls) == 3
 
     serve({})
-    with pytest.raises(RuntimeError, match="no exchange rate source"):
+    with pytest.raises(fx_update.NoRates, match="no source answered"):
         fx_update.fetch_rates()
+
+
+def test_fx_failures_say_why_in_one_line(monkeypatch, capsys):
+    """No traceback when no source answers: one last line saying why (Server admin shows it), naming a network
+    that replaces HTTPS certificates when no source's is trusted."""
+    import ssl
+    import urllib.error
+
+    from app.jobs import fx_update
+    monkeypatch.delenv("OXR_APP_ID", raising=False)
+    monkeypatch.setenv("FX_DATABASE_URL", "postgresql+psycopg://nobody@localhost:1/none")     # never reached
+    untrusted = ssl.SSLCertVerificationError(1, "certificate verify failed")
+    untrusted.verify_message = "unable to get local issuer certificate"
+
+    def fail_with(*errors):
+        it = iter(errors)
+        monkeypatch.setattr(fx_update, "_get", lambda url: (_ for _ in ()).throw(next(it)))
+
+    fail_with(*[urllib.error.URLError(untrusted)] * 3)
+    assert fx_update.main() == 1
+    out = capsys.readouterr().out.strip().splitlines()
+    assert out[0] == "open.er-api.com: certificate not trusted (unable to get local issuer certificate); trying currency-api"
+    assert out[-1].startswith("rates failed: no source's HTTPS certificate was trusted") and "Troubleshooting" in out[-1]
+    assert len(out[-1]) <= 300                                    # Server admin keeps 300 characters
+
+    fail_with(urllib.error.URLError(untrusted), urllib.error.URLError(TimeoutError()), urllib.error.URLError("Name or service not known"))
+    assert fx_update.main() == 1
+    assert capsys.readouterr().out.strip().splitlines()[-1] == (
+        "rates failed: no source answered: open.er-api.com: certificate not trusted (unable to get local issuer certificate);"
+        " cdn.jsdelivr.net: no answer in time; latest.currency-api.pages.dev: Name or service not known")
+
+    monkeypatch.setenv("OXR_APP_ID", "key")
+    fail_with(urllib.error.URLError(untrusted))
+    assert fx_update.main() == 1
+    assert "no source's HTTPS certificate was trusted" in capsys.readouterr().out
 
 
 def test_scheduler_runs_what_is_due_as_the_purge_login(database):
@@ -850,8 +885,11 @@ def test_scheduler_runs_what_is_due_as_the_purge_login(database):
         assert run_due(purger, datetime.now(UTC), fake_job) == []          # started since today's time
         history(last_started_at="now() - interval '1 day'", enabled="name <> 'rates'")
         assert run_due(purger, datetime.now(UTC), fake_job) == ["purge", "backup"]   # the next day; the rates are off
-        history(last_started_at="now() - interval '1 day'", changed_at="now()", enabled="true")
+        history(last_started_at="now() - interval '1 day'", changed_at="now()", enabled="true", last_result="'done'")
         assert run_due(purger, datetime.now(UTC), fake_job) == []          # a schedule changed since: tomorrow
+        history(last_started_at="now() - interval '61 minutes'", last_result="'failed'")
+        assert run_due(purger, datetime.now(UTC), fake_job) == ["purge", "backup", "rates"]   # failed an hour ago: again
+        assert run_due(purger, datetime.now(UTC), fake_job) == []          # the fake backup failed again just now: in an hour
 
         with api.connect() as c, pytest.raises(DBAPIError, match="permission denied"):
             c.execute(text("select job_finished('backup', true, 'faked')"))

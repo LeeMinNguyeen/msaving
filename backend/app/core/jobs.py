@@ -7,7 +7,8 @@ move it), or JOBS_HOUR (UTC, default 19 = 02:00 in Vietnam) until then. A job
 is due once its time has come since it last started and since its schedule
 last changed: a server that was off at that time catches up when it starts, a
 new one runs every job at its first start, and moving a time to earlier in
-the day doesn't run the job straight away. The scheduler
+the day doesn't run the job straight away. A job that failed runs again an
+hour after it started, until it works. The scheduler
 (app/jobs/scheduler.py) asks every half minute; Server admin shows the next
 run.
 """
@@ -18,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 # The jobs and their modules, in the order they run when due together.
 JOBS = {"purge": "app.jobs.account_deletion", "backup": "app.jobs.backup", "rates": "app.jobs.fx_update"}
+RETRY = timedelta(hours=1)   # a job that failed runs again this long after it started
 
 
 def default_minute() -> int:
@@ -49,8 +51,11 @@ def next_time(now: datetime, at_minute: int | None, timezone: str | None) -> dat
 
 
 def is_due(now: datetime, job: Mapping) -> bool:
-    """A row of job_schedule(): on, and its time has come since it last started and since its schedule changed."""
+    """A row of job_schedule(): on, and its time has come since it last started and since its schedule changed,
+    or its last run failed an hour or more ago."""
     if not job["enabled"]:
         return False
+    if job.get("last_result") == "failed" and job["last_started_at"] and now - job["last_started_at"] >= RETRY:
+        return True
     since = max((t for t in (job["last_started_at"], job["changed_at"]) if t is not None), default=None)
     return since is None or last_time(now, job["at_minute"], job["timezone"]) > since

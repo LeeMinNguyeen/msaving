@@ -12,15 +12,29 @@ operator would otherwise do by hand:
       4. prints the setup code while the server has no admin;
       5. runs the API (and the web app's files) and the daily jobs
          (app/jobs/scheduler.py) side by side; if either stops, the container
-         stops and Docker restarts it.
+         stops and Docker restarts it. With RUN_JOBS=off, the API alone.
+    python -m app.launch jobs      the jobs that are due, once, then exits
+                                   (non-zero if one failed). For a platform
+                                   that pauses the server between requests
+                                   (Cloud Run): a scheduled task runs this
+                                   every hour, and the server has RUN_JOBS=off.
+                                   It needs the server to have started once
+                                   (the migrations and the logins).
 
 The API gets only its own login (api_login): never the owner's password, so
 even a flaw in the API can't get around row-level security. The daily jobs
 get the purge and exchange rate logins, and the owner's for the backup.
 
+The logins' passwords file (db_logins.json) can also be provided, read-only,
+by the platform (Cloud Run: a Secret Manager secret mounted in SECRETS_DIR):
+the server then sets those passwords instead of making new ones.
+
 Settings (all optional):
     ADMIN_DATABASE_URL   your own Postgres or Supabase, as its owner. Unset:
-                         the built-in database container.
+                         the built-in database container. Through Supabase's
+                         pooler the owner is postgres.<project ref>, and the
+                         server's logins get the same suffix (login_url).
+    RUN_JOBS             on; off: the server doesn't run the daily jobs
     PORT                 8080
     BACKUP_DIR           /backups
     SECRETS_DIR          /secrets
@@ -34,7 +48,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import psycopg
 
@@ -75,12 +89,15 @@ def admin_url() -> str:
 
 
 def login_url(admin: str, login: str, password: str, driver: str = "postgresql+psycopg") -> str:
-    """The owner's URL with another login: same server, database and options."""
+    """The owner's URL with another login: same server, database and options.
+    An owner name with a dot is a pooler's (Supabase's shared pooler, Supavisor: postgres.<project ref>), which
+    reads the part after the dot as the project: the login gets the same suffix."""
     parts = urlsplit(admin)
     host = parts.hostname or ""
     host = f"[{host}]" if ":" in host else host
     port = f":{parts.port}" if parts.port else ""
-    netloc = f"{quote(login, safe='')}:{quote(password, safe='')}@{host}{port}"
+    _, dot, project = unquote(parts.username or "").partition(".")
+    netloc = f"{quote(login + dot + project, safe='')}:{quote(password, safe='')}@{host}{port}"
     return urlunsplit((driver, netloc, parts.path, parts.query, ""))
 
 
@@ -103,6 +120,31 @@ def print_setup_code(code: str) -> None:
           f"  A new code is printed every time the server starts, until then.\n{line}\n", flush=True)
 
 
+def _without_owner() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if k != "ADMIN_DATABASE_URL"}
+
+
+def jobs_env(admin: str, passwords: dict[str, str], backup_dir: str) -> dict[str, str]:
+    """What the scheduler and its jobs need: their own logins, and the owner's for the backup."""
+    return {"PURGE_DATABASE_URL": login_url(admin, "purge_login", passwords["purge_login"]),
+            "FX_DATABASE_URL": login_url(admin, "fx_login", passwords["fx_login"]),
+            "BACKUP_DATABASE_URL": admin, "BACKUP_DIR": backup_dir,
+            "PURGE_LOG": os.environ.get("PURGE_LOG", str(Path(backup_dir) / "purged_accounts.jsonl"))}
+
+
+def jobs_here() -> bool:
+    return os.environ.get("RUN_JOBS", "on").lower() not in ("off", "false", "0")
+
+
+def run_jobs_once() -> None:
+    """python -m app.launch jobs: the scheduler's one look (app/jobs/scheduler.py --once)."""
+    admin = admin_url()
+    passwords = login_passwords()
+    wait_for(admin)
+    env = {**_without_owner(), **jobs_env(admin, passwords, os.environ.get("BACKUP_DIR", "/backups"))}
+    sys.exit(subprocess.run([sys.executable, "-m", "app.jobs.scheduler", "--once"], env=env).returncode)
+
+
 def serve() -> None:
     started = time.time()              # before the backup and migrations: see app/core/updates.py status()
     admin = admin_url()
@@ -120,20 +162,19 @@ def serve() -> None:
     if setup_code:
         print_setup_code(setup_code)
 
-    base = {**{k: v for k, v in os.environ.items() if k != "ADMIN_DATABASE_URL"}, "SERVER_STARTED_AT": str(started)}
+    base = {**_without_owner(), "SERVER_STARTED_AT": str(started)}
     api_env = {**base, "DATABASE_URL": login_url(admin, "api_login", passwords["api_login"])}
-    jobs_env = {**base,
-                "PURGE_DATABASE_URL": login_url(admin, "purge_login", passwords["purge_login"]),
-                "FX_DATABASE_URL": login_url(admin, "fx_login", passwords["fx_login"]),
-                "BACKUP_DATABASE_URL": admin, "BACKUP_DIR": backup_dir,
-                "PURGE_LOG": os.environ.get("PURGE_LOG", str(Path(backup_dir) / "purged_accounts.jsonl"))}
     port = os.environ.get("PORT", "8080")
     reload = ["--reload"] if os.environ.get("DEV_RELOAD") else []        # development only (scripts/dev.sh)
     children = [
         subprocess.Popen([sys.executable, "-m", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", port,
                           "--proxy-headers", "--forwarded-allow-ips", "*", *reload], env=api_env),
-        subprocess.Popen([sys.executable, "-m", "app.jobs.scheduler"], env=jobs_env),
     ]
+    if jobs_here():
+        children.append(subprocess.Popen([sys.executable, "-m", "app.jobs.scheduler"],
+                                         env={**base, **jobs_env(admin, passwords, backup_dir)}))
+    else:
+        print("RUN_JOBS=off: the daily jobs run elsewhere (python -m app.launch jobs)", flush=True)
 
     def stop(*_):
         for c in children:
@@ -151,5 +192,7 @@ def serve() -> None:
 if __name__ == "__main__":
     if sys.argv[1:] == ["secrets"]:
         make_postgres_password()
+    elif sys.argv[1:] == ["jobs"]:
+        run_jobs_once()
     else:
         serve()

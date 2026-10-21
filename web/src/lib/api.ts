@@ -114,6 +114,24 @@ export const liabilityKinds: readonly AccountKind[] = ['credit_card', 'loan', 'o
 export const last4Kinds: readonly AccountKind[] = ['checking', 'savings', 'investment', 'credit_card', 'loan']
 export const interestKinds: readonly AccountKind[] = ['savings', 'credit_card', 'loan', 'lent']
 
+// A credit card's or a loan's bill this month (msaving#37), worked out by the server from the transactions.
+// Amounts are positive, in minor units of the account's currency; dates are the book's.
+export type Bill = {
+  kind: 'card' | 'loan'
+  period_start: string // card: the statement's first day; loan: the day after the previous payment day
+  period_end: string // card: the statement date; loan: the payment day
+  due_on: string
+  amount: number // what the bill asks for
+  paid: number // money in since the period started
+  remaining: number // still to pay
+  owed_now: number
+  interest: number // loan: the month's interest, to record as an expense (0 once recorded)
+  interest_transaction_id: string | null
+  fee: number // loan: the installment fee added to this payment (0 once charged)
+  fee_transaction_id: string | null
+  pay_from: string | null // the account the last payment came from
+}
+
 export type Account = {
   id: string
   name: string
@@ -126,7 +144,9 @@ export type Account = {
   credit_limit: number | null // credit cards: minor units of the account's currency
   annual_fee: number | null
   statement_day: number | null // day of the month
-  payment_due_day: number | null
+  payment_due_day: number | null // a credit card's repayment day, a loan's payment day
+  installment: number | null // loans: the monthly payment (msaving#37)
+  installment_fee: number | null // loans: a one-off fee, with the first payment
   interest_rate_bp: number | null // hundredths of a percent a year: 5.5 % = 550
   archived_at: string | null
   version: number

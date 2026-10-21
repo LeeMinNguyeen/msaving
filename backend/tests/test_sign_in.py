@@ -3,8 +3,13 @@
 the launcher's helpers and the scheduler. Uses the database from conftest.py;
 tests that need a fresh server (setup) build their own.
 """
+import json
+import os
+import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import psycopg
 import pyotp
@@ -467,6 +472,49 @@ def test_launcher_builds_login_urls():
     assert login_url("postgresql://postgres:x@db:5432/postgres?sslmode=disable", "api_login", "p@ss/w?rd") == \
         "postgresql+psycopg://api_login:p%40ss%2Fw%3Frd@db:5432/postgres?sslmode=disable"
     assert login_url("postgresql://u:x@[::1]/app", "fx_login", "p", driver="postgresql") == "postgresql://fx_login:p@[::1]/app"
+    # Supabase's shared pooler: the project ref after the owner's dot goes with every login.
+    assert login_url("postgresql://postgres.abcdefgh:x@pooler.example.com:5432/postgres?sslmode=require",
+                     "purge_login", "p") == \
+        "postgresql+psycopg://purge_login.abcdefgh:p@pooler.example.com:5432/postgres?sslmode=require"
+
+
+def test_launcher_runs_the_due_jobs_once(fresh_server, tmp_path):
+    """`python -m app.launch jobs` (Cloud Run's hourly job): one look at the schedule with the logins' passwords
+    from a read-only file, as a mounted secret; exits 1 when a job that was due failed."""
+    from app.jobs import migrate
+    url, passwords = fresh_server
+    migrate.run(url, passwords)
+    secrets_dir, backups = tmp_path / "secrets", tmp_path / "backups"
+    secrets_dir.mkdir()
+    backups.mkdir()
+    (secrets_dir / "db_logins.json").write_text(json.dumps(passwords))
+    (secrets_dir / "db_logins.json").chmod(0o444)
+    secrets_dir.chmod(0o555)
+    owner = create_engine(url.replace("postgresql://", "postgresql+psycopg://"))
+    with owner.begin() as c:
+        c.execute(text("update jobs set enabled = (name <> 'rates')"))           # no network in tests
+
+    def launch(backup_dir):
+        env = {**os.environ, "ADMIN_DATABASE_URL": url, "SECRETS_DIR": str(secrets_dir), "BACKUP_DIR": str(backup_dir)}
+        return subprocess.run([sys.executable, "-m", "app.launch", "jobs"], env=env, capture_output=True, text=True,
+                              cwd=Path(__file__).resolve().parents[1], timeout=120)
+
+    try:
+        first = launch(backups)
+        assert first.returncode == 0, first.stdout + first.stderr
+        assert first.stdout.splitlines()[-1] == "jobs: purge, backup"
+        assert len(list(backups.glob("msaving-*.dump"))) == 1
+        again = launch(backups)
+        assert (again.returncode, again.stdout.splitlines()[-1]) == (0, "jobs: none due")
+        with owner.begin() as c:
+            c.execute(text("update jobs set last_started_at = null where name = 'backup'"))
+        failed = launch(tmp_path / "missing")
+        assert (failed.returncode, failed.stdout.splitlines()[-1]) == (1, "jobs: backup")
+        with owner.connect() as c:
+            assert c.execute(text("select last_result from jobs where name = 'backup'")).scalar() == "failed"
+    finally:
+        secrets_dir.chmod(0o755)
+        owner.dispose()
 
 
 def test_job_schedule_times(monkeypatch):
@@ -495,6 +543,11 @@ def test_job_schedule_times(monkeypatch):
     assert due(t(2026, 10, 21, 23), last_started_at=t(2026, 10, 19, 19))                # off at 19:00: catches up
     assert not due(t(2026, 10, 21, 23), last_started_at=t(2026, 10, 19, 19), changed_at=t(2026, 10, 21, 22))
     assert not due(t(2026, 10, 21, 23), enabled=False)
+    # A run that failed: again an hour after it started, until it works.
+    failed_at = {"last_started_at": t(2026, 10, 21, 3, 30), "last_result": "failed"}
+    assert not due(t(2026, 10, 21, 4, 29), **failed_at) and due(t(2026, 10, 21, 4, 30), **failed_at)
+    assert not due(t(2026, 10, 21, 4, 30), **failed_at | {"last_result": "done"})
+    assert not due(t(2026, 10, 21, 4, 30), **failed_at | {"enabled": False})
 
 
 def test_daily_jobs_on_server_admin(client, admin, database):
