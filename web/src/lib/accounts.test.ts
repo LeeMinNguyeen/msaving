@@ -2,18 +2,28 @@ import { describe, expect, it } from 'vitest'
 import { adjustmentFor, detailsPayload, showsLast4 } from './accounts'
 import { accountKinds } from './api'
 
-const all = { note: '  Main card  ', creditLimit: 50_000_000, annualFee: 499_000, statementDay: '25', dueDay: '10', interestBp: 2_880 }
+const all = { note: '  Main card  ', creditLimit: 50_000_000, annualFee: 499_000, statementDay: '25', dueDay: '10', interestBp: 2_880,
+  installment: 1_000_000, installmentFee: 240_000 }
 
 describe('account details by kind (msaving#17)', () => {
   it('sends a credit card every detail', () => {
     expect(detailsPayload('credit_card', all)).toEqual({
       note: 'Main card', credit_limit: 50_000_000, annual_fee: 499_000, statement_day: 25, payment_due_day: 10, interest_rate_bp: 2_880,
+      installment: null, installment_fee: null,
+    })
+  })
+
+  it('sends a loan its installment, fee and payment day (msaving#37)', () => {
+    expect(detailsPayload('loan', all)).toEqual({
+      note: 'Main card', credit_limit: null, annual_fee: null, statement_day: null, payment_due_day: 10, interest_rate_bp: 2_880,
+      installment: 1_000_000, installment_fee: 240_000,
     })
   })
 
   it('clears what a kind does not take, so changing the kind clears it on the server', () => {
     expect(detailsPayload('savings', all)).toEqual({
       note: 'Main card', credit_limit: null, annual_fee: null, statement_day: null, payment_due_day: null, interest_rate_bp: 2_880,
+      installment: null, installment_fee: null,
     })
     for (const kind of ['cash', 'checking', 'investment', 'other_asset', 'other_liability'] as const) {
       expect(detailsPayload(kind, all)).toMatchObject({ note: 'Main card', credit_limit: null, statement_day: null, interest_rate_bp: null })

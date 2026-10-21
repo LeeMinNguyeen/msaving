@@ -8,18 +8,23 @@ export type Details = {
   creditLimit: number | null // minor units of the account's currency
   annualFee: number | null
   statementDay: string // '' = none, else '1' to '31'
-  dueDay: string
+  dueDay: string // a card's repayment day, a loan's payment day
+  installment: number | null // loans (msaving#37)
+  installmentFee: number | null
   interestBp: number | null // hundredths of a percent a year
 }
 
 export function detailsPayload(kind: AccountKind, d: Details) {
   const card = kind === 'credit_card'
+  const loan = kind === 'loan'
   return {
     note: d.note.trim() || null,
     credit_limit: card ? d.creditLimit : null,
     annual_fee: card ? d.annualFee : null,
     statement_day: card && d.statementDay ? Number(d.statementDay) : null,
-    payment_due_day: card && d.dueDay ? Number(d.dueDay) : null,
+    payment_due_day: (card || loan) && d.dueDay ? Number(d.dueDay) : null,
+    installment: loan ? d.installment : null,
+    installment_fee: loan ? d.installmentFee : null,
     interest_rate_bp: interestKinds.includes(kind) ? d.interestBp : null,
   }
 }
