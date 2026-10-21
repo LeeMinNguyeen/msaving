@@ -10,6 +10,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
+import Switch from '@mui/material/Switch'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
@@ -35,6 +36,12 @@ type Invite = {
   used_by_username: string | null; used_at: string | null; revoked_at: string | null
 }
 type CreatedInvite = { id: string; code: string; expires_at: string; link: string | null; qr: string | null }
+type JobName = 'purge' | 'backup' | 'rates'
+type Job = {
+  name: JobName; at_minute: number | null; timezone: string | null; default_minute: number; enabled: boolean
+  next_run_at: string; last_started_at: string | null; last_finished_at: string | null
+  last_result: 'done' | 'failed' | null; last_detail: string | null
+}
 
 const when = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat(currentLanguage() === 'vi' ? 'vi-VN' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)) : ''
@@ -72,7 +79,8 @@ function ShowOnce({ title, body, link, qr, code, onClose }: {
   )
 }
 
-// The server's admin: its name, who can sign up, signing out after inactivity, invites and accounts.
+// The server's admin: its name, who can sign up, signing out after inactivity, updates, the daily jobs,
+// invites and accounts.
 export function Admin() {
   const { t } = useTranslation()
   const me = useMe()
@@ -82,6 +90,7 @@ export function Admin() {
       <Typography variant="h5">{t('admin.title')}</Typography>
       <ServerSettings />
       <Updates />
+      <Jobs timezone={me.data.profile.timezone} />
       <Invites />
       <Users selfId={me.data.id} />
     </Stack>
@@ -135,6 +144,122 @@ function ServerSettings() {
         {state.saved ? <Alert severity="success">{t('profile.saved')}</Alert> : null}
         <Button type="submit" variant="contained" loading={state.busy} sx={{ alignSelf: 'start' }}>{t('profile.save')}</Button>
       </Stack>
+    </Section>
+  )
+}
+
+const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
+const HALF_HOURS = Array.from({ length: 48 }, (_, i) => i * 30)
+
+// The daily jobs (msaving#6): each one's time of day, in the admin's own
+// timezone, whether the exchange rates run, and how each last run went.
+function Jobs({ timezone }: { timezone: string }) {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
+  const qc = useQueryClient()
+  const jobs = useQuery({ queryKey: ['admin', 'jobs'], queryFn: () => api<Job[]>('/v1/admin/jobs') })
+  const [edits, setEdits] = useState<Partial<Record<JobName, { minute?: number; enabled?: boolean }>>>({})
+  const [state, setState] = useState<{ error?: unknown; saved?: boolean; busy?: boolean }>({})
+  if (jobs.isError) return <Section title={t('admin.jobs')}><Alert severity="error">{errorText(jobs.error)}</Alert></Section>
+  if (!jobs.data) return null
+
+  const lang = currentLanguage() === 'vi' ? 'vi-VN' : 'en-GB'
+  const at = new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone })
+  // The job's time of day here: when its next run falls, in the admin's timezone.
+  const minuteOf = (job: Job) => {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date(job.next_run_at))
+    const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
+    return part('hour') * 60 + part('minute')
+  }
+  const edit = (name: JobName, change: { minute?: number; enabled?: boolean }) => {
+    setState({})
+    setEdits((e) => ({ ...e, [name]: { ...e[name], ...change } }))
+  }
+  const lastRun = (job: Job) => {
+    if (!job.last_started_at) return <Typography variant="body2" color="text.secondary">{t('admin.jobNever')}</Typography>
+    if (!job.last_finished_at || Date.parse(job.last_finished_at) < Date.parse(job.last_started_at)) {
+      return <Typography variant="body2">{t('admin.jobRunning', { when: at.format(new Date(job.last_started_at)) })}</Typography>
+    }
+    const failed = job.last_result === 'failed'
+    return (
+      <>
+        <Typography variant="body2" color={failed ? 'error' : 'success.main'}>
+          {t(failed ? 'admin.jobFailed' : 'admin.jobDone', { when: at.format(new Date(job.last_finished_at)) })}
+        </Typography>
+        {job.last_detail && <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>{job.last_detail}</Typography>}
+      </>
+    )
+  }
+
+  async function save() {
+    setState({ busy: true })
+    try {
+      for (const [name, change] of Object.entries(edits) as [JobName, { minute?: number; enabled?: boolean }][]) {
+        await send('PATCH', `/v1/admin/jobs/${name}`, {
+          ...(change.minute !== undefined && { at_minute: change.minute, timezone }),
+          ...(change.enabled !== undefined && { enabled: change.enabled }),
+        })
+      }
+      setEdits({})
+      setState({ saved: true })
+    } catch (err) {
+      setState({ error: err })
+    } finally {
+      await qc.invalidateQueries({ queryKey: ['admin', 'jobs'] })
+    }
+  }
+
+  return (
+    <Section title={t('admin.jobs')}>
+      <Typography variant="body2" color="text.secondary">{t('admin.jobsHint', { timezone })}</Typography>
+      <Box sx={{ overflowX: 'auto' }}>{/* phones: the table scrolls, not the page */}
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>{t('admin.job')}</TableCell>
+              <TableCell>{t('admin.jobTime')}</TableCell>
+              <TableCell>{t('admin.jobLast')}</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {jobs.data.map((job) => {
+              const minute = edits[job.name]?.minute ?? minuteOf(job)
+              const enabled = edits[job.name]?.enabled ?? job.enabled
+              const choices = HALF_HOURS.includes(minute) ? HALF_HOURS : [...HALF_HOURS, minute].sort((a, b) => a - b)
+              return (
+                <TableRow key={job.name}>
+                  <TableCell>
+                    {t(`admin.jobNames.${job.name}`)}
+                    {job.name === 'rates' && (
+                      <Box>
+                        <Switch size="small" checked={enabled} onChange={(e) => edit(job.name, { enabled: e.target.checked })}
+                          slotProps={{ input: { 'aria-label': t('admin.jobRatesOn') } }} />
+                        <Typography component="span" variant="body2" color="text.secondary">
+                          {t(enabled ? 'admin.jobOn' : 'admin.jobOff')}
+                        </Typography>
+                      </Box>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <TextField select size="small" value={minute} onChange={(e) => edit(job.name, { minute: Number(e.target.value) })}
+                      slotProps={{ htmlInput: { 'aria-label': t('admin.jobTimeOf', { job: t(`admin.jobNames.${job.name}`) }) } }}
+                      sx={{ minWidth: 100 }}>
+                      {choices.map((m) => <MenuItem key={m} value={m}>{hhmm(m)}</MenuItem>)}
+                    </TextField>
+                  </TableCell>
+                  <TableCell>{lastRun(job)}</TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </Box>
+      {state.error ? <Alert severity="error">{errorText(state.error)}</Alert> : null}
+      {state.saved ? <Alert severity="success">{t('profile.saved')}</Alert> : null}
+      <Button variant="contained" loading={state.busy} disabled={Object.keys(edits).length === 0} onClick={save} sx={{ alignSelf: 'start' }}>
+        {t('profile.save')}
+      </Button>
     </Section>
   )
 }

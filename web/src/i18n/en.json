@@ -434,7 +434,25 @@
     "idleSignOut": "Sign out after inactivity",
     "idleSignOutHint": "For everyone on this server: after this long with no click, key or touch, they're signed out and sign in again.",
     "idleOff": "Off",
-    "idleMinutes": "{{minutes}} minutes"
+    "idleMinutes": "{{minutes}} minutes",
+    "jobs": "Daily jobs",
+    "jobsHint": "Each runs once a day at its time, in your timezone ({{timezone}}). One missed while the server was off runs when it starts again.",
+    "job": "Job",
+    "jobTime": "Time",
+    "jobTimeOf": "Time of {{job}}",
+    "jobLast": "Last run",
+    "jobNames": {
+      "purge": "Delete closed accounts and old sign-ins",
+      "backup": "Back up the database",
+      "rates": "Update exchange rates"
+    },
+    "jobRatesOn": "Update exchange rates every day",
+    "jobOn": "On",
+    "jobOff": "Off: rates stay as they are",
+    "jobNever": "Not run yet",
+    "jobRunning": "Running since {{when}}",
+    "jobDone": "Done {{when}}",
+    "jobFailed": "Failed {{when}}"
   },
   "members": {
     "title": "Members",

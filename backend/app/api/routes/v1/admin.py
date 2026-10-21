@@ -1,5 +1,6 @@
 """The server's admin: invites, users, password reset links, the server's
-name and whether sign-up is open (docs: Accounts on an instance).
+name, whether sign-up is open, signing out after inactivity and the daily
+jobs' schedule (docs: Accounts on an instance, Background jobs).
 Every database function behind these checks the caller is the admin
 (403 admin_only otherwise).
 
@@ -18,6 +19,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.api.models import Timezone
+from app.core import jobs as schedule
 from app.core import sign_in as si
 from app.core import updates
 
@@ -133,6 +136,59 @@ def change_instance(body: InstanceChange, db: Session = Depends(get_db)) -> Resp
     db.execute(text("select admin_set_instance(:n, :s)"), {"n": body.name, "s": body.signup})
     if "idle_sign_out_minutes" in body.model_fields_set:
         db.execute(text("select admin_set_idle_sign_out(:m)"), {"m": body.idle_sign_out_minutes})
+    db.commit()
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------- daily jobs (msaving#6)
+
+class Job(BaseModel):
+    name: Literal["purge", "backup", "rates"]
+    at_minute: int | None               # its time of day, minutes after midnight in `timezone`; None: JOBS_HOUR (UTC)
+    timezone: str | None
+    default_minute: int                 # JOBS_HOUR as minutes after midnight UTC: when it runs while at_minute is None
+    enabled: bool                       # only the exchange rates can be turned off
+    next_run_at: datetime               # its next scheduled time (also while it's off)
+    last_started_at: datetime | None
+    last_finished_at: datetime | None   # still running while this is before last_started_at, or missing
+    last_result: Literal["done", "failed"] | None
+    last_detail: str | None             # its last line of output
+
+
+def _jobs(db: Session) -> dict[str, dict]:
+    return {r["name"]: dict(r) for r in db.execute(text("select * from admin_jobs()")).mappings()}
+
+
+@router.get("/jobs")
+def jobs(db: Session = Depends(get_db)) -> list[Job]:
+    """The daily jobs in the order they run: each one's time of day, whether it's on, and how it last ran."""
+    now = datetime.now(timezone.utc)
+    return [Job(**{k: v for k, v in j.items() if k != "changed_at"}, default_minute=schedule.default_minute(),
+                next_run_at=schedule.next_time(now, j["at_minute"], j["timezone"])) for j in _jobs(db).values()]
+
+
+class JobChange(BaseModel):
+    """What's left out stays. A time of day comes with the timezone it's in (the admin's); null for both goes
+    back to JOBS_HOUR."""
+    at_minute: Annotated[int, Field(ge=0, le=1439)] | None = None
+    timezone: Timezone | None = None
+    enabled: bool | None = None
+
+
+@router.patch("/jobs/{name}", status_code=204)
+def change_job(name: str, body: JobChange, db: Session = Depends(get_db)) -> Response:
+    """404 for an unknown job; 422 invalid for a time without its timezone, or for turning off a job other than
+    the exchange rates (a server can't do without backups or the purge)."""
+    job = _jobs(db).get(name)
+    if job is None:
+        raise HTTPException(404, "not_found")
+    at, zone = job["at_minute"], job["timezone"]
+    if "at_minute" in body.model_fields_set:
+        if body.at_minute is not None and body.timezone is None:
+            raise HTTPException(422, "invalid")
+        at, zone = body.at_minute, body.timezone if body.at_minute is not None else None
+    enabled = job["enabled"] if body.enabled is None else body.enabled
+    db.execute(text("select admin_set_job(:n, :a, :z, :e)"), {"n": name, "a": at, "z": zone, "e": enabled})
     db.commit()
     return Response(status_code=204)
 

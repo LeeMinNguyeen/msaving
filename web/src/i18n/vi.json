@@ -434,7 +434,25 @@
     "idleSignOut": "Đăng xuất khi không hoạt động",
     "idleSignOutHint": "Áp dụng cho mọi người trên máy chủ này: sau khoảng thời gian này không nhấp, gõ phím hay chạm, họ sẽ bị đăng xuất và phải đăng nhập lại.",
     "idleOff": "Tắt",
-    "idleMinutes": "{{minutes}} phút"
+    "idleMinutes": "{{minutes}} phút",
+    "jobs": "Việc chạy hằng ngày",
+    "jobsHint": "Mỗi việc chạy mỗi ngày một lần vào giờ đã đặt, theo múi giờ của bạn ({{timezone}}). Việc bị lỡ khi máy chủ tắt sẽ chạy khi máy chủ bật lại.",
+    "job": "Việc",
+    "jobTime": "Giờ chạy",
+    "jobTimeOf": "Giờ chạy: {{job}}",
+    "jobLast": "Lần chạy gần nhất",
+    "jobNames": {
+      "purge": "Xóa tài khoản đã đóng và phiên đăng nhập cũ",
+      "backup": "Sao lưu cơ sở dữ liệu",
+      "rates": "Cập nhật tỷ giá"
+    },
+    "jobRatesOn": "Cập nhật tỷ giá mỗi ngày",
+    "jobOn": "Bật",
+    "jobOff": "Tắt: tỷ giá giữ nguyên",
+    "jobNever": "Chưa chạy",
+    "jobRunning": "Đang chạy từ {{when}}",
+    "jobDone": "Xong lúc {{when}}",
+    "jobFailed": "Lỗi lúc {{when}}"
   },
   "members": {
     "title": "Thành viên",

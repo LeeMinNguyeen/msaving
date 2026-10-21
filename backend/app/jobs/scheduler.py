@@ -1,42 +1,71 @@
-"""The daily jobs, started by app/launch.py next to the API.
+"""The daily jobs, started by app/launch.py next to the API (docs: Background jobs).
 
-Once a day at JOBS_HOUR (UTC, default 19 = 02:00 in Vietnam), in this order:
-    1. account_deletion: purge accounts closed more than 30 days ago, and
-       expired sessions;
-    2. backup: one pg_dump into BACKUP_DIR, keeping about 6 days;
-    3. fx_update: exchange rates (no key needed; OXR_APP_ID to use Open
-       Exchange Rates instead).
-Each job runs as its own process, so one failing doesn't stop the others; the
-failure is printed (docker compose logs msaving). Also runs once at start.
+Every half minute it reads the schedule (job_schedule(); app/core/jobs.py says
+when a job is due) and runs what's due, in this order:
+    1. purge (app.jobs.account_deletion): accounts closed more than 30 days
+       ago, and expired sessions;
+    2. backup (app.jobs.backup): one pg_dump into BACKUP_DIR, keeping about
+       6 days;
+    3. rates (app.jobs.fx_update): exchange rates (no key needed; OXR_APP_ID
+       to use Open Exchange Rates instead).
+Each runs once a day at the time set on Server admin, or at JOBS_HOUR (UTC,
+default 19 = 02:00 in Vietnam) until then; a change applies without a restart,
+and a job missed while the server was off runs when it starts. Each job runs
+as its own process, so one failing doesn't stop the others. Its output goes to
+the log (docker compose logs msaving); its result and last line to Server admin.
+The scheduler logs in as purge_login, which can also read the schedule and
+record the results (job_schedule(), job_started(), job_finished()).
 """
 import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 
-JOBS = ["account_deletion", "backup", "fx_update"]
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+
+from app.core.jobs import JOBS, is_due
+
+TICK = 30   # seconds between looks at the schedule
 
 
-def run_all() -> None:
-    for job in JOBS:
-        code = subprocess.call([sys.executable, "-m", f"app.jobs.{job}"])
-        print(f"{job}: {'done' if code == 0 else f'FAILED (exit code {code})'}", flush=True)
+def run_job(name: str) -> tuple[bool, str]:
+    """Runs one job as its own process: whether it worked, and its last line of output."""
+    p = subprocess.run([sys.executable, "-m", JOBS[name]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    out = p.stdout.strip()
+    if out:
+        print(out, flush=True)
+    print(f"{name}: {'done' if p.returncode == 0 else f'FAILED (exit code {p.returncode})'}", flush=True)
+    return p.returncode == 0, out.splitlines()[-1] if out else ""
 
 
-def next_run(now: datetime, hour: int) -> datetime:
-    at = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-    return at if at > now else at + timedelta(days=1)
+def run_due(engine: Engine, now: datetime, run: Callable[[str], tuple[bool, str]] = run_job) -> list[str]:
+    """Runs every job that's due now, in order, recording each start and result. Returns their names."""
+    with engine.begin() as c:
+        schedule = c.execute(text("select * from job_schedule()")).mappings().all()
+    ran = []
+    for job in schedule:
+        if not is_due(now, job):
+            continue
+        with engine.begin() as c:
+            c.execute(text("select job_started(:n)"), {"n": job["name"]})
+        done, detail = run(job["name"])
+        with engine.begin() as c:
+            c.execute(text("select job_finished(:n, :d, :t)"), {"n": job["name"], "d": done, "t": detail})
+        ran.append(job["name"])
+    return ran
 
 
 def main() -> None:
-    hour = int(os.environ.get("JOBS_HOUR", "19"))
-    run_all()
+    engine = create_engine(os.environ["PURGE_DATABASE_URL"], pool_pre_ping=True)
     while True:
-        at = next_run(datetime.now(timezone.utc), hour)
-        print(f"next run {at.isoformat()}", flush=True)
-        time.sleep(max(0.0, (at - datetime.now(timezone.utc)).total_seconds()))
-        run_all()
+        try:
+            run_due(engine, datetime.now(UTC))
+        except Exception as e:  # noqa: BLE001 - the database restarting, say: one bad look mustn't stop the jobs
+            print(f"scheduler: {e}", flush=True)
+        time.sleep(TICK)
 
 
 if __name__ == "__main__":

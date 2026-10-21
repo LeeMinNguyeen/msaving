@@ -471,11 +471,71 @@ def test_launcher_builds_login_urls():
     assert login_url("postgresql://u:x@[::1]/app", "fx_login", "p", driver="postgresql") == "postgresql://fx_login:p@[::1]/app"
 
 
-def test_scheduler_runs_daily_at_the_hour():
-    from app.jobs.scheduler import next_run
-    at = lambda h: datetime(2026, 10, 19, h, tzinfo=timezone.utc)
-    assert next_run(at(18), 19) == at(19)
-    assert next_run(at(19), 19) == datetime(2026, 10, 20, 19, tzinfo=timezone.utc)
+def test_job_schedule_times(monkeypatch):
+    """msaving#6: each job at its time of day, the admin's (in their timezone) or JOBS_HOUR (UTC) until then; due
+    once its time has come since it last started and since its schedule changed."""
+    from zoneinfo import ZoneInfo
+
+    from app.core import jobs
+    monkeypatch.setenv("JOBS_HOUR", "19")
+    t = lambda *a: datetime(*a, tzinfo=timezone.utc)
+    assert (jobs.next_time(t(2026, 10, 21, 18), None, None), jobs.next_time(t(2026, 10, 21, 19), None, None)) == (
+        t(2026, 10, 21, 19), t(2026, 10, 22, 19))
+    assert jobs.last_time(t(2026, 10, 21, 18), None, None) == t(2026, 10, 20, 19)
+    assert jobs.next_time(t(2026, 10, 21, 12), 150, "Asia/Ho_Chi_Minh") == t(2026, 10, 21, 19, 30)   # 02:30 in Vietnam
+    # Daylight saving time doesn't move it: 02:00 in Berlin is 00:00 UTC in summer and 01:00 after 25 October.
+    assert jobs.next_time(t(2026, 10, 20, 12), 120, "Europe/Berlin") == t(2026, 10, 21, 0)
+    assert jobs.next_time(t(2026, 10, 30, 12), 120, "Europe/Berlin") == datetime(2026, 10, 31, 2, tzinfo=ZoneInfo("Europe/Berlin"))
+    assert jobs.next_time(t(2026, 10, 30, 12), 120, "Europe/Berlin") == t(2026, 10, 31, 1)
+
+    def due(now, **job):
+        return jobs.is_due(now, {"enabled": True, "at_minute": None, "timezone": None, "last_started_at": None,
+                                 "changed_at": None} | job)
+    assert due(t(2026, 10, 21, 18))                                                     # never ran: a new server
+    assert not due(t(2026, 10, 21, 18), last_started_at=t(2026, 10, 20, 19, 0, 5))      # ran at yesterday's time
+    assert due(t(2026, 10, 21, 19, 0, 30), last_started_at=t(2026, 10, 20, 19, 0, 5))   # today's has come
+    assert due(t(2026, 10, 21, 23), last_started_at=t(2026, 10, 19, 19))                # off at 19:00: catches up
+    assert not due(t(2026, 10, 21, 23), last_started_at=t(2026, 10, 19, 19), changed_at=t(2026, 10, 21, 22))
+    assert not due(t(2026, 10, 21, 23), enabled=False)
+
+
+def test_daily_jobs_on_server_admin(client, admin, database):
+    """msaving#6: the admin sees each job's time and last run, sets the time in their own timezone, and can turn
+    only the exchange rates off."""
+    _, admin_token = admin
+    _, member = sign_up(client)
+    url = "/v1/admin/jobs"
+    assert client.get(url, headers=bearer(member)).json() == {"detail": "admin_only"}
+    assert client.patch(f"{url}/backup", headers=bearer(member), json={"enabled": True}).json() == {"detail": "admin_only"}
+
+    def listed():
+        return {j["name"]: j for j in client.get(url, headers=bearer(admin_token)).json()}
+    try:
+        jobs = client.get(url, headers=bearer(admin_token)).json()
+        assert [j["name"] for j in jobs] == ["purge", "backup", "rates"]
+        assert all((j["at_minute"], j["timezone"], j["default_minute"], j["enabled"]) == (None, None, 19 * 60, True) for j in jobs)
+        assert datetime.fromisoformat(jobs[0]["next_run_at"]).astimezone(timezone.utc).strftime("%H:%M") == "19:00"
+
+        patch = lambda name, **body: client.patch(f"{url}/{name}", headers=bearer(admin_token), json=body)
+        assert patch("backup", at_minute=150, timezone="Asia/Saigon").status_code == 204        # an alias, kept as the real name
+        backup = listed()["backup"]
+        assert (backup["at_minute"], backup["timezone"], backup["enabled"]) == (150, "Asia/Ho_Chi_Minh", True)
+        from zoneinfo import ZoneInfo
+        assert datetime.fromisoformat(backup["next_run_at"]).astimezone(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%H:%M") == "02:30"
+        assert listed()["purge"]["at_minute"] is None                                        # the others stay
+
+        for body in ({"at_minute": 150}, {"at_minute": 1440, "timezone": "UTC"}, {"at_minute": 60, "timezone": "Mars/Base"}):
+            assert patch("purge", **body).status_code == 422, body
+        assert patch("backup", enabled=False).json() == {"detail": "invalid"}                # can't do without backups
+        assert patch("purge", enabled=False).json() == {"detail": "invalid"}
+        assert patch("rates", enabled=False).status_code == 204 and listed()["rates"]["enabled"] is False
+        assert listed()["rates"]["at_minute"] is None                                        # left out: stays
+        assert patch("backup", at_minute=None).status_code == 204                            # back to JOBS_HOUR
+        assert (listed()["backup"]["at_minute"], listed()["backup"]["timezone"]) == (None, None)
+        assert patch("nightly", enabled=True).json() == {"detail": "not_found"}
+    finally:
+        with database.connect() as c:
+            c.execute(text("update jobs set at_minute = null, timezone = null, enabled = true, changed_at = null"))
 
 
 # ---------------------------------------------------------------- updates
