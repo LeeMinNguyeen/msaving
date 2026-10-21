@@ -74,7 +74,7 @@ export type Profile = {
   created_at: string
   deletion_requested_at: string | null
   is_admin: boolean
-  idle_sign_out_minutes: number | null // sign me out after this long without activity, on every device (msaving#26); null: off
+  idle_sign_out_minutes: number | null // sign me out after this long without activity, on every device (msaving#26); 5 by default; null: never
 }
 
 export type Me = { id: string; profile: Profile }

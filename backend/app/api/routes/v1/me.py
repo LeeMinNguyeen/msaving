@@ -25,7 +25,7 @@ class Profile(BaseModel):
     created_at: datetime
     deletion_requested_at: datetime | None
     is_admin: bool
-    idle_sign_out_minutes: int | None   # signs this user out after this long without activity (msaving#26); None: off
+    idle_sign_out_minutes: int | None   # signs this user out after this long without activity (msaving#26); 5 by default; None: never
 
 
 class Me(BaseModel):

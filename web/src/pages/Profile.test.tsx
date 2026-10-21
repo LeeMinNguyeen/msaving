@@ -9,13 +9,13 @@ import { Profile } from './Profile'
 const me: Me = {
   id: 'u1',
   profile: { username: 'lan', display_name: null, timezone: 'Asia/Ho_Chi_Minh', language: 'en', created_at: '2026-10-01T00:00:00Z',
-    deletion_requested_at: null, is_admin: false, idle_sign_out_minutes: null },
+    deletion_requested_at: null, is_admin: false, idle_sign_out_minutes: 5 },
 }
 const laptop: DeviceSession = { id: 's1', device: 'Chrome · Windows', created_at: '2026-10-20T01:00:00Z', last_used_at: '2026-10-21T02:00:00Z', current: true }
 const phone: DeviceSession = { id: 's2', device: 'Safari · iOS', created_at: '2026-10-18T01:00:00Z', last_used_at: '2026-10-20T09:30:00Z', current: false }
 const script: DeviceSession = { id: 's3', device: null, created_at: '2026-10-19T01:00:00Z', last_used_at: '2026-10-19T01:00:00Z', current: false }
 
-function server(sessions: DeviceSession[], idle: number | null = null) {
+function server(sessions: DeviceSession[], idle: number | null = 5) {
   let listed = sessions
   let profile = { ...me.profile, idle_sign_out_minutes: idle }
   return fakeApi({
@@ -72,10 +72,10 @@ describe('signing out after inactivity, the user\'s own choice (msaving#26)', ()
     await userEvent.click(await screen.findByRole('option', { name: option }))
   }
 
-  it('is off by default, and saved for every device as soon as it\'s picked', async () => {
+  it('is 5 minutes by default, and saved for every device as soon as it\'s picked', async () => {
     const api = server([laptop])
     await renderApp(<Profile />)
-    expect(await setting()).toHaveTextContent('Never (only after 30 days unused)')
+    expect(await setting()).toHaveTextContent('After 5 minutes')
     await pick('After 15 minutes')
     await waitFor(() => expect(api.writes()).toEqual([expect.objectContaining({ method: 'PATCH', path: '/v1/me',
       body: { idle_sign_out_minutes: 15 } })]))
@@ -83,7 +83,7 @@ describe('signing out after inactivity, the user\'s own choice (msaving#26)', ()
     await waitFor(async () => expect(await setting()).toHaveTextContent('After 15 minutes'))
   })
 
-  it('turns it off', async () => {
+  it('can be never', async () => {
     const api = server([laptop], 30)
     await renderApp(<Profile />)
     expect(await setting()).toHaveTextContent('After 30 minutes')

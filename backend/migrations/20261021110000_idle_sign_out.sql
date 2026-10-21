@@ -1,6 +1,7 @@
 -- Signing out after inactivity (msaving#26): each user can choose, for their
--- own sessions, how many minutes they may go unused before they end. Off
--- (null) by default: sessions then last 30 days unused, as before.
+-- own sessions, how many minutes they may go unused before they end. 5 by
+-- default, for everyone already here too; null is never (sessions then last
+-- 30 days unused, as before).
 --
 -- The server ends a session unused that long, plus a minute, since
 -- last_used_at is kept to the minute (session_user_id()): it covers tabs that
@@ -8,7 +9,7 @@
 -- its session in use with its background refreshes, so the web app also signs
 -- out after that long with no click, key or touch.
 alter table users
-  add column if not exists idle_sign_out_minutes int check (idle_sign_out_minutes between 1 and 1440);
+  add column if not exists idle_sign_out_minutes int default 5 check (idle_sign_out_minutes between 1 and 1440);
 grant update (idle_sign_out_minutes) on users to app_user;
 
 -- How long a session of this user may go unused before it ends.

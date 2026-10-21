@@ -228,12 +228,13 @@ def test_signed_in_devices(client, database):
 
 
 def test_idle_sign_out(client, database):
-    """msaving#26: each user can have their own sessions end after so many minutes unused; off by default
-    (30 days), and nobody else's setting touches them."""
+    """msaving#26: each user's sessions end after so many minutes unused, 5 by default, or their own choice,
+    never included (30 days); nobody else's setting touches them."""
     name, token = sign_up(client)
     other = sign_in(client, name).json()["token"]
     _, neighbour = sign_up(client)
-    assert me(client, token).json()["profile"]["idle_sign_out_minutes"] is None
+    assert me(client, token).json()["profile"]["idle_sign_out_minutes"] == 5            # the default
+    assert client.patch("/v1/me", headers=bearer(neighbour), json={"idle_sign_out_minutes": 60}).status_code == 200
     for bad in (0, 1441, "five"):
         assert client.patch("/v1/me", headers=bearer(token), json={"idle_sign_out_minutes": bad}).status_code == 422
 
@@ -242,8 +243,6 @@ def test_idle_sign_out(client, database):
             c.execute(text("update sessions set last_used_at = now() - make_interval(mins => :m)"
                            " where token_sha256 = sha256(convert_to(:t, 'utf8'))"), {"t": t, "m": minutes})
 
-    assert client.patch("/v1/me", headers=bearer(token), json={"idle_sign_out_minutes": 5}).json()["profile"][
-        "idle_sign_out_minutes"] == 5
     assert client.patch("/v1/me", headers=bearer(token), json={"language": "en"}).json()["profile"][
         "idle_sign_out_minutes"] == 5                                     # left out: kept
     assert "idle_sign_out_minutes" not in client.get("/v1/instance").json()   # not a server setting
@@ -251,7 +250,7 @@ def test_idle_sign_out(client, database):
     assert me(client, token).status_code == 200
     unused_for(token, 7)
     assert me(client, token).status_code == 401
-    unused_for(neighbour, 7)                 # someone else's sessions: their own 30 days
+    unused_for(neighbour, 7)                 # someone else's sessions: their own 60 minutes
     assert me(client, neighbour).status_code == 200
     unused_for(other, 7)                     # not listed, then deleted by the daily purge
     third = sign_in(client, name).json()["token"]
