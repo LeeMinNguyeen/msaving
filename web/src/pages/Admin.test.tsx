@@ -1,9 +1,10 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { Instance, Me } from '../lib/api'
 import { fakeApi } from '../test/fakeApi'
 import { renderApp } from '../test/render'
+import { UpdatingNotice } from '../components/UpdatingNotice'
 import { Admin } from './Admin'
 
 const admin: Me = {
@@ -27,7 +28,8 @@ function server() {
     'GET /v1/me': admin,
     'GET /v1/instance': instance,
     'PATCH /v1/admin/instance': undefined,
-    'GET /v1/admin/update': { current_version: '0.1.3', latest_version: '0.1.3', release_url: null, update_available: false, updater: false, status: null },
+    'GET /v1/admin/update': { current_version: '0.1.3', latest_version: '0.1.3', release_url: null, changelog_url: null,
+      update_available: false, updater: false, status: null },
     'GET /v1/admin/invites': [],
     'GET /v1/admin/users': [],
     'GET /v1/admin/jobs': jobs,
@@ -72,5 +74,45 @@ describe('the daily jobs on Server admin (msaving#6)', () => {
       ['/v1/admin/jobs/backup', { at_minute: 180, timezone: 'Asia/Ho_Chi_Minh' }],
       ['/v1/admin/jobs/rates', { enabled: true }],
     ])
+  })
+})
+
+describe('updates on Server admin', () => {
+  const update = (over: object) => ({
+    current_version: '0.1.5', latest_version: '0.2.0', release_url: 'https://github.com/x/releases/tag/v0.2.0',
+    changelog_url: 'https://msaving.example/docs/changelog/', update_available: true, updater: true, status: null, ...over,
+  })
+
+  it("opens the changelog from What's new", async () => {
+    const api = server()
+    api.routes['GET /v1/admin/update'] = update({})
+    await renderApp(<Admin />)
+    expect(await screen.findByRole('link', { name: "What's new" })).toHaveAttribute('href', 'https://msaving.example/docs/changelog/')
+  })
+
+  it('shows no commands to run while the server is up to date', async () => {
+    server()
+    await renderApp(<Admin />)
+    expect(await screen.findByText('Server version 0.1.3 · newest 0.1.3')).toBeInTheDocument()
+    expect(screen.queryByText(/docker compose up -d --build/)).not.toBeInTheDocument()
+  })
+
+  it('shows the commands when a new version is out and there is no helper', async () => {
+    const api = server()
+    api.routes['GET /v1/admin/update'] = update({ updater: false })
+    await renderApp(<Admin />)
+    expect(await screen.findByText(/docker compose up -d --build/)).toBeInTheDocument()
+  })
+
+  it('starts the update and shows the notice, though the server answers with no body', async () => {
+    const api = server()
+    api.routes['GET /v1/admin/update'] = update({})
+    api.routes['POST /v1/admin/update'] = () => new Response(null, { status: 202 })
+    await renderApp(<><UpdatingNotice /><Admin /></>)
+    await userEvent.click(await screen.findByRole('button', { name: 'Update now' }))
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Update now' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual([expect.stringMatching(/^Updating to 0\.2\.0/)])
+    expect(api.writes().map((c) => c.path)).toEqual(['/v1/admin/update'])
   })
 })

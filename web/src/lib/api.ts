@@ -44,8 +44,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await reach(path, { ...init, headers })
   if (!res.ok) await fail(res)
-  if (res.status === 204) return undefined as T
-  return res.json() as Promise<T>
+  const text = await res.text() // 202 and 204 come with no body
+  return (text ? JSON.parse(text) : undefined) as T
 }
 
 // A file from the API (the data export): saved by the browser under the name it sends.
