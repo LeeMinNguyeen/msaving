@@ -495,6 +495,11 @@ def test_job_schedule_times(monkeypatch):
     assert due(t(2026, 10, 21, 23), last_started_at=t(2026, 10, 19, 19))                # off at 19:00: catches up
     assert not due(t(2026, 10, 21, 23), last_started_at=t(2026, 10, 19, 19), changed_at=t(2026, 10, 21, 22))
     assert not due(t(2026, 10, 21, 23), enabled=False)
+    # A run that failed: again an hour after it started, until it works.
+    failed_at = {"last_started_at": t(2026, 10, 21, 3, 30), "last_result": "failed"}
+    assert not due(t(2026, 10, 21, 4, 29), **failed_at) and due(t(2026, 10, 21, 4, 30), **failed_at)
+    assert not due(t(2026, 10, 21, 4, 30), **failed_at | {"last_result": "done"})
+    assert not due(t(2026, 10, 21, 4, 30), **failed_at | {"enabled": False})
 
 
 def test_daily_jobs_on_server_admin(client, admin, database):

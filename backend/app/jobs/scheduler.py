@@ -10,7 +10,8 @@ when a job is due) and runs what's due, in this order:
        to use Open Exchange Rates instead).
 Each runs once a day at the time set on Server admin, or at JOBS_HOUR (UTC,
 default 19 = 02:00 in Vietnam) until then; a change applies without a restart,
-and a job missed while the server was off runs when it starts. Each job runs
+a job missed while the server was off runs when it starts, and one that
+failed runs again an hour later. Each job runs
 as its own process, so one failing doesn't stop the others. Its output goes to
 the log (docker compose logs msaving); its result and last line to Server admin.
 The scheduler logs in as purge_login, which can also read the schedule and

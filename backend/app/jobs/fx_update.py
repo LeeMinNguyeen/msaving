@@ -16,9 +16,17 @@ Providers (docs: Exchange rates), all USD-based like fx_rates:
   Pages as its own fallback.
 - With OXR_APP_ID set: Open Exchange Rates, on the operator's own key.
 The provider is behind fetch_rates(), so adding one means changing only that.
+
+When no source answers, the job ends with one line saying why (the last line
+is what Server admin shows), not a traceback. A certificate that isn't
+trusted for every source means something on the network replaces HTTPS
+certificates (antivirus HTTPS scanning, a company proxy): the line says so
+and points to Troubleshooting.
 """
 import json
 import os
+import ssl
+import sys
 import urllib.request
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -37,24 +45,53 @@ def _get(url: str) -> dict:
         return json.load(resp, parse_float=Decimal)
 
 
+UNTRUSTED = "certificate not trusted"
+
+
+def why(exc: Exception) -> str:
+    """A short reason a source failed (urllib wraps the real cause)."""
+    reason = getattr(exc, "reason", exc)
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return f"{UNTRUSTED} ({reason.verify_message})"
+    if isinstance(reason, TimeoutError):
+        return "no answer in time"
+    return str(reason)
+
+
+class NoRates(Exception):
+    """No source answered; the message says why, for the last line of the job's output."""
+
+
 def fetch_rates() -> tuple[date, dict[str, Decimal], str]:
-    """Returns (as_of, {currency: units per 1 USD}, source)."""
+    """Returns (as_of, {currency: units per 1 USD}, source); NoRates when no source answered."""
     if os.environ.get("OXR_APP_ID"):
-        body = _get(OXR_URL.format(app_id=os.environ["OXR_APP_ID"]))
+        try:
+            body = _get(OXR_URL.format(app_id=os.environ["OXR_APP_ID"]))
+        except Exception as exc:
+            raise NoRates(_summary({"openexchangerates.org": why(exc)})) from None
         if body.get("base") != "USD":
             raise ValueError(f"expected USD base, got {body.get('base')}")
         return datetime.fromtimestamp(body["timestamp"], tz=timezone.utc).date(), body["rates"], "openexchangerates"
+    failures = {}
     try:
         return _open_er_api()
     except Exception as exc:
-        print(f"open.er-api.com: {exc}; using currency-api instead")
-    errors = []
+        failures["open.er-api.com"] = why(exc)
+        print(f"open.er-api.com: {failures['open.er-api.com']}; trying currency-api", flush=True)
     for url in CC0_URLS:
         try:
             return _currency_api(url)
         except Exception as exc:
-            errors.append(f"{url}: {exc}")
-    raise RuntimeError("no exchange rate source answered: " + "; ".join(errors))
+            failures[url.split("/")[2]] = why(exc)
+            print(f"{url.split('/')[2]}: {failures[url.split('/')[2]]}", flush=True)
+    raise NoRates(_summary(failures))
+
+
+def _summary(failures: dict[str, str]) -> str:
+    if all(reason.startswith(UNTRUSTED) for reason in failures.values()):
+        return ("no source's HTTPS certificate was trusted: something on this network replaces them (antivirus HTTPS"
+                " scanning, a company proxy or firewall). See Troubleshooting, \"Exchange rates don't update\".")
+    return "no source answered: " + "; ".join(f"{host}: {reason}" for host, reason in failures.items())
 
 
 def _open_er_api() -> tuple[date, dict[str, Decimal], str]:
@@ -89,12 +126,17 @@ def store_rates(engine, as_of: date, rates: dict[str, Decimal], source: str) -> 
         return len(rows)
 
 
-def main() -> None:
+def main() -> int:
     engine = create_engine(os.environ["FX_DATABASE_URL"])
-    as_of, rates, source = fetch_rates()
+    try:
+        as_of, rates, source = fetch_rates()
+    except NoRates as exc:
+        print(f"rates failed: {exc}", flush=True)
+        return 1
     n = store_rates(engine, as_of, rates, source)
     print(f"stored {n} rates for {as_of}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
