@@ -10,6 +10,7 @@ import { Accounts } from './Accounts'
 
 const book: Book = { id: 'b1', name: 'Personal', base_currency: 'VND', timezone: 'Asia/Ho_Chi_Minh', role: 'owner', archived_at: null, version: 1 }
 const blank = { last4: null, in_net_worth: true, contact_id: null, note: null, credit_limit: null, annual_fee: null, statement_day: null,
+  installment: null, installment_fee: null,
   payment_due_day: null, interest_rate_bp: null, archived_at: null, version: 3 }
 const cash: Account = { ...blank, id: 'a1', name: 'Cash', kind: 'cash', currency: 'VND', balance: 6_936_000 }
 const card: Account = { ...blank, id: 'a2', name: 'Visa', kind: 'credit_card', currency: 'VND', last4: '3317', balance: -9_896_000,

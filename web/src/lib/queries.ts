@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { api, type Account, type Book, type Budget, type Category, type Contact, type Currency, type Dashboard, type HistoryEntry, type Instance, type Me, type Member, type BookInvite, type TxnPage } from './api'
+import { api, type Account, type Bill, type Book, type Budget, type Category, type Contact, type Currency, type Dashboard, type HistoryEntry, type Instance, type Me, type Member, type BookInvite, type TxnPage } from './api'
 
 export const keys = {
   me: ['me'] as const,
@@ -25,6 +25,16 @@ export function useCurrencies() {
     queryFn: () => api<Currency[]>('/v1/currencies'),
     staleTime: Infinity,
     select: (list) => new Map(list.map((c) => [c.code, c])),
+  })
+}
+
+// A credit card's or loan's bill this month (msaving#37); null when the account has none. Under the book's
+// accounts, so it's fetched again whenever they are.
+export function useBill(bookId: string, accountId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['books', bookId, 'accounts', 'bill', accountId],
+    queryFn: () => api<Bill | null>(`/v1/books/${bookId}/accounts/${accountId}/bill`),
+    enabled,
   })
 }
 

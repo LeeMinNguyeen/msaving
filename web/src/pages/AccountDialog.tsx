@@ -30,6 +30,7 @@ import { todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { useContacts, useCurrencies, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
+import { BillPanel } from './AccountBill'
 
 type Props = {
   book: Book
@@ -80,6 +81,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
   const owed = liabilityKinds.includes(form.kind)
   const withPerson = personKinds.includes(form.kind)
   const card = form.kind === 'credit_card'
+  const loan = form.kind === 'loan'
   const withInterest = interestKinds.includes(form.kind)
   const withLast4 = showsLast4(form.kind, base?.last4)
   const parse = (text: string, minor = minorUnit) => (text.trim() === '' ? 0 : parseAmount(text, minor, lang))
@@ -89,10 +91,14 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
   const balance = balanceChanged ? parse(form.balance) : 0
   const creditLimit = parse(form.creditLimit)
   const annualFee = parse(form.annualFee)
+  const installment = parse(form.installment)
+  const installmentFee = parse(form.installmentFee)
   const interest = parse(form.interest, 2)
   // Only the fields the kind shows count: a hidden one is sent as null.
   const valid = !!form.name.trim() && !!form.currency && opening !== null && balance !== null && !badDate
     && (!card || (creditLimit !== null && creditLimit >= 0 && annualFee !== null && annualFee >= 0))
+    && (!loan || ((form.installment.trim() === '' || (installment !== null && installment > 0))
+      && installmentFee !== null && installmentFee >= 0))
     && (!withInterest || (interest !== null && interest >= 0 && interest <= 100_000))
   const money = (minor: number) => formatMoney(minor, form.currency ?? '', minorUnit, lang)
 
@@ -110,6 +116,8 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
       annualFee: blank(form.annualFee, annualFee),
       statementDay: form.statementDay,
       dueDay: form.dueDay,
+      installment: blank(form.installment, installment),
+      installmentFee: blank(form.installmentFee, installmentFee),
       interestBp: blank(form.interest, interest),
     })
   }
@@ -264,6 +272,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
                   sx={{ maxWidth: 190 }} />
               </Stack>
             )}
+            {base && !editing && (card || loan) && <BillPanel book={book} account={base} minorUnit={minorUnit} canPay={canEdit} />}
             {card && (
               <>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -282,6 +291,18 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
                   <DaySelect label={t('accounts.statementDay')} disabled={ro} value={form.statementDay} onChange={(statementDay) => set({ statementDay })} />
                   <DaySelect label={t('accounts.dueDay')} disabled={ro} value={form.dueDay} onChange={(dueDay) => set({ dueDay })} />
                 </Stack>
+              </>
+            )}
+            {loan && (
+              <>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <AmountField label={t('accounts.installment')} disabled={ro} value={form.installment}
+                    onChange={(installment) => set({ installment })} minorUnit={minorUnit} />
+                  <DaySelect label={t('accounts.paymentDay')} disabled={ro} value={form.dueDay} onChange={(dueDay) => set({ dueDay })} />
+                </Stack>
+                <AmountField label={t('accounts.installmentFee')} disabled={ro} value={form.installmentFee}
+                  onChange={(installmentFee) => set({ installmentFee })} minorUnit={minorUnit}
+                  helperText={editing ? t('accounts.installmentFeeHint') : undefined} />
               </>
             )}
             {withInterest && (
@@ -367,7 +388,9 @@ type Form = {
   creditLimit: string
   annualFee: string
   statementDay: string
-  dueDay: string
+  dueDay: string // a card's repayment day, a loan's payment day
+  installment: string
+  installmentFee: string
   interest: string
 }
 
@@ -397,6 +420,8 @@ function toForm(a: Account | null, book: Book, lang: 'vi' | 'en', minorOf: (curr
     annualFee: text(a?.annual_fee),
     statementDay: a?.statement_day ? String(a.statement_day) : '',
     dueDay: a?.payment_due_day ? String(a.payment_due_day) : '',
+    installment: text(a?.installment),
+    installmentFee: text(a?.installment_fee),
     interest: text(a?.interest_rate_bp, 2),
   }
 }
