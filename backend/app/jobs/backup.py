@@ -1,32 +1,16 @@
-r"""Nightly database backup: one pg_dump of what a restore needs, kept about 6 days.
+r"""Nightly database backup: one pg_dump of what a restore needs, kept about 6 days. Also run by app/launch.py
+before an update applies new migrations.
 
-Run by the scheduler after the purge job, and by app/launch.py before an
-update applies new migrations:
-    1. pg_dump, custom format, to a local temporary file;
-    2. pg_restore --list reads it back, and it must hold the app's tables;
-    3. it is copied into BACKUP_DIR as msaving-<UTC time>.dump.partial, then
-       renamed, so a run that fails never leaves a file that looks complete;
-    4. once the new dump is in place, dumps older than 5 days 12 hours (by the
-       time in their name) are deleted.
-Any failure exits non-zero and is printed in the server's log.
+The dump is checked with pg_restore --list, then copied into BACKUP_DIR as .partial and renamed, so a run that fails
+never leaves a file that looks complete; only then are old dumps deleted.
 
-What is dumped: the schemas public (the whole app: tables, data, functions,
-triggers, row-level security policies and grants) and msaving (the list of
-applied migrations). Not the roles or their passwords, which live outside
-any one database.
+What is dumped: the schemas public (the whole app, with its policies and grants) and msaving (the applied
+migrations). Not the roles or their passwords, which live outside any one database.
 
-Connection: BACKUP_DATABASE_URL, the database owner (pg_dump must see every
-row, and the app's own logins deliberately can't bypass row-level security).
-The URL is parsed as libpq parses it, and pg_dump gets the password as
-PGPASSWORD, never on its command line; no message prints the URL or password.
-Percent-encode a password holding @, /, ? or # (libpq splits at the first @
-and stops at /; the job refuses all four raw). Use a pg_dump (PG_DUMP, else
-PATH) of the server's major version: the image has PostgreSQL 17's.
-
-Where dumps go: BACKUP_DIR, the `backups` volume in docker-compose.yml. A
-backup on the same disk doesn't survive that disk: copying dumps to another
-machine is the operator's job (the setup guide shows how). Dumps hold
-password hashes and two-factor secrets: keep copies private.
+BACKUP_DATABASE_URL is the database owner: pg_dump must see every row, and the app's own logins can't bypass
+row-level security. pg_dump gets the password as PGPASSWORD, never on its command line, and no message prints the
+URL or the password. A password holding @, /, ? or # must be percent-encoded (libpq splits at the first @ and stops
+at /). pg_dump (PG_DUMP, else PATH) must be the server's major version.
 
 Restore (by the operator; the setup guide has the same steps as docker
 commands). DUMP is the dump file, NEW_DB_URL an empty database on the same
@@ -65,7 +49,7 @@ from urllib.parse import unquote
 from psycopg import Error as PsycopgError
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
-# Each is dumped if it exists; see the docstring for why.
+# Each is dumped if it exists.
 SCHEMAS = ("public", "msaving")
 KEEP = timedelta(days=5, hours=12)        # about 6 days, counting the newest
 DUMP_NAME = re.compile(r"msaving-(\d{8}T\d{6}Z)\.dump(\.partial)?")
@@ -138,9 +122,8 @@ def run_backup(database_url: str, backup_dir: str) -> tuple[str, dict[str, int],
     pg_dump, pg_restore = _tools()
     dsn, password = _split(database_url)
     env = dict(os.environ, PGAPPNAME="msaving-backup")
-    # TLS as the address says (?sslmode=require for a database across the
-    # internet), else libpq's default like the rest of the server: TLS when the
-    # database offers it. Forcing it failed on a plain local Postgres.
+    # TLS as the address says (?sslmode=require for a database across the internet), else libpq's default, as in the
+    # rest of the server: forcing it fails on a plain local Postgres.
     if password:
         env["PGPASSWORD"] = password
     now = datetime.now(timezone.utc)

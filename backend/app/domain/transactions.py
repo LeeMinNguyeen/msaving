@@ -1,14 +1,8 @@
-"""Create and edit transactions safely when several devices or book members
-work on the same book at once.
+"""Several devices or book members can work on a book at once:
 
-- Create is idempotent: the device generates the transaction id (a UUID) when
-  the user taps Save, and re-sends the same id on retry. A retry after a
-  dropped connection, or a double tap, can't create a duplicate.
-- Edit is guarded by version: the device sends the version it loaded. If
-  another device saved in between, nothing is written and the API returns 409
-  so the device can reload and show the newer data.
-- Balances need no locking: they are SUM(entries), so two devices adding
-  transactions at the same moment both count.
+- Create is idempotent: the device generates the id when the user taps Save and re-sends it on retry.
+- Edit is guarded by version: if another device saved in between, nothing is written (409).
+- Balances need no locking: they are SUM(entries), so two devices adding at the same moment both count.
 """
 from dataclasses import dataclass
 from datetime import date
@@ -19,13 +13,13 @@ from sqlalchemy.orm import Session
 
 
 class Conflict(Exception):
-    """Another device changed or deleted this row first. Map to HTTP 409."""
+    """Another device changed or deleted this row first."""
 
 
 @dataclass
 class Entry:
     account_id: UUID
-    amount: int  # minor units, signed
+    amount: int  # signed
 
 
 @dataclass

@@ -1,15 +1,14 @@
 import { interestKinds, last4Kinds, liabilityKinds, type AccountKind } from './api'
 
-// The details an account of this kind takes (msaving#17), as the API wants
-// them: the ones that don't belong to the kind are sent as null, so changing
-// an account's kind clears them.
+// As the API wants them: the details that don't belong to the kind are sent as
+// null, so changing an account's kind clears them.
 export type Details = {
   note: string
-  creditLimit: number | null // minor units of the account's currency
+  creditLimit: number | null
   annualFee: number | null
   statementDay: string // '' = none, else '1' to '31'
   dueDay: string // a card's repayment day, a loan's payment day
-  installment: number | null // loans (msaving#37)
+  installment: number | null
   installmentFee: number | null
   interestBp: number | null // hundredths of a percent a year
 }
@@ -38,7 +37,7 @@ export const showsLast4 = (kind: AccountKind, existing: string | null | undefine
 export const ledgerBalance = (kind: AccountKind, typed: number) => (liabilityKinds.includes(kind) ? -typed : typed)
 
 // The adjustment that takes an account from its balance now to the one typed
-// in its edit dialog (msaving#24).
+// in its edit dialog.
 export function adjustmentFor(kind: AccountKind, typed: number, balanceNow: number): number {
   return ledgerBalance(kind, typed) - balanceNow
 }

@@ -1,8 +1,5 @@
-"""The account event log, kept outside the database (docs: Deleting an
-account): every account closure and restore, as one JSON line on stdout,
-which Docker keeps (`docker compose logs msaving`). After restoring an older
-backup, these lines say which accounts were closed or restored since. Only
-ids and times: no name.
+"""Every account closure and restore, as one JSON line on stdout, which Docker keeps: outside the database, so after
+restoring an older backup these lines say which accounts were closed or restored since. Only ids and times.
 
 Call it after the change is committed, never before: a line for something
 that was rolled back would be re-applied by mistake.

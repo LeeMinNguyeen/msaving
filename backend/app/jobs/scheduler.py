@@ -1,25 +1,8 @@
-"""The daily jobs, started by app/launch.py next to the API (docs: Background jobs).
+"""Runs the daily jobs that are due (app/core/jobs.py), each as its own process, so one failing doesn't stop the
+others. Logs in as purge_login, which can also read the schedule and record the results.
 
-Every half minute it reads the schedule (job_schedule(); app/core/jobs.py says
-when a job is due) and runs what's due, in this order:
-    1. purge (app.jobs.account_deletion): accounts closed more than 30 days
-       ago, and expired sessions;
-    2. backup (app.jobs.backup): one pg_dump into BACKUP_DIR, keeping about
-       6 days;
-    3. rates (app.jobs.fx_update): exchange rates (no key needed; OXR_APP_ID
-       to use Open Exchange Rates instead).
-Each runs once a day at the time set on Server admin, or at JOBS_HOUR (UTC,
-default 19 = 02:00 in Vietnam) until then; a change applies without a restart,
-a job missed while the server was off runs when it starts, and one that
-failed runs again an hour later. Each job runs
-as its own process, so one failing doesn't stop the others. Its output goes to
-the log (docker compose logs msaving); its result and last line to Server admin.
-The scheduler logs in as purge_login, which can also read the schedule and
-record the results (job_schedule(), job_started(), job_finished()).
-
-With --once (`python -m app.launch jobs`) it looks once and exits: on a
-platform that pauses the server between requests (Cloud Run), a scheduled
-task runs it every hour instead, and the server has RUN_JOBS=off.
+With --once (`python -m app.launch jobs`) it looks once and exits: on Cloud Run, which pauses the server between
+requests, a scheduled task runs it every hour instead.
 """
 import os
 import subprocess
@@ -33,7 +16,7 @@ from sqlalchemy.engine import Engine
 
 from app.core.jobs import JOBS, is_due
 
-TICK = 30   # seconds between looks at the schedule
+TICK = 30   # seconds
 
 
 def run_job(name: str) -> tuple[bool, str]:

@@ -1,19 +1,9 @@
-"""Is there a newer release, and can this server install it by itself?
-(docs: Updates)
+"""The newest release comes from the project's GitHub releases, checked at most every 6 hours and only when the
+admin opens Server admin.
 
-- The newest release comes from the project's GitHub releases, checked at
-  most every 6 hours, only when the admin opens the admin page. UPDATE_CHECK=off
-  turns it off. Nothing about the server is sent beyond an ordinary request.
-- There are no published images: a release is a version tag, and each server
-  is built from its own checkout of the repository. This server's version is
-  the VERSION file it was built from.
-- One-click updates need the operator to turn on the `updater` helper in
-  docker-compose.yml (COMPOSE_PROFILES=updater). Only that helper can reach
-  Docker and the checkout; this server only leaves a request file in the
-  shared /updates folder, which the helper picks up: git pull, rebuild, restart.
-  The helper touches /updates/updater_alive every few seconds while it runs.
-- The helper's last result counts only if it's from after this server started:
-  an update by hand or a restart since then makes it old news.
+One-click updates go through the `updater` helper (COMPOSE_PROFILES=updater), the only container that can reach Docker
+and the checkout. This server leaves a request file in the shared /updates folder; the helper pulls, rebuilds and
+restarts, and touches /updates/updater_alive every few seconds while it runs.
 """
 import json
 import os

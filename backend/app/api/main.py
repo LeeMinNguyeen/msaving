@@ -16,21 +16,17 @@ from app.api.routes.v1 import (accounts, admin, books, budgets, categories, cont
 from app.core import updates
 from app.core.settings import settings
 
-# The API's version. Additive changes only within /v1; a client that needs
-# something newer checks `api_version` and tells the user to update the server.
+# Additive changes only within /v1: a client that needs something newer checks api_version.
 API_VERSION = 1
 SERVER_VERSION = updates.current_version()
 
 app = FastAPI(title="MSaving API", docs_url=None, redoc_url=None, openapi_url="/v1/openapi.json")
 errors.install(app)
 
-# Only this server's own web app may call the API from a browser (docs: Sign-in and accounts,
-# Clients). Browsers send Origin; a copy of the web app
-# hosted anywhere else, or any other site, is refused before anything runs.
-# The mobile app sends no Origin, so any number of phones can connect.
-# Behind a reverse proxy the browser's address is in Host (Caddy, Tailscale,
-# Cloudflare Tunnel keep it) or X-Forwarded-Host, which Vite's proxy also sends in
-# development (web/vite.config.ts).
+# Only this server's own web app may call the API from a browser: browsers send Origin, so a copy of the web app
+# hosted anywhere else is refused before anything runs. Phones send no Origin. Behind a reverse proxy the browser's
+# address is in Host (Caddy, Tailscale and Cloudflare Tunnel keep it) or X-Forwarded-Host, which Vite's proxy also
+# sends in development.
 def own_origin(origin: str, request: Request) -> bool:
     host = urlsplit(origin).netloc.lower()
     allowed = {request.headers.get("host", ""), *request.headers.get("x-forwarded-host", "").split(",")}
@@ -45,8 +41,7 @@ async def own_web_app_only(request: Request, call_next):
     return await call_next(request)
 
 
-# The web app's Content-Security-Policy: nothing from anywhere else. MUI's
-# styling (Emotion) adds <style> tags at runtime; QR codes are data: images.
+# MUI's styling (Emotion) adds <style> tags at runtime; QR codes are data: images.
 CSP = "; ".join([
     "default-src 'self'", "connect-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:", "font-src 'self'", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'",
@@ -82,13 +77,11 @@ class Instance(BaseModel):
     server_version: str
     api_version: int
     signup: str             # invite | open
-    setup_needed: bool      # no admin yet: the setup screen, with the code from the server's log
+    setup_needed: bool      # no admin yet
 
 
 @v1.get("/instance")
 def instance(db: Session = Depends(get_public_db)) -> Instance:
-    """What a client checks before signing in: the web app's first screen, and
-    the mobile app when the user adds a server."""
     row = db.execute(text("select * from instance_info()")).mappings().one()
     return Instance(server_version=SERVER_VERSION, api_version=API_VERSION, **row)
 
@@ -98,8 +91,6 @@ for module in (sign_in, admin, me, reference, books, members, accounts, contacts
 app.include_router(v1)
 
 
-# ---------------------------------------------------------------- the web app
-
 @app.api_route("/v1/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"], include_in_schema=False)
 def unknown_api(path: str):
     return JSONResponse({"detail": "not_found"}, status_code=404)
@@ -107,8 +98,6 @@ def unknown_api(path: str):
 
 @app.get("/{path:path}", include_in_schema=False)
 def web(path: str):
-    """A file from the built web app, or index.html for the app's own routes
-    (/join, /reset, /books/...)."""
     root = settings.web_dir.resolve()
     if not root.is_dir():
         return JSONResponse({"detail": "not_found"}, status_code=404)

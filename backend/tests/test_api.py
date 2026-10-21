@@ -1,7 +1,4 @@
-"""Tests for the API, against the database from conftest.py. Users sign up
-through the API itself (open sign-up in the test database; invite-only and
-setup are in test_sign_in.py) and use the session token it returns.
-"""
+"""Users sign up through the API: the test database has open sign-up. Invite-only and setup are in test_sign_in.py."""
 import re
 import uuid
 
@@ -42,7 +39,7 @@ def signed_up(client, name=None, language="vi"):
 def test_health_needs_no_token(client):
     r = client.get("/v1/health")
     assert r.json() == {"ok": True}
-    assert r.headers["cache-control"] == "no-store"      # nothing may cache API answers
+    assert r.headers["cache-control"] == "no-store"
 
 
 def test_instance_needs_no_token(client):
@@ -74,8 +71,6 @@ def test_bad_tokens_are_refused(client, bad):
 
 
 def test_only_this_servers_web_app_and_any_phone(client):
-    """A browser on another site (or a copy of the web app hosted elsewhere) is refused;
-    the server's own web app and the mobile app (no Origin) get through."""
     u = signed_up(client)
     other = client.get("/v1/me", headers={**auth(u), "Origin": "https://copy-of-msaving.example"})
     assert (other.status_code, other.json()) == (403, {"detail": "origin_not_allowed"})
@@ -113,8 +108,6 @@ def test_web_app_files_and_routes(client, tmp_path, monkeypatch):
     assert asset.text == "js" and "immutable" in asset.headers["cache-control"]
     assert client.get("/../../etc/passwd").text == "<html>app</html>"        # never outside the web app's folder
 
-
-# ---------------------------------------------------------------- books, accounts
 
 def test_currencies(client):
     ccy = {c["code"]: c for c in client.get("/v1/currencies", headers=auth(signed_up(client))).json()}
@@ -182,8 +175,6 @@ def test_accounts_with_opening_balances(client):
     assert back["archived_at"] is None
 
 
-# ---------------------------------------------------------------- milestone 3: categories, transactions
-
 def new_book_with_accounts(client, u, currency="VND"):
     bid = str(uuid.uuid4())
     client.post("/v1/books", headers=auth(u), json={"id": bid, "name": "B", "base_currency": currency, "timezone": "UTC",
@@ -206,8 +197,7 @@ def add_category(client, u, bid, name, kind="expense", parent=None):
 
 
 def test_account_details_by_kind(client):
-    """msaving#17: a note on any account, a credit card's limit, fee and days, an interest rate where one applies.
-    A detail for the wrong kind is refused; changing the kind clears the ones that stop applying."""
+    """A detail for the wrong kind is refused; changing the kind clears the ones that stop applying."""
     u = signed_up(client)
     bid, _ = new_book_with_accounts(client, u)
     base = f"/v1/books/{bid}/accounts"
@@ -239,7 +229,7 @@ def test_account_details_by_kind(client):
     loan = client.patch(url, headers=auth(u), json={"version": cleared["version"], "kind": "loan"}).json()
     assert {k: loan[k] for k in ("kind", "credit_limit", "statement_day", "payment_due_day", "interest_rate_bp")} == {
         "kind": "loan", "credit_limit": None, "statement_day": None, "payment_due_day": 10, "interest_rate_bp": 2_800}
-    assert loan["installment"] is None                                  # a loan's payment day stays (msaving#37)
+    assert loan["installment"] is None                                  # a loan's payment day stays
     cash = client.patch(url, headers=auth(u), json={"version": loan["version"], "kind": "cash"}).json()
     assert (cash["kind"], cash["interest_rate_bp"], cash["payment_due_day"]) == ("cash", None, None)
 
@@ -259,7 +249,7 @@ def test_account_details_by_kind(client):
 
 
 def test_bill_dates():
-    """msaving#37: the statement day's own transactions belong to its statement; a month without that day uses its
+    """The statement day's own transactions belong to its statement; a month without that day uses its
     last; a card is due on the first repayment day after the statement date, a loan on its next payment day."""
     from datetime import date as d
 
@@ -275,7 +265,7 @@ def test_bill_dates():
 
 
 def test_monthly_bills(client, database):
-    """msaving#37: a credit card's bill is its statement balance minus the money in since; a loan's is its
+    """A credit card's bill is its statement balance minus the money in since; a loan's is its
     installment, with a one-off fee on the first payment and the interest part recorded as an expense."""
     from datetime import date as d
     from types import SimpleNamespace
@@ -316,7 +306,7 @@ def test_monthly_bills(client, database):
     assert (b.amount, b.paid, b.remaining, b.owed_now) == (1_500_000, 420_000, 1_080_000, 1_130_000)
     assert b.pay_from == uuid.UUID(accts["Bank"])
     txn("transfer", "2026-10-09", (accts["Bank"], -1_080_000), (card, 1_080_000))
-    assert bill(card, d(2026, 10, 20)).remaining == 0                   # paid off
+    assert bill(card, d(2026, 10, 20)).remaining == 0
     assert bill(card, d(2026, 9, 25)).period_end == d(2026, 8, 25)
 
     # A 0 % installment contract: 12,000,000 over 12 months, a 240,000 fee with the first payment.
@@ -463,8 +453,6 @@ def test_transactions_and_two_browsers(client):
     assert client.get(f"{base}/{tid}/history", headers=auth(stranger)).json() == {"detail": "not_found"}
 
 
-# ---------------------------------------------------------------- milestone 4: dashboard
-
 def test_dashboard_converts_at_todays_rate(client, database):
     from datetime import date as d
     today = d.today()
@@ -503,8 +491,6 @@ def test_dashboard_converts_at_todays_rate(client, database):
     assert client.get(f"/v1/books/{bid}/dashboard", headers=auth(signed_up(client))).json() == {"detail": "not_found"}
 
 
-# ---------------------------------------------------------------- milestone 5: people, budgets
-
 def test_people_and_lending(client):
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)
@@ -541,7 +527,7 @@ def test_people_and_lending(client):
 
 
 def test_edits_to_amounts_or_accounts_alone_are_versions(client, database):
-    """msaving#18, #19: changing only an amount or an account is an edit like any other: a new version (so a
+    """Changing only an amount or an account is an edit like any other: a new version (so a
     second browser still gets 409) and its own line in the history. Saving with nothing changed is neither,
     and leaves the entries alone (no rows in the audit log for them)."""
     u = signed_up(client)
@@ -622,8 +608,6 @@ def test_budgets(client):
     assert len(client.get(base, headers=auth(u)).json()) == 1
 
 
-# ---------------------------------------------------------------- milestone 6: your data
-
 def events(capsys):
     import json
     return [json.loads(line)["account_event"] for line in capsys.readouterr().out.splitlines() if "account_event" in line]
@@ -660,7 +644,7 @@ def test_close_and_restore(client, capsys):
 
 
 def test_timezone_aliases_become_names_the_database_knows(client, database):
-    """Windows browsers report Asia/Saigon, which the postgres image doesn't know (the Overview failed on it)."""
+    """Windows browsers report Asia/Saigon, which the postgres image doesn't know."""
     u = signed_up(client)
     bid = str(uuid.uuid4())
     r = client.post("/v1/books", headers=auth(u), json={"id": bid, "name": "B", "base_currency": "VND", "timezone": "Asia/Saigon"})
@@ -673,7 +657,7 @@ def test_timezone_aliases_become_names_the_database_knows(client, database):
 
 
 def test_shared_books(client):
-    """Milestone 8: two users keep one book together, and a viewer can't change it."""
+    """Two users keep one book together, and a viewer can't change it."""
     names = {k: f"{k}_{uuid.uuid4().hex[:8]}" for k in ("owner", "editor", "viewer", "other")}
     owner, editor, viewer, other = (signed_up(client, names[k]) for k in ("owner", "editor", "viewer", "other"))
     bid, accts = new_book_with_accounts(client, owner)
@@ -738,7 +722,7 @@ def test_shared_books(client):
 
 
 def test_book_changes_marker(client):
-    """msaving#25: a member polls one cheap marker that changes when anyone changes the book."""
+    """A member polls one cheap marker that changes when anyone changes the book."""
     owner, editor, stranger = signed_up(client), signed_up(client), signed_up(client)
     bid, accts = new_book_with_accounts(client, owner)
     editor_name = client.get("/v1/me", headers=auth(editor)).json()["profile"]["username"]
@@ -769,7 +753,7 @@ def test_book_invites_are_rate_limited(client):
 
 
 def test_username_changes_are_rate_limited(client):
-    """A taken name answers username_taken, so trying names is slowed down (#4)."""
+    """A taken name answers username_taken, so trying names is slowed down."""
     taken = f"taken_{uuid.uuid4().hex[:8]}"
     signed_up(client, taken)
     u = signed_up(client)

@@ -26,8 +26,7 @@ import { newId } from '../lib/uuid'
 const dateIn = (locale: string, options: Intl.DateTimeFormatOptions) => (iso: string) =>
   new Intl.DateTimeFormat(locale, options).format(new Date(`${iso}T00:00:00`))
 
-// This month's bill of a credit card or a loan (msaving#37), in its details, with Pay. A card's is its statement
-// balance, what the bank asks for; a loan's is its installment. The server works it out (app/domain/bills.py).
+// The server works out the bill (backend/app/domain/bills.py).
 export function BillPanel({ book, account, minorUnit, canPay }: { book: Book; account: Account; minorUnit: number; canPay: boolean }) {
   const { t } = useTranslation()
   const lang = currentLanguage()

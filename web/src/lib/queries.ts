@@ -28,8 +28,7 @@ export function useCurrencies() {
   })
 }
 
-// A credit card's or loan's bill this month (msaving#37); null when the account has none. Under the book's
-// accounts, so it's fetched again whenever they are.
+// Under the book's accounts, so it's fetched again whenever they are.
 export function useBill(bookId: string, accountId: string, enabled: boolean) {
   return useQuery({
     queryKey: ['books', bookId, 'accounts', 'bill', accountId],
@@ -75,7 +74,7 @@ export function useTransactions(bookId: string, filters: TxnFilters) {
   })
 }
 
-// Not kept between openings (msaving#18): a cached copy would show first and
+// Not kept between openings: a cached copy would show first and
 // hide the newest edit until the refetch lands, seconds on a slow link. The
 // dialog also waits for a fetch of its own (isFetchedAfterMount).
 export function useHistory(bookId: string, txnId: string) {
@@ -140,7 +139,7 @@ export function useRefreshBook() {
   }
 }
 
-// Another member's change shows within seconds (msaving#25): a tiny marker,
+// Another member's change shows within seconds: a tiny marker,
 // polled while the page is visible, and the book's data refetched when it moves.
 type Changes = { marker: string; handled?: boolean }
 const changesKey = (bookId: string) => ['books', bookId, 'changes']

@@ -1,15 +1,5 @@
-"""Starter categories for a new book, in the user's language.
-
-POST /v1/books creates the book, then, when "Add starter categories" is left
-ticked (the default), calls add_starter_categories() in the same transaction,
-so a new user can log a first expense straight away. The lists come from the
-old BudgetTracking app (src/db/seed.ts), including its transfer labels
-(a project decision), which never count as spending.
-
-They are ordinary categories once created: the user renames, archives or
-deletes them like any other. Names are stored as text in the chosen language
-and never translated later, like everything else users can edit.
-"""
+"""Starter categories for a new book, from the old BudgetTracking app (src/db/seed.ts). Once created they're
+ordinary categories: their names are never translated later."""
 import uuid
 from uuid import UUID
 

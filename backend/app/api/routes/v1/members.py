@@ -1,12 +1,5 @@
-"""Shared books: a book's members, invites by username, roles, leaving
-(docs: Users and shared books).
-
-An owner invites a user of this server by username; the invite stays pending
-(the invitee sees nothing of the book) until they accept it. Owners change
-roles and remove members; anyone can leave. The database keeps at least one
-owner (409 owner_required) and allows each step only to the right people;
-these routes add the checks that give clearer errors.
-"""
+"""The database keeps at least one owner (409 owner_required) and allows each step only to the right people; these
+routes repeat the checks to give clearer errors. An invite shows the invitee nothing of the book until accepted."""
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -31,7 +24,7 @@ class Member(BaseModel):
     name: str                    # the username, or "Deleted user"
     display_name: str | None
     role: Role
-    pending: bool                # invited, not accepted yet
+    pending: bool
     me: bool
 
 
@@ -55,10 +48,8 @@ class Invite(BaseModel):
 @router.post("/books/{book_id}/members", status_code=201)
 def invite(book_id: UUID, body: Invite, user_id: UUID = Depends(current_user),
            db: Session = Depends(get_db)) -> list[Member]:
-    """409 cannot_invite for a username that isn't on this server and for
-    someone already in the book (or invited), alike. Rate limited: a found
-    username still becomes an invite, so this caps how fast an owner can
-    find out which usernames exist."""
+    """409 cannot_invite alike for a username not on this server and for someone already in the book. Rate limited
+    because a found username becomes an invite: this caps how fast an owner can find out which usernames exist."""
     require_role(get_book(db, book_id), "owner")
     if not si.per_user_action.allow(f"book-invite:{user_id}"):
         raise HTTPException(429, "rate_limited")
@@ -93,8 +84,7 @@ def change_role(book_id: UUID, member_id: UUID, body: RoleChange, user_id: UUID 
 @router.delete("/books/{book_id}/members/{member_id}", status_code=204)
 def remove_member(book_id: UUID, member_id: UUID, user_id: UUID = Depends(current_user),
                   db: Session = Depends(get_db)) -> Response:
-    """An owner removes anyone (or cancels an invite); anyone leaves with their
-    own id. The last owner can't leave (409 owner_required)."""
+    """An owner removes anyone (or cancels an invite); anyone leaves with their own id. The last owner can't leave."""
     book = get_book(db, book_id)
     if member_id != user_id:
         require_role(book, "owner")
@@ -116,7 +106,6 @@ class BookInvite(BaseModel):
 
 @router.get("/me/book-invites")
 def my_book_invites(db: Session = Depends(get_db)) -> list[BookInvite]:
-    """Books I've been invited to and haven't answered."""
     rows = db.execute(text("select book_id, book_name, role::text as role, invited_by_username as invited_by, invited_at"
                            "  from my_pending_invites() order by invited_at")).mappings()
     return [BookInvite(**r) for r in rows]
@@ -137,7 +126,7 @@ def accept(book_id: UUID, db: Session = Depends(get_db)) -> Response:
 
 @router.delete("/me/book-invites/{book_id}", status_code=204)
 def decline(book_id: UUID, user_id: UUID = Depends(current_user), db: Session = Depends(get_db)) -> Response:
-    """Removes the invite. Nobody is told; the owner sees it gone from the list."""
+    """Nobody is told: the owner sees the invite gone from the list."""
     _pending(db, book_id)
     db.execute(text("delete from book_members where book_id = :b and user_id = :u and accepted_at is null"),
                {"b": book_id, "u": user_id})

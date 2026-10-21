@@ -79,7 +79,6 @@ function ShowOnce({ title, body, link, qr, code, onClose }: {
   )
 }
 
-// The server's admin: its name, who can sign up, updates, the daily jobs, invites and accounts.
 export function Admin() {
   const { t } = useTranslation()
   const me = useMe()
@@ -139,8 +138,7 @@ function ServerSettings() {
 const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
 const HALF_HOURS = Array.from({ length: 48 }, (_, i) => i * 30)
 
-// The daily jobs (msaving#6): each one's time of day, in the admin's own
-// timezone, whether the exchange rates run, and how each last run went.
+// Each job's time of day is shown and set in the admin's own timezone.
 function Jobs({ timezone }: { timezone: string }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

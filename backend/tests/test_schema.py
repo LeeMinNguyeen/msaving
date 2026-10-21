@@ -1,10 +1,4 @@
-"""Tests for the database migrations and the backend helpers, against a real Postgres.
-
-Run:  TEST_ADMIN_URL=postgresql+psycopg://postgres@localhost/postgres pytest -q tests/
-Needs a superuser connection; it creates a throwaway database, applies every
-file in migrations/ in order (exactly what a server runs), runs everything as
-the restricted app/FX/purge logins, then drops it.
-"""
+"""Run:  TEST_ADMIN_URL=postgresql+psycopg://postgres@localhost/postgres pytest -q tests/"""
 import threading
 import time
 import uuid
@@ -20,8 +14,6 @@ from conftest import _url
 
 pytestmark = pytest.mark.usefixtures("database")
 
-
-# ---------------------------------------------------------------- helpers
 
 def session(user_id):
     from app.core import db
@@ -92,8 +84,6 @@ def balance(user, account):
     return rows[0][0] if rows else None
 
 
-# ---------------------------------------------------------------- ledger
-
 def test_balances_and_ledger_rules():
     u = new_user("ledger_user")
     b = new_book(u)
@@ -154,8 +144,6 @@ def test_full_currency_list():
     assert fx_update.store_rates(fx, date(2026, 10, 7), {"THB": Decimal("36.1"), "BTC": Decimal("0.00001")}, "t") == 1
     fx.dispose()
 
-
-# ---------------------------------------------------------------- users and sharing
 
 def test_usernames_are_unique_and_lowercase():
     new_user("minh")
@@ -250,8 +238,6 @@ def test_audit_log_is_owner_only(database):
         assert c.execute(text("select count(*) from audit_log where book_id = :b"), {"b": b}).scalar() == 0
 
 
-# ---------------------------------------------------------------- edits, history, concurrency
-
 def test_edit_history_and_conflicts():
     from app.domain.transactions import Conflict, Entry, TxnIn, create_transaction, delete_transaction, update_transaction
     owner, editor = new_user("own_3"), new_user("edit_3")
@@ -323,8 +309,6 @@ def test_parallel_adds_all_count():
     [x.join() for x in threads]
     assert balance(u, chk) == -1000
 
-
-# ---------------------------------------------------------------- money features
 
 def test_exchange_rates():
     u = new_user("fx_user")
@@ -453,8 +437,6 @@ def test_budget_periods():
     assert (rows["daily"][0], rows["monthly"][0], rows["quarterly"][0], rows["yearly"][0]) == \
         (today, today.replace(day=1), date(today.year, (today.month - 1) // 3 * 3 + 1, 1), date(today.year, 1, 1))
 
-
-# ---------------------------------------------------------------- account deletion
 
 def test_account_deletion_restore_and_purge(database, tmp_path):
     from app.jobs import account_deletion as ad
@@ -708,8 +690,6 @@ def test_features_from_the_old_app(database):
     assert [r["Danh mục"] for r in txns if r["Loại"] == "chuyển khoản"] == ["Tiết kiệm"]
 
 
-# ---------------------------------------------------------------- export
-
 def test_csv_export():
     """R-EXP-1..2, R-LANG-1: users download all their data as readable CSV, in their language."""
     import csv
@@ -858,7 +838,7 @@ def test_fx_failures_say_why_in_one_line(monkeypatch, capsys):
 
 
 def test_scheduler_runs_what_is_due_as_the_purge_login(database):
-    """msaving#6: the scheduler, logged in as purge_login, reads the schedule and records each run; the API can't
+    """The scheduler, logged in as purge_login, reads the schedule and records each run; the API can't
     record runs, and purge_login can't reach the jobs table itself."""
     from app.jobs.scheduler import run_due
     purger, api = create_engine(_url("t_purge")), create_engine(_url("t_api"))

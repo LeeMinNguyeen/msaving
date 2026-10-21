@@ -1,6 +1,5 @@
-"""People in a book, for lending and borrowing: a name and an optional note,
-nothing else (they never signed up, and they're never sent to the AI). They
-link to `lent` and `loan` accounts; contact_balances says who owes whom."""
+"""People in a book, for lending and borrowing: a name and a note, nothing else, since they never signed up. They're
+never sent to the AI."""
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -23,8 +22,8 @@ Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 
 class Balance(BaseModel):
     currency: str
-    owed_to_you: int                           # minor units; what they still owe the book
-    you_owe: int                               # what the book still owes them
+    owed_to_you: int
+    you_owe: int
 
 
 class Contact(BaseModel):

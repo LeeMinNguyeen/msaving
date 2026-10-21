@@ -36,9 +36,8 @@ import { AccountDialog } from './AccountDialog'
 import { People } from './People'
 import { RefreshButton } from '../components/RefreshButton'
 
-// Screen 7, without people (milestone 5): accounts with their balances. A
-// table on desktop, a list on phones. An account opens its details, which lead
-// to its transactions (msaving#23).
+// A table on desktop, a list on phones. An account opens its details, which
+// lead to its transactions.
 export function Accounts({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

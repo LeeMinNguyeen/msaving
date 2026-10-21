@@ -1,20 +1,14 @@
-"""Monthly bills for credit cards and loans (msaving#37, docs: The ledger).
-Worked out from the transactions whenever they're asked for; nothing is stored.
+"""Monthly bills, worked out from the transactions whenever they're asked for.
 
-A credit card's bill is its statement balance, as a bank counts it: what the
-card owed at the end of its last statement date (that day's transactions
-included; a month without that day uses its last day), earlier unpaid amounts
-included, minus all the money in since (payments and refunds). It's due on
-the first repayment day after the statement date.
+A credit card's bill is its statement balance, as a bank counts it: what the card owed at the end of its last
+statement date (that day's transactions included; a month without that day uses its last day), earlier unpaid
+amounts included, minus all the money in since. It's due on the first repayment day after the statement date.
 
-A loan's bill is its monthly installment, from the contract, due on its next
-payment day (today included); payments since the payment day before count.
-An installment fee, if the loan has one, is added once, to the first payment.
-With an interest rate, the month's interest (what was owed before this
-period's payments, times the rate, over 12) is the part of the installment
-recorded as an expense on the loan when it's paid, once a month (a fixed
-id), so the loan goes down by the principal only. One period at a time: an installment missed last month
-isn't carried over.
+A loan's bill is its monthly installment, due on its next payment day (today included); payments since the previous
+payment day count. An installment fee is added once, to the first payment. With an interest rate, the month's
+interest (what was owed before this period's payments, times the rate, over 12) is the part of the installment
+recorded as an expense on the loan, so the loan goes down by the principal only. A missed installment isn't carried
+over.
 """
 import calendar
 import uuid
@@ -25,8 +19,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-FEE = uuid.UUID("9a1f4c2e-5b7d-4e8a-b3c6-2d0e8f1a7c45")        # namespace for installment fee transaction ids
-INTEREST = uuid.UUID("3c7e9d1a-8f2b-4a6c-9e5d-1b4f7a2c8e60")   # and for a month's interest
+FEE = uuid.UUID("9a1f4c2e-5b7d-4e8a-b3c6-2d0e8f1a7c45")
+INTEREST = uuid.UUID("3c7e9d1a-8f2b-4a6c-9e5d-1b4f7a2c8e60")
 
 
 def fee_transaction_id(account_id: UUID) -> UUID:
@@ -75,10 +69,10 @@ class Bill:
     period_start: date         # card: the statement's first day; loan: the day after the previous payment day
     period_end: date           # card: the statement date; loan: the payment day
     due_on: date
-    amount: int                # what the bill asks for, positive, in minor units of the account's currency
+    amount: int                # what the bill asks for, positive
     paid: int                  # money in since the period started (card: since the statement date)
-    remaining: int             # still to pay: amount - paid, never below 0
-    owed_now: int              # what the account owes now
+    remaining: int
+    owed_now: int
     interest: int              # loan: the part of the installment that's interest, to record as an expense (0 once recorded)
     interest_transaction_id: UUID | None
     fee: int                   # loan: the installment fee added to this payment (0 once charged)
@@ -105,8 +99,8 @@ def _last_payer(db: Session, account_id: UUID) -> UUID | None:
 
 
 def bill_for(db: Session, account, today: date) -> Bill | None:
-    """The account's bill on that day (the book's), or None: not a credit card or a loan, or missing the details
-    a bill needs (a card's statement and repayment days; a loan's installment and payment day)."""
+    """`today` is the book's date. None when the account has no bill: not a card or a loan, or missing a card's
+    statement and repayment days or a loan's installment and payment day."""
     a = account.id
     owed_now = max(0, -account.balance)
     if account.kind == "credit_card" and account.statement_day and account.payment_due_day:

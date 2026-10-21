@@ -1,19 +1,8 @@
-"""Brings the database up to date. Run by app/launch.py on every start, before
-the API; safe to repeat.
+"""Brings the database up to date on every start, before the API; safe to repeat. Connects as the database's owner.
 
-    1. Applies every file in migrations/ not applied yet, in order, each in
-       its own transaction, recorded in msaving.migrations.
-    2. Creates or updates one login per role the server uses, never superuser
-       or BYPASSRLS:
-           api_login    -> app_user        (the API)
-           purge_login  -> account_purger  (the daily purge)
-           fx_login     -> fx_updater      (the daily exchange rates)
-    3. While the server has no admin, makes a new setup code and prints it:
-       the setup screen asks for it, so only whoever can read the server's log
-       can create the admin account.
-
-Connects as the database's owner (the built-in database's `postgres`, or the
-operator's own Postgres or Supabase owner login).
+Applies the migrations not applied yet, each in its own transaction; creates or updates one login per role the
+server uses, never superuser or BYPASSRLS; and while the server has no admin, prints a new setup code, so that only
+whoever can read the server's log can create the admin account.
 """
 from pathlib import Path
 

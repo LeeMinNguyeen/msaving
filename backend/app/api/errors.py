@@ -1,9 +1,5 @@
-"""Turns database errors into responses with a code the apps translate.
-
-The database starts every error a user can cause with a code ("owner_required:
-...", docs: Languages); the API returns that code as `detail`. The English
-text after it is for developers and stays in the logs.
-"""
+"""The database starts every error a user can cause with a code ("owner_required: ..."): the API returns the
+code as `detail` for the apps to translate, and the English text after it stays in the logs."""
 import logging
 
 from fastapi import FastAPI, Request
@@ -16,17 +12,15 @@ from app.domain.transactions import Conflict
 
 log = logging.getLogger(__name__)
 
-# Database error code -> HTTP status.
 CODES = {
     "owner_required": 409, "currency_locked": 409, "txn_shape": 422, "category_kind": 422,
     "budget_expense_only": 422, "no_rate": 409, "setup_invalid": 403, "invite_invalid": 403,
     "invite_required": 403, "reset_invalid": 403, "admin_only": 403, "admin_self": 409, "not_found": 404, "invalid_timezone": 422,
 }
-# Unique constraints a user can run into -> code.
 UNIQUE = {
     "users_username_key": "username_taken",
     "accounts_book_id_name_key": "name_taken",
-    "budgets_category_id_period_key": "budget_exists",   # one per category and period
+    "budgets_category_id_period_key": "budget_exists",
     "contacts_book_id_name_key": "name_taken",
     "books_pkey": "conflict",              # a client id already used for someone else's book
     "accounts_pkey": "conflict",

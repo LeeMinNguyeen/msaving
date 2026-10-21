@@ -34,9 +34,7 @@ import { RefreshButton } from '../components/RefreshButton'
 
 const KINDS: CategoryKind[] = ['expense', 'income', 'transfer']
 
-// Screen 8, without budgets (milestone 5): the category tree by kind. Tap one
-// for its details, which lead to its transactions (msaving#23); the menu edits,
-// adds a sub-category, sets a budget, archives or deletes.
+// A category opens its details, which lead to its transactions.
 export function Categories({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
