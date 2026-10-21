@@ -6,15 +6,18 @@ retried create can't add it twice. Liabilities are negative: a card with
 450.00 owed opens at -45000 (the app turns "amount owed" into the sign).
 
 Details by kind (msaving#17): a note on any account; a credit card's limit,
-annual fee, statement day and payment due day; a yearly interest rate on
+annual fee, statement day and payment due day; a loan's monthly installment,
+payment day and installment fee (msaving#37); a yearly interest rate on
 savings, credit cards, loans and money lent. A detail sent for a kind it
 doesn't belong to is refused (422 invalid); changing an account's kind
-clears the ones that stop applying.
+clears the ones that stop applying. A card's or loan's monthly bill: GET
+.../{account_id}/bill (app/domain/bills.py).
 """
 import uuid
 from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StringConstraints
@@ -24,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.api.models import CurrencyCode, Name
 from app.api.routes.v1.books import get_book, require_role
+from app.domain.bills import Bill, bill_for
 from app.domain.transactions import Entry, TxnIn, create_transaction
 
 router = APIRouter(prefix="/books/{book_id}/accounts")
@@ -36,14 +40,19 @@ Money = Annotated[int, Field(ge=0, le=10**15)]                      # minor unit
 Day = Annotated[int, Field(ge=1, le=31)]
 Rate = Annotated[int, Field(ge=0, le=100_000)]                      # hundredths of a percent a year: 5.5 % = 550
 
-CARD_DETAILS = ("credit_limit", "annual_fee", "statement_day", "payment_due_day")
-DETAILS = ("note", *CARD_DETAILS, "interest_rate_bp")
+CARD_DETAILS = ("credit_limit", "annual_fee", "statement_day")
+LOAN_DETAILS = ("installment", "installment_fee")
+DETAILS = ("note", *CARD_DETAILS, "payment_due_day", *LOAN_DETAILS, "interest_rate_bp")
 INTEREST_KINDS = {"savings", "credit_card", "loan", "lent"}
 
 
 def detail_fits(field: str, kind: str) -> bool:
     if field in CARD_DETAILS:
         return kind == "credit_card"
+    if field in LOAN_DETAILS:
+        return kind == "loan"
+    if field == "payment_due_day":
+        return kind in ("credit_card", "loan")
     if field == "interest_rate_bp":
         return kind in INTEREST_KINDS
     return True
@@ -54,7 +63,9 @@ class Details(BaseModel):
     credit_limit: Money | None = None
     annual_fee: Money | None = None
     statement_day: Day | None = None           # the day of the month the statement closes
-    payment_due_day: Day | None = None
+    payment_due_day: Day | None = None         # a card's repayment day, a loan's payment day
+    installment: Annotated[int, Field(gt=0, le=10**15)] | None = None   # loans: the monthly payment
+    installment_fee: Money | None = None       # loans: a one-off fee, charged with the first payment
     interest_rate_bp: Rate | None = None
 
     def values(self, kind: str, only_sent: bool) -> dict:
@@ -90,7 +101,9 @@ class Account(BaseModel):
     credit_limit: int | None           # credit cards: minor units of the account's currency
     annual_fee: int | None
     statement_day: int | None
-    payment_due_day: int | None
+    payment_due_day: int | None        # credit cards and loans
+    installment: int | None            # loans
+    installment_fee: int | None
     interest_rate_bp: int | None       # savings, credit cards, loans, money lent
     archived_at: datetime | None
     version: int
@@ -98,7 +111,8 @@ class Account(BaseModel):
 
 
 ACCOUNT = ("select a.id, a.name, a.kind::text as kind, a.currency, a.last4, a.in_net_worth, a.contact_id, a.archived_at, a.version,"
-           "       a.note, a.credit_limit, a.annual_fee, a.statement_day, a.payment_due_day, a.interest_rate_bp,"
+           "       a.note, a.credit_limit, a.annual_fee, a.statement_day, a.payment_due_day, a.installment, a.installment_fee,"
+           "       a.interest_rate_bp,"
            "       b.balance"
            "  from accounts a join account_balances b on b.account_id = a.id"
            " where a.book_id = :book")
@@ -180,3 +194,11 @@ def update_account(book_id: UUID, account_id: UUID, body: UpdateAccount, db: Ses
         raise HTTPException(409, "conflict")
     db.commit()
     return get_account(db, book_id, account_id)
+
+
+@router.get("/{account_id}/bill")
+def account_bill(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> Bill | None:
+    """This month's bill of a credit card or a loan (msaving#37), on today's date in the book's timezone; null for
+    another kind of account, or one missing what a bill needs (app/domain/bills.py)."""
+    book = get_book(db, book_id)
+    return bill_for(db, get_account(db, book_id, account_id), datetime.now(ZoneInfo(book.timezone)).date())

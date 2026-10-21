@@ -238,20 +238,129 @@ def test_account_details_by_kind(client):
     assert client.patch(url, headers=auth(u), json={"version": cleared["version"], "kind": "loan", "credit_limit": 1}).status_code == 422
     loan = client.patch(url, headers=auth(u), json={"version": cleared["version"], "kind": "loan"}).json()
     assert {k: loan[k] for k in ("kind", "credit_limit", "statement_day", "payment_due_day", "interest_rate_bp")} == {
-        "kind": "loan", "credit_limit": None, "statement_day": None, "payment_due_day": None, "interest_rate_bp": 2_800}
+        "kind": "loan", "credit_limit": None, "statement_day": None, "payment_due_day": 10, "interest_rate_bp": 2_800}
+    assert loan["installment"] is None                                  # a loan's payment day stays (msaving#37)
     cash = client.patch(url, headers=auth(u), json={"version": loan["version"], "kind": "cash"}).json()
-    assert (cash["kind"], cash["interest_rate_bp"]) == ("cash", None)
+    assert (cash["kind"], cash["interest_rate_bp"], cash["payment_due_day"]) == ("cash", None, None)
 
     # The export has them, readable: amounts in the currency, the rate as a percentage (Vietnamese headers).
     import csv
     import io
     import zipfile
     create("credit_card", note="Thẻ phụ", credit_limit=20_000_000, statement_day=5, payment_due_day=20, interest_rate_bp=2_550)
+    create("loan", note="Điện thoại", installment=1_000_000, installment_fee=240_000, payment_due_day=15)
     z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
     rows = {r["Ghi chú"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
     assert {k: rows["Thẻ phụ"][k] for k in ("Hạn mức tín dụng", "Phí thường niên", "Ngày sao kê", "Ngày đến hạn thanh toán",
                                             "Lãi suất (%/năm)")} == {"Hạn mức tín dụng": "20000000", "Phí thường niên": "",
         "Ngày sao kê": "5", "Ngày đến hạn thanh toán": "20", "Lãi suất (%/năm)": "25.50"}
+    assert {k: rows["Điện thoại"][k] for k in ("Trả góp hằng tháng", "Phí trả góp", "Ngày đến hạn thanh toán")} == {
+        "Trả góp hằng tháng": "1000000", "Phí trả góp": "240000", "Ngày đến hạn thanh toán": "15"}
+
+
+def test_bill_dates():
+    """msaving#37: the statement day's own transactions belong to its statement; a month without that day uses its
+    last; a card is due on the first repayment day after the statement date, a loan on its next payment day."""
+    from datetime import date as d
+
+    from app.domain.bills import first_after, last_statement, next_on_or_after
+    assert last_statement(d(2026, 10, 20), 25) == d(2026, 9, 25)
+    assert last_statement(d(2026, 9, 25), 25) == d(2026, 8, 25)            # the statement day itself is still open
+    assert last_statement(d(2026, 9, 26), 25) == d(2026, 9, 25)
+    assert last_statement(d(2027, 3, 10), 31) == d(2027, 2, 28)            # February has no 31st
+    assert last_statement(d(2027, 1, 5), 25) == d(2026, 12, 25)
+    assert first_after(d(2026, 9, 25), 10) == d(2026, 10, 10) and first_after(d(2026, 9, 5), 25) == d(2026, 9, 25)
+    assert first_after(d(2026, 12, 25), 10) == d(2027, 1, 10)
+    assert next_on_or_after(d(2026, 10, 15), 15) == d(2026, 10, 15) and next_on_or_after(d(2026, 10, 16), 15) == d(2026, 11, 15)
+
+
+def test_monthly_bills(client, database):
+    """msaving#37: a credit card's bill is its statement balance minus the money in since; a loan's is its
+    installment, with a one-off fee on the first payment and the interest part recorded as an expense."""
+    from datetime import date as d
+    from types import SimpleNamespace
+
+    from sqlalchemy.orm import Session
+
+    from app.domain.bills import bill_for, fee_transaction_id, interest_transaction_id
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}"
+
+    def account(kind, opening, opened_on="2026-08-01", **details):
+        r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": f"{kind} {uuid.uuid4().hex[:6]}",
+                        "kind": kind, "opening_balance": opening, "opened_on": opened_on, **details})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    def txn(type_, day, *entries, txn_id=None):
+        r = client.post(f"{base}/transactions", headers=auth(u), json={"id": str(txn_id or uuid.uuid4()), "type": type_,
+                        "occurred_on": day, "entries": [{"account_id": a, "amount": m} for a, m in entries]})
+        assert r.status_code == 201, r.text
+
+    def bill(account_id, today):
+        a = SimpleNamespace(**next(x for x in client.get(f"{base}/accounts", headers=auth(u)).json() if x["id"] == account_id))
+        a.id = uuid.UUID(a.id)
+        with Session(database) as s:
+            return bill_for(s, a, today)
+
+    # A card owing 1,000,000 from before, statement on the 25th, due on the 10th.
+    card = account("credit_card", -1_000_000, statement_day=25, payment_due_day=10, credit_limit=10_000_000)
+    txn("expense", "2026-09-05", (card, -300_000))
+    txn("expense", "2026-09-25", (card, -200_000))                      # on the statement day: in that statement
+    txn("expense", "2026-09-26", (card, -50_000))                       # the next statement's
+    txn("refund", "2026-09-30", (card, 20_000))
+    txn("transfer", "2026-10-05", (accts["Bank"], -400_000), (card, 400_000))
+    b = bill(card, d(2026, 10, 20))
+    assert (b.kind, b.period_start, b.period_end, b.due_on) == ("card", d(2026, 8, 26), d(2026, 9, 25), d(2026, 10, 10))
+    assert (b.amount, b.paid, b.remaining, b.owed_now) == (1_500_000, 420_000, 1_080_000, 1_130_000)
+    assert b.pay_from == uuid.UUID(accts["Bank"])
+    txn("transfer", "2026-10-09", (accts["Bank"], -1_080_000), (card, 1_080_000))
+    assert bill(card, d(2026, 10, 20)).remaining == 0                   # paid off
+    assert bill(card, d(2026, 9, 25)).period_end == d(2026, 8, 25)
+
+    # A 0 % installment contract: 12,000,000 over 12 months, a 240,000 fee with the first payment.
+    phone = account("loan", -12_000_000, "2026-10-01", installment=1_000_000, payment_due_day=15, installment_fee=240_000)
+    b = bill(phone, d(2026, 10, 20))
+    assert (b.kind, b.due_on, b.amount, b.fee, b.interest, b.paid, b.remaining) == ("loan", d(2026, 11, 15), 1_240_000,
+                                                                                   240_000, 0, 0, 1_240_000)
+    assert b.fee_transaction_id == fee_transaction_id(uuid.UUID(phone))
+    txn("expense", "2026-10-20", (phone, -240_000), txn_id=b.fee_transaction_id)                # what Pay records
+    txn("transfer", "2026-10-20", (accts["Bank"], -1_240_000), (phone, 1_240_000))
+    b = bill(phone, d(2026, 10, 20))
+    assert (b.amount, b.fee, b.remaining, b.owed_now) == (1_000_000, 0, 0, 11_000_000)     # the fee once; down by 1,000,000
+    assert bill(phone, d(2026, 11, 16)).remaining == 1_000_000          # the next month's, without the fee
+
+    # 12 % a year: the month's interest is the part of the installment recorded as an expense.
+    car = account("loan", -10_000_000, "2026-10-01", installment=500_000, payment_due_day=15, interest_rate_bp=1_200)
+    b = bill(car, d(2026, 10, 20))
+    assert (b.amount, b.interest, b.fee, b.remaining) == (500_000, 100_000, 0, 500_000)
+    assert b.interest_transaction_id == interest_transaction_id(uuid.UUID(car), d(2026, 11, 15))
+    txn("expense", "2026-10-20", (car, -100_000), txn_id=b.interest_transaction_id)
+    txn("transfer", "2026-10-20", (accts["Bank"], -200_000), (car, 200_000))                  # paid in two parts
+    b = bill(car, d(2026, 10, 20))
+    assert (b.amount, b.interest, b.remaining) == (500_000, 0, 300_000)                       # the interest once a month
+    txn("transfer", "2026-10-21", (accts["Bank"], -300_000), (car, 300_000))
+    b = bill(car, d(2026, 10, 21))
+    assert (b.amount, b.remaining, b.owed_now) == (500_000, 0, 9_600_000)                      # principal 400,000
+
+    # The last installment is what's left.
+    last = account("loan", -300_000, "2026-10-01", installment=500_000, payment_due_day=15)
+    assert (bill(last, d(2026, 10, 20)).amount, bill(last, d(2026, 10, 20)).remaining) == (300_000, 300_000)
+
+    # The API: today's bill; none for other kinds or without what a bill needs; not someone else's.
+    assert client.get(f"{base}/accounts/{card}/bill", headers=auth(u)).json()["kind"] == "card"
+    assert client.get(f"{base}/accounts/{accts['Cash']}/bill", headers=auth(u)).json() is None
+    no_days = account("credit_card", 0)
+    assert client.get(f"{base}/accounts/{no_days}/bill", headers=auth(u)).json() is None
+    assert client.get(f"{base}/accounts/{card}/bill", headers=auth(signed_up(client))).status_code == 404
+
+    # Loan details: only on loans, an installment above 0; a card can't have them.
+    for kind, details in (("credit_card", {"installment": 1}), ("cash", {"installment_fee": 1}), ("loan", {"installment": 0}),
+                          ("cash", {"payment_due_day": 5})):
+        r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": uuid.uuid4().hex[:8],
+                        "kind": kind, **details})
+        assert r.status_code == 422, (kind, details)
 
 
 def test_categories(client):
