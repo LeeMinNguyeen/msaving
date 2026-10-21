@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
+from psycopg.conninfo import make_conninfo
 import pyotp
 import pytest
 from sqlalchemy import create_engine, text
@@ -430,6 +431,48 @@ def test_migrate_builds_a_server_and_is_safe_to_repeat(fresh_server):
         conn.commit()
     applied3, _ = migrate.run(url, passwords, before_migrating=lambda: backups.append(1))
     assert backups == [1] and len(applied3) == 1 and last in applied3[0]
+
+
+def test_logins_are_set_again_by_an_owner_that_is_no_superuser(fresh_server):
+    """Supabase's owner (postgres) isn't a superuser, and since PostgreSQL 16 only a superuser may name SUPERUSER
+    or BYPASSRLS in ALTER ROLE: every start after the first failed with "permission denied to alter role". Such an
+    owner (CREATEROLE, with admin option on the logins and roles it made) sets the passwords again, and a login
+    someone made a superuser is refused loudly."""
+    from app.jobs import migrate
+    url, passwords = fresh_server
+    migrate.run(url, passwords)
+    owner = f"owner_{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(url, autocommit=True) as conn:
+        conn.execute(f"create role {owner} login createrole password 'pw'")
+        for role in [*migrate.LOGINS, *migrate.LOGINS.values()]:
+            conn.execute(f"grant {role} to {owner} with admin option, inherit false, set false")
+    as_owner = make_conninfo(url, user=owner, password="pw")
+    new = {login: "n" + uuid.uuid4().hex for login in migrate.LOGINS}
+
+    def hashes():
+        with psycopg.connect(url) as conn:
+            return dict(conn.execute("select rolname, rolpassword from pg_authid where rolname = any(%s)",
+                                     (list(migrate.LOGINS),)).fetchall())
+    try:
+        before = hashes()
+        with psycopg.connect(as_owner, autocommit=True) as conn:
+            migrate.set_logins(conn, new)
+        after = hashes()
+        assert all(after[login] != before[login] for login in migrate.LOGINS)       # each got its new password
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute("alter role fx_login bypassrls")
+        with psycopg.connect(as_owner, autocommit=True) as conn, \
+                pytest.raises(psycopg.errors.InsufficientPrivilege, match="permission denied to alter role"):
+            migrate.set_logins(conn, new)
+        migrate.run(url, passwords)                                                 # a superuser owner turns it off
+        with psycopg.connect(url) as conn:
+            assert not conn.execute("select rolbypassrls from pg_roles where rolname = 'fx_login'").fetchone()[0]
+    finally:
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute(f"drop owned by {owner}")
+            for login, role in migrate.LOGINS.items():
+                conn.execute(f"revoke {role} from {login} granted by {owner}")
+            conn.execute(f"drop role {owner}")
 
 
 def test_setup_creates_the_admin_once(fresh_server, monkeypatch):
