@@ -37,7 +37,7 @@ export function SignIn() {
   return (
     <Centered>
       <Stack component="form" spacing={2} onSubmit={(e) => submit(e, signIn)}>
-        <PublicHeader title={t('auth.signInTitle')} />
+        <PublicHeader title={t('auth.signInTitle')} languageSwitch={false} />
         {idleMinutes && <Alert severity="info">{t('idle.signedOut', { minutes: idleMinutes })}</Alert>}
         <TextField name="username" label={t('auth.username')} required autoComplete="username"
           slotProps={{ htmlInput: { autoCapitalize: 'none' } }} />

@@ -5,17 +5,24 @@ async function freshI18n() {
   return (await import('./index')).default
 }
 
-describe('language before sign-in', () => {
+describe('the language a page opens in', () => {
   afterEach(() => localStorage.clear())
 
-  it('is English when this browser remembers no choice', async () => {
+  it('is English before sign-in, whatever this browser remembers', async () => {
+    localStorage.setItem('msaving.language', 'vi')
     expect((await freshI18n()).language).toBe('en')
     expect(document.documentElement.lang).toBe('en')
   })
 
-  it('is Vietnamese when this browser remembers that choice', async () => {
+  it("is the user's own once signed in", async () => {
+    localStorage.setItem('msaving.session', 'token')
     localStorage.setItem('msaving.language', 'vi')
     expect((await freshI18n()).language).toBe('vi')
     expect(document.documentElement.lang).toBe('vi')
+  })
+
+  it('is English for a signed-in user with nothing remembered', async () => {
+    localStorage.setItem('msaving.session', 'token')
+    expect((await freshI18n()).language).toBe('en')
   })
 })
