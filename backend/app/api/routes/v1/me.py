@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,7 @@ class Profile(BaseModel):
     created_at: datetime
     deletion_requested_at: datetime | None
     is_admin: bool
+    idle_sign_out_minutes: int | None   # signs this user out after this long without activity (msaving#26); None: off
 
 
 class Me(BaseModel):
@@ -49,6 +50,8 @@ class UpdateProfile(BaseModel):
     display_name: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None   # "" clears it
     language: Literal["vi", "en"] | None = None
     timezone: Timezone | None = None
+    # Sign me out after this many minutes without activity, on every device (msaving#26); null turns it off.
+    idle_sign_out_minutes: Annotated[int, Field(ge=1, le=1440)] | None = None
 
 
 @router.patch("/me")
@@ -68,6 +71,9 @@ def update_profile(body: UpdateProfile, caller: Caller = Depends(current_caller)
                             "tz": body.timezone}).rowcount
     if n == 0:
         raise HTTPException(404, "not_found")
+    if "idle_sign_out_minutes" in body.model_fields_set:        # left out leaves it; null turns it off
+        db.execute(text("update users set idle_sign_out_minutes = :m where id = :i"),
+                   {"m": body.idle_sign_out_minutes, "i": caller.id})
     db.commit()
     return _me(db, caller.id)
 

@@ -352,7 +352,11 @@
     "password": "Mật khẩu",
     "currentPassword": "Mật khẩu hiện tại",
     "changePassword": "Đổi mật khẩu",
-    "passwordChanged": "Đã đổi mật khẩu. Các thiết bị khác đã được đăng xuất."
+    "passwordChanged": "Đã đổi mật khẩu. Các thiết bị khác đã được đăng xuất.",
+    "idleSignOut": "Tự đăng xuất khi không hoạt động",
+    "idleSignOutHint": "Trên mọi thiết bị: sau khoảng thời gian này không nhấp, gõ phím hay chạm, bạn sẽ bị đăng xuất, có cảnh báo trước một phút.",
+    "idleOff": "Không (chỉ sau 30 ngày không dùng)",
+    "idleMinutes": "Sau {{minutes}} phút"
   },
   "closing": {
     "title": "Tài khoản đang được đóng",
@@ -431,10 +435,6 @@
     "updatingReload": "Đang cập nhật lên {{version}}. Máy chủ đang dựng lại và khởi động lại nên trang này có thể không hoạt động trong vài phút. Hãy tải lại trang sau khoảng 5 phút.",
     "updatedReload": "Đã cập nhật lên {{version}}. Hãy tải lại trang để dùng phiên bản mới.",
     "reload": "Tải lại",
-    "idleSignOut": "Đăng xuất khi không hoạt động",
-    "idleSignOutHint": "Áp dụng cho mọi người trên máy chủ này: sau khoảng thời gian này không nhấp, gõ phím hay chạm, họ sẽ bị đăng xuất và phải đăng nhập lại.",
-    "idleOff": "Tắt",
-    "idleMinutes": "{{minutes}} phút",
     "jobs": "Việc chạy hằng ngày",
     "jobsHint": "Mỗi việc chạy mỗi ngày một lần vào giờ đã đặt, theo múi giờ của bạn ({{timezone}}). Việc bị lỡ khi máy chủ tắt sẽ chạy khi máy chủ bật lại.",
     "job": "Việc",

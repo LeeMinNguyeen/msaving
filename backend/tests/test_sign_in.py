@@ -107,7 +107,7 @@ def test_admin_can_open_sign_up(client, admin, invite_only):
     _, admin_token = admin
     assert client.patch("/v1/admin/instance", headers=bearer(admin_token), json={"signup": "open", "name": "Nhà"}).status_code == 204
     assert client.get("/v1/instance").json() | {"server_version": None} == {
-        "name": "Nhà", "signup": "open", "api_version": 1, "setup_needed": False, "server_version": None, "idle_sign_out_minutes": None}
+        "name": "Nhà", "signup": "open", "api_version": 1, "setup_needed": False, "server_version": None}
     sign_up(client)
     client.patch("/v1/admin/instance", headers=bearer(admin_token), json={"name": "MSaving"})
 
@@ -227,45 +227,44 @@ def test_signed_in_devices(client, database):
     assert [s["device"] for s in client.get("/v1/auth/sessions", headers=bearer(phone)).json()] == ["Safari · iOS"]
 
 
-def test_idle_sign_out(client, admin, database):
-    """msaving#26: the admin can sign everyone out after so many minutes unused; off by default (30 days)."""
-    _, admin_token = admin
+def test_idle_sign_out(client, database):
+    """msaving#26: each user can have their own sessions end after so many minutes unused; off by default
+    (30 days), and nobody else's setting touches them."""
     name, token = sign_up(client)
     other = sign_in(client, name).json()["token"]
-    url = "/v1/admin/instance"
-    assert client.get("/v1/instance").json()["idle_sign_out_minutes"] is None
-    assert client.patch(url, headers=bearer(token), json={"idle_sign_out_minutes": 5}).json() == {"detail": "admin_only"}
+    _, neighbour = sign_up(client)
+    assert me(client, token).json()["profile"]["idle_sign_out_minutes"] is None
     for bad in (0, 1441, "five"):
-        assert client.patch(url, headers=bearer(admin_token), json={"idle_sign_out_minutes": bad}).status_code == 422
+        assert client.patch("/v1/me", headers=bearer(token), json={"idle_sign_out_minutes": bad}).status_code == 422
 
     def unused_for(t, minutes):
         with database.connect() as c:
             c.execute(text("update sessions set last_used_at = now() - make_interval(mins => :m)"
                            " where token_sha256 = sha256(convert_to(:t, 'utf8'))"), {"t": t, "m": minutes})
 
-    try:
-        assert client.patch(url, headers=bearer(admin_token), json={"idle_sign_out_minutes": 5}).status_code == 204
-        assert client.patch(url, headers=bearer(admin_token), json={"signup": "open"}).status_code == 204  # left out: kept
-        assert client.get("/v1/instance").json()["idle_sign_out_minutes"] == 5
-        unused_for(token, 5)                     # kept to the minute, so a minute's grace: still signed in
-        assert me(client, token).status_code == 200
-        unused_for(token, 7)
-        assert me(client, token).status_code == 401
-        unused_for(other, 7)                     # not listed, then deleted by the daily purge
-        third = sign_in(client, name).json()["token"]
-        assert [s["current"] for s in client.get("/v1/auth/sessions", headers=bearer(third)).json()] == [True]
-        with database.connect() as c:
-            c.execute(text("select purge_expired_sign_in()"))
-            left = c.execute(text("select count(*) from sessions s join users u on u.id = s.user_id where u.username = :n"),
-                             {"n": name}).scalar()
-        assert left == 1
-        assert client.patch(url, headers=bearer(admin_token), json={"idle_sign_out_minutes": None}).status_code == 204
-        assert client.get("/v1/instance").json()["idle_sign_out_minutes"] is None
-        unused_for(third, 7 * 24 * 60)           # off again: 30 days
-        assert me(client, third).status_code == 200
-    finally:
-        with database.connect() as c:
-            c.execute(text("update instance_settings set idle_sign_out_minutes = null"))
+    assert client.patch("/v1/me", headers=bearer(token), json={"idle_sign_out_minutes": 5}).json()["profile"][
+        "idle_sign_out_minutes"] == 5
+    assert client.patch("/v1/me", headers=bearer(token), json={"language": "en"}).json()["profile"][
+        "idle_sign_out_minutes"] == 5                                     # left out: kept
+    assert "idle_sign_out_minutes" not in client.get("/v1/instance").json()   # not a server setting
+    unused_for(token, 5)                     # kept to the minute, so a minute's grace: still signed in
+    assert me(client, token).status_code == 200
+    unused_for(token, 7)
+    assert me(client, token).status_code == 401
+    unused_for(neighbour, 7)                 # someone else's sessions: their own 30 days
+    assert me(client, neighbour).status_code == 200
+    unused_for(other, 7)                     # not listed, then deleted by the daily purge
+    third = sign_in(client, name).json()["token"]
+    assert [s["current"] for s in client.get("/v1/auth/sessions", headers=bearer(third)).json()] == [True]
+    with database.connect() as c:
+        c.execute(text("select purge_expired_sign_in()"))
+        left = c.execute(text("select count(*) from sessions s join users u on u.id = s.user_id where u.username = :n"),
+                         {"n": name}).scalar()
+    assert left == 1
+    assert client.patch("/v1/me", headers=bearer(third), json={"idle_sign_out_minutes": None}).json()["profile"][
+        "idle_sign_out_minutes"] is None
+    unused_for(third, 7 * 24 * 60)           # off again: 30 days
+    assert me(client, third).status_code == 200
 
 
 @pytest.mark.parametrize("agent, label", [
@@ -456,7 +455,7 @@ def test_setup_creates_the_admin_once(fresh_server, monkeypatch):
     assert ok.status_code == 201
     assert client.get("/v1/me", headers=bearer(ok.json()["token"])).json()["profile"]["is_admin"] is True
     assert client.get("/v1/instance").json() | {"server_version": None} == {
-        "name": "Nhà Lan", "signup": "invite", "api_version": 1, "setup_needed": False, "server_version": None, "idle_sign_out_minutes": None}
+        "name": "Nhà Lan", "signup": "invite", "api_version": 1, "setup_needed": False, "server_version": None}
     again = client.post("/v1/setup", json={**body, "username": "boss2", "setup_code": code})
     assert (again.status_code, again.json()) == (403, {"detail": "setup_invalid"})
     _, code_after = migrate.run(url, passwords)

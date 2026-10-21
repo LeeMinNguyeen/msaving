@@ -182,10 +182,10 @@ class DeviceSession(BaseModel):
 @router.get("/auth/sessions")
 def sessions(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> list[DeviceSession]:
     """Where this user is signed in (msaving#5): this device first, then by last use. Never a token or its hash.
-    Sessions past their lifetime (30 days unused, or the admin's idle sign-out) aren't listed, even before
-    they're deleted."""
+    Sessions past their lifetime (30 days unused, or the user's own sign-out after inactivity) aren't listed,
+    even before they're deleted."""
     rows = db.execute(text("select id, device, created_at, last_used_at, token_sha256 = :h as current from sessions"
-                           " where user_id = :u and last_used_at > now() - session_lifetime()"
+                           " where user_id = :u and last_used_at > now() - session_lifetime(:u)"
                            " order by token_sha256 = :h desc, last_used_at desc"),
                       {"u": caller.id, "h": caller.token_sha256}).mappings()
     return [DeviceSession(**r) for r in rows]

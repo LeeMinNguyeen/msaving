@@ -1,6 +1,6 @@
 """The server's admin: invites, users, password reset links, the server's
-name, whether sign-up is open, signing out after inactivity and the daily
-jobs' schedule (docs: Accounts on an instance, Background jobs).
+name, whether sign-up is open, and the daily jobs' schedule (docs: Accounts
+on an instance, Background jobs).
 Every database function behind these checks the caller is the admin
 (403 admin_only otherwise).
 
@@ -127,15 +127,11 @@ def revoke_invite(invite_id: UUID, db: Session = Depends(get_db)) -> Response:
 class InstanceChange(BaseModel):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)] | None = None
     signup: Literal["invite", "open"] | None = None
-    # Sign everyone out after this many minutes idle (msaving#26); null turns it off, left out leaves it.
-    idle_sign_out_minutes: Annotated[int, Field(ge=1, le=1440)] | None = None
 
 
 @router.patch("/instance", status_code=204)
 def change_instance(body: InstanceChange, db: Session = Depends(get_db)) -> Response:
     db.execute(text("select admin_set_instance(:n, :s)"), {"n": body.name, "s": body.signup})
-    if "idle_sign_out_minutes" in body.model_fields_set:
-        db.execute(text("select admin_set_idle_sign_out(:m)"), {"m": body.idle_sign_out_minutes})
     db.commit()
     return Response(status_code=204)
 

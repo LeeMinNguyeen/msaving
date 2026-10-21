@@ -83,7 +83,6 @@ class Instance(BaseModel):
     api_version: int
     signup: str             # invite | open
     setup_needed: bool      # no admin yet: the setup screen, with the code from the server's log
-    idle_sign_out_minutes: int | None   # set by the admin: everyone is signed out after this long idle; None: off
 
 
 @v1.get("/instance")

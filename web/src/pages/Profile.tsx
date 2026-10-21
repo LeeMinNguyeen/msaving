@@ -24,6 +24,8 @@ import { TimezonePicker } from '../components/TimezonePicker'
 import { currentLanguage, languages, setLanguage, type Language } from '../i18n'
 import { api, download, send, type DeviceSession, type Me, type Profile as ProfileT } from '../lib/api'
 import { keys, useMe } from '../lib/queries'
+
+const IDLE_CHOICES = [0, 5, 10, 15, 30, 60] // minutes; 0: never (30 days unused)
 import { newAccountBody } from '../auth/forms'
 import { PasswordFields } from '../components/AccountForm'
 
@@ -46,7 +48,7 @@ export function Profile() {
       <Typography variant="h5">{t('profile.title')}</Typography>
       <ProfileForm profile={me.data.profile} />
       <Security />
-      <Devices />
+      <Devices profile={me.data.profile} />
       <YourData profile={me.data.profile} />
     </Stack>
   )
@@ -245,7 +247,8 @@ function Security() {
 }
 
 // Where this account is signed in (msaving#5): this device first, any other one signed out alone or all at once.
-function Devices() {
+// And the user's own sign-out after inactivity (msaving#26), for every device, saved as soon as it's picked.
+function Devices({ profile }: { profile: ProfileT }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
   const qc = useQueryClient()
@@ -256,6 +259,8 @@ function Devices() {
   const when = new Intl.DateTimeFormat(currentLanguage() === 'vi' ? 'vi-VN' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
   const name = (s: DeviceSession) => s.device ?? t('profile.unknownDevice')
   const others = (sessions.data ?? []).filter((s) => !s.current)
+  const idle = profile.idle_sign_out_minutes ?? 0
+  const idleChoices = IDLE_CHOICES.includes(idle) ? IDLE_CHOICES : [...IDLE_CHOICES, idle].sort((a, b) => a - b)
 
   async function run(key: string, fn: () => Promise<unknown>, done: string) {
     setBusy(key)
@@ -274,6 +279,13 @@ function Devices() {
 
   return (
     <Section title={t('profile.devices')}>
+      <TextField select label={t('profile.idleSignOut')} value={idle} helperText={t('profile.idleSignOutHint')} disabled={busy === 'idle'}
+        onChange={(e) => run('idle', async () => {
+          await send('PATCH', '/v1/me', { idle_sign_out_minutes: Number(e.target.value) || null })
+          await qc.invalidateQueries({ queryKey: keys.me })
+        }, t('profile.saved'))}>
+        {idleChoices.map((m) => <MenuItem key={m} value={m}>{m ? t('profile.idleMinutes', { minutes: m }) : t('profile.idleOff')}</MenuItem>)}
+      </TextField>
       <Typography color="text.secondary">{t('profile.devicesHint')}</Typography>
       {sessions.isError && <Alert severity="error">{errorText(sessions.error)}</Alert>}
       {sessions.data && (

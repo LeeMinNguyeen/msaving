@@ -47,7 +47,6 @@ function Failed({ error }: { error: unknown }) {
 function RequireAccount() {
   const signedIn = useSession()
   const me = useMe(signedIn)
-  const idleMinutes = useInstance().data?.idle_sign_out_minutes ?? null
   const language = me.data?.profile.language
   useEffect(() => {
     if (language) setLanguage(language) // the saved language wins once signed in
@@ -59,7 +58,7 @@ function RequireAccount() {
   const profile = me.data.profile
   return (
     <>
-      <IdleSignOut minutes={idleMinutes} />
+      <IdleSignOut minutes={profile.idle_sign_out_minutes} />
       {profile.deletion_requested_at ? <AccountClosing requestedAt={profile.deletion_requested_at} /> : <Outlet />}
     </>
   )

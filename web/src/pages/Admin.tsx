@@ -79,8 +79,7 @@ function ShowOnce({ title, body, link, qr, code, onClose }: {
   )
 }
 
-// The server's admin: its name, who can sign up, signing out after inactivity, updates, the daily jobs,
-// invites and accounts.
+// The server's admin: its name, who can sign up, updates, the daily jobs, invites and accounts.
 export function Admin() {
   const { t } = useTranslation()
   const me = useMe()
@@ -104,19 +103,14 @@ function ServerSettings() {
   const instance = useInstance()
   const [name, setName] = useState<string | null>(null)
   const [signup, setSignup] = useState<'invite' | 'open' | null>(null)
-  const [idle, setIdle] = useState<number | null>(null) // 0: off; null: left as it is
   const [state, setState] = useState<{ error?: unknown; saved?: boolean; busy?: boolean }>({})
   if (!instance.data) return null
-  const idleNow = idle ?? instance.data.idle_sign_out_minutes ?? 0
-  const idleChoices = [0, 5, 10, 15, 30, 60].includes(idleNow) ? [0, 5, 10, 15, 30, 60] : [0, 5, 10, 15, 30, 60, idleNow].sort((a, b) => a - b)
 
   async function save(e: FormEvent) {
     e.preventDefault()
     setState({ busy: true })
     try {
-      await send('PATCH', '/v1/admin/instance', {
-        name: name ?? undefined, signup: signup ?? undefined, ...(idle !== null && { idle_sign_out_minutes: idle || null }),
-      })
+      await send('PATCH', '/v1/admin/instance', { name: name ?? undefined, signup: signup ?? undefined })
       await qc.invalidateQueries({ queryKey: ['instance'] })
       setState({ saved: true })
     } catch (err) {
@@ -133,12 +127,6 @@ function ServerSettings() {
           onChange={(e) => setSignup(e.target.value as 'invite' | 'open')} helperText={t('admin.signupHint')}>
           <MenuItem value="invite">{t('admin.signupInvite')}</MenuItem>
           <MenuItem value="open">{t('admin.signupOpen')}</MenuItem>
-        </TextField>
-        <TextField select label={t('admin.idleSignOut')} value={idleNow} onChange={(e) => setIdle(Number(e.target.value))}
-          helperText={t('admin.idleSignOutHint')}>
-          {idleChoices.map((m) => (
-            <MenuItem key={m} value={m}>{m ? t('admin.idleMinutes', { minutes: m }) : t('admin.idleOff')}</MenuItem>
-          ))}
         </TextField>
         {state.error ? <Alert severity="error">{errorText(state.error)}</Alert> : null}
         {state.saved ? <Alert severity="success">{t('profile.saved')}</Alert> : null}

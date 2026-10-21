@@ -352,7 +352,11 @@
     "password": "Password",
     "currentPassword": "Current password",
     "changePassword": "Change password",
-    "passwordChanged": "Password changed. Other devices are signed out."
+    "passwordChanged": "Password changed. Other devices are signed out.",
+    "idleSignOut": "Sign me out after inactivity",
+    "idleSignOutHint": "On every device: after this long with no click, key or touch, you're signed out, with a warning a minute before.",
+    "idleOff": "Never (only after 30 days unused)",
+    "idleMinutes": "After {{minutes}} minutes"
   },
   "closing": {
     "title": "Your account is closing",
@@ -431,10 +435,6 @@
     "updatingReload": "Updating to {{version}}. The server rebuilds and restarts, so this page may stop working for a few minutes. Reload it in about 5 minutes.",
     "updatedReload": "Updated to {{version}}. Reload the page to use the new version.",
     "reload": "Reload",
-    "idleSignOut": "Sign out after inactivity",
-    "idleSignOutHint": "For everyone on this server: after this long with no click, key or touch, they're signed out and sign in again.",
-    "idleOff": "Off",
-    "idleMinutes": "{{minutes}} minutes",
     "jobs": "Daily jobs",
     "jobsHint": "Each runs once a day at its time, in your timezone ({{timezone}}). One missed while the server was off runs when it starts again.",
     "job": "Job",

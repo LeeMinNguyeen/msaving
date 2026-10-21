@@ -48,7 +48,7 @@ def test_health_needs_no_token(client):
 def test_instance_needs_no_token(client):
     r = client.get("/v1/instance").json()
     assert r["api_version"] == 1 and r["signup"] == "open" and r["name"] == "MSaving"
-    assert set(r) == {"name", "server_version", "api_version", "signup", "setup_needed", "idle_sign_out_minutes"}
+    assert set(r) == {"name", "server_version", "api_version", "signup", "setup_needed"}
 
 
 def test_me_returns_only_my_profile(client):
@@ -58,7 +58,7 @@ def test_me_returns_only_my_profile(client):
     profile = r.json()["profile"]
     assert profile["username"].startswith("me_") and profile["language"] == "vi" and profile["is_admin"] is False
     assert set(profile) == {"username", "display_name", "timezone", "language", "created_at", "deletion_requested_at",
-                            "is_admin"}
+                            "is_admin", "idle_sign_out_minutes"}
     assert client.get("/v1/me", headers=auth(other)).json()["id"] == str(other)
 
 

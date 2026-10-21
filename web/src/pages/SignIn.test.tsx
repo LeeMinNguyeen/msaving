@@ -10,7 +10,7 @@ describe('the sign-in page', () => {
   afterEach(() => idleNotice.set(null))
 
   it('says when the user was signed out for inactivity (msaving#26)', async () => {
-    fakeApi({ 'GET /v1/instance': { name: 'Nhà', signup: 'invite', setup_needed: false, idle_sign_out_minutes: 5 } })
+    fakeApi({ 'GET /v1/instance': { name: 'Nhà', signup: 'invite', setup_needed: false } })
     session.set(null)
     idleNotice.set(5)
     await renderApp(<SignIn />)
@@ -20,7 +20,7 @@ describe('the sign-in page', () => {
   })
 
   it('says nothing of the kind otherwise', async () => {
-    fakeApi({ 'GET /v1/instance': { name: 'Nhà', signup: 'invite', setup_needed: false, idle_sign_out_minutes: null } })
+    fakeApi({ 'GET /v1/instance': { name: 'Nhà', signup: 'invite', setup_needed: false } })
     session.set(null)
     await renderApp(<SignIn />)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
