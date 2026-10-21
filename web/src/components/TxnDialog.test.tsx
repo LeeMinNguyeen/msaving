@@ -52,3 +52,80 @@ describe('the time of a transaction', () => {
     expect(api.writes()[0].body).toMatchObject({ occurred_on: '2026-10-03', occurred_time: '08:05', version: 2 })
   })
 })
+
+describe('paying a card purchase in installments (msaving#71)', () => {
+  const visa: Account = { ...cash, id: 'visa', name: 'Visa', kind: 'credit_card', balance: 0, statement_day: 25, payment_due_day: 10,
+    credit_limit: 20_000_000 }
+  const laptop: Transaction = { ...lunch, id: 't2', payee: 'Laptop', version: 1,
+    entries: [{ account_id: 'visa', amount: -6_000_000, currency: 'VND' }] }
+  const plan = { id: 'p1', account_id: 'visa', transaction_id: 't2', payee: 'Laptop', occurred_on: '2026-10-03', amount: 6_000_000,
+    months: 6, converted_on: '2026-10-03', first_statement: '2026-10-25', fee: 0, fee_split: false, counts_toward_limit: true,
+    ended_on: null, version: 1, installment: 1_000_000, billed: 0, left_to_bill: 6_000_000 }
+
+  function cards(plans: unknown[] = []) {
+    return fakeApi({
+      'GET /v1/currencies': currencies,
+      'GET /v1/books/b1/accounts': [cash, visa],
+      'GET /v1/books/b1/categories': [],
+      'GET /v1/books/b1/installments': plans,
+      'POST /v1/books/b1/transactions': ({ body }: { body: unknown }) => body,
+      'PUT /v1/books/b1/transactions/t2': ({ body }: { body: unknown }) => body,
+      'POST /v1/books/b1/installments': ({ body }: { body: unknown }) => body,
+      'PATCH /v1/books/b1/installments/p1': plan,
+      'DELETE /v1/books/b1/installments/p1': undefined,
+    })
+  }
+
+  it('saves the purchase, then its plan', async () => {
+    const api = cards()
+    await renderApp(<TxnDialog book={book} txn={null} defaults={{ account: 'visa' }} onClose={() => {}} />)
+    await userEvent.type(await screen.findByLabelText(/^Amount/), '6000000')
+    await userEvent.click(screen.getByRole('switch', { name: 'Pay in installments' }))
+    expect(screen.getByRole('spinbutton', { name: 'Months' })).toHaveValue(6)
+    expect(screen.getByText('6 × ₫1,000,000')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Conversion fee'), '120000')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(2))
+    const [purchase, created] = api.writes()
+    expect(created.path).toBe('/v1/books/b1/installments')
+    expect(created.body).toMatchObject({ transaction_id: (purchase.body as { id: string }).id, months: 6, fee: 120_000,
+      fee_split: false, counts_toward_limit: true, converted_on: (purchase.body as { occurred_on: string }).occurred_on })
+  })
+
+  it('is only offered on a credit card', async () => {
+    cards()
+    await renderApp(<TxnDialog book={book} txn={null} defaults={{ account: 'cash' }} onClose={() => {}} />)
+    await screen.findByLabelText(/^Amount/)
+    expect(screen.queryByRole('switch', { name: 'Pay in installments' })).not.toBeInTheDocument()
+  })
+
+  it('shows a saved plan and saves what changed', async () => {
+    const api = cards([plan])
+    await renderApp(<TxnDialog book={book} txn={laptop} onClose={() => {}} />)
+    expect(await screen.findByRole('switch', { name: 'Pay in installments' })).toBeChecked()
+    const months = screen.getByRole('spinbutton', { name: 'Months' })
+    await userEvent.clear(months)
+    await userEvent.type(months, '12')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(2))
+    expect(api.writes()[1]).toMatchObject({ method: 'PATCH', path: '/v1/books/b1/installments/p1', body: { version: 1, months: 12 } })
+  })
+
+  it('removes the plan when the switch is turned off', async () => {
+    const api = cards([plan])
+    await renderApp(<TxnDialog book={book} txn={laptop} onClose={() => {}} />)
+    await userEvent.click(await screen.findByRole('switch', { name: 'Pay in installments' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(2))
+    expect(api.writes()[1]).toMatchObject({ method: 'DELETE', url: '/v1/books/b1/installments/p1?version=1' })
+  })
+
+  it('warns that moving the purchase off the card removes its plan', async () => {
+    cards([plan])
+    await renderApp(<TxnDialog book={book} txn={laptop} onClose={() => {}} />)
+    await screen.findByRole('switch', { name: 'Pay in installments' })
+    await userEvent.click(screen.getByRole('combobox', { name: /^Account/ }))
+    await userEvent.click(await screen.findByRole('option', { name: /Cash/ }))
+    expect(screen.getByText("Saving removes this purchase's installment plan.")).toBeInTheDocument()
+  })
+})

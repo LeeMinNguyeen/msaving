@@ -1,4 +1,5 @@
 import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
@@ -7,6 +8,9 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
 import MenuItem from '@mui/material/MenuItem'
+import List from '@mui/material/List'
+import ListItem from '@mui/material/ListItem'
+import ListItemText from '@mui/material/ListItemText'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
@@ -18,10 +22,10 @@ import { DateField } from '../components/DateField'
 import { TimeField } from '../components/TimeField'
 import { useErrorText } from '../components/errors'
 import { currentLanguage } from '../i18n'
-import { liabilityKinds, send, type Account, type Bill, type Book } from '../lib/api'
+import { liabilityKinds, send, type Account, type Bill, type Book, type InstallmentPlan } from '../lib/api'
 import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
-import { useAccounts, useBill, useInvalidateBook } from '../lib/queries'
+import { useAccounts, useBill, useInstallments, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
 
 const dateIn = (locale: string, options: Intl.DateTimeFormatOptions) => (iso: string) =>
@@ -63,10 +67,13 @@ export function BillPanel({ book, account, minorUnit, canPay }: { book: Book; ac
           <Chip size="small" color={status.color} label={status.label} />
         </Stack>
         {b.kind === 'card'
-          ? row(t('bill.statementBalance'), money(b.amount))
+          ? row(t('bill.statementBalance'), money(b.amount - b.fee))
           : row(t('bill.installment'), <>{money(b.amount - b.fee)}{b.interest > 0 && <Typography component="span" variant="caption"
             color="text.secondary" sx={{ display: 'block' }}>{t('bill.ofWhichInterest', { amount: money(b.interest) })}</Typography>}</>)}
-        {b.fee > 0 && row(t('bill.fee'), money(b.fee))}
+        {(b.installments ?? []).map((i) => (
+          <Box key={i.plan_id}>{row(t('bill.installmentLine', { payee: i.payee ?? t('plan.purchase'), number: i.number, months: i.months }), money(i.amount))}</Box>
+        ))}
+        {b.fee > 0 && row(t(b.kind === 'card' ? 'bill.installmentFees' : 'bill.fee'), money(b.fee))}
         {row(t(b.kind === 'card' ? 'bill.paidSince' : 'bill.paid'), money(b.paid))}
         {row(t('bill.due'), day(b.due_on))}
         <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
@@ -77,6 +84,8 @@ export function BillPanel({ book, account, minorUnit, canPay }: { book: Book; ac
           {canPay && b.remaining > 0 && <Button variant="contained" onClick={() => setPaying(true)}>{t('bill.pay')}</Button>}
         </Stack>
         {b.kind === 'card' && row(t('bill.owedNow'), money(b.owed_now))}
+        {b.kind === 'card' && account.credit_limit !== null && b.limit_used != null &&
+          row(t('bill.limitUsed'), t('bill.limitOf', { used: money(b.limit_used), limit: money(account.credit_limit) }))}
       </Stack>
       {paying && <PayBillDialog book={book} account={account} bill={b} minorUnit={minorUnit} onClose={() => setPaying(false)} />}
     </Paper>
@@ -125,6 +134,10 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
       if (bill.fee > 0 && bill.fee_transaction_id) {
         await post(bill.fee_transaction_id, 'expense', [{ account_id: account.id, amount: -bill.fee }], t('bill.feeNote'))
       }
+      for (const f of bill.fees ?? []) {
+        await post(f.transaction_id, 'expense', [{ account_id: account.id, amount: -f.amount }],
+          t('bill.installmentFeeNote', { payee: f.payee ?? t('plan.purchase') }))
+      }
       if (bill.interest > 0 && bill.interest_transaction_id) {
         await post(bill.interest_transaction_id, 'expense', [{ account_id: account.id, amount: -bill.interest }],
           t('bill.interestNote', { date: day(bill.due_on) }))
@@ -168,5 +181,64 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
         <Button variant="contained" loading={busy} disabled={!valid} onClick={confirm}>{t('bill.confirm')}</Button>
       </DialogActions>
     </Dialog>
+  )
+}
+
+// A card's purchases paid in installments that still have some to bill, with Pay off early.
+export function InstallmentsPanel({ book, account, minorUnit, canEdit }: { book: Book; account: Account; minorUnit: number; canEdit: boolean }) {
+  const { t } = useTranslation()
+  const lang = currentLanguage()
+  const errorText = useErrorText()
+  const invalidate = useInvalidateBook()
+  const plans = useInstallments(book.id, true)
+  const [ending, setEnding] = useState<InstallmentPlan | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<unknown>(null)
+  const mine = (plans.data ?? []).filter((p) => p.account_id === account.id && p.left_to_bill > 0)
+  if (!mine.length) return null
+  const money = (v: number) => formatMoney(v, account.currency, minorUnit, lang)
+  const day = dateIn(lang === 'vi' ? 'vi-VN' : 'en-GB', { dateStyle: 'medium' })
+
+  async function endEarly(p: InstallmentPlan) {
+    setBusy(true)
+    setError(null)
+    try {
+      await send('PATCH', `/v1/books/${book.id}/installments/${p.id}`, { version: p.version, ended_on: todayIn(book.timezone) })
+      setEnding(null)
+    } catch (err) {
+      setError(err)
+    } finally {
+      setBusy(false)
+      await invalidate(book.id)
+    }
+  }
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }}>{t('plan.title')}</Typography>
+      <List dense disablePadding>
+        {mine.map((p) => (
+          <ListItem key={p.id} disableGutters secondaryAction={canEdit && !p.ended_on && (
+            <Button size="small" onClick={() => setEnding(p)}>{t('plan.endEarly')}</Button>
+          )}>
+            <ListItemText primary={p.payee ?? t('plan.purchaseOn', { date: day(p.occurred_on) })}
+              secondary={p.ended_on ? t('plan.endsNext', { left: money(p.left_to_bill) })
+                : t('plan.progress', { billed: p.billed, months: p.months, installment: money(p.installment), left: money(p.left_to_bill) })} />
+          </ListItem>
+        ))}
+      </List>
+      {error && !ending ? <Alert severity="error">{errorText(error)}</Alert> : null}
+      <Dialog open={!!ending} onClose={() => setEnding(null)} fullWidth maxWidth="xs">
+        <DialogTitle>{t('plan.endEarlyTitle')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{t('plan.endEarlyText')}</DialogContentText>
+          {error ? <Alert severity="error" sx={{ mt: 2 }}>{errorText(error)}</Alert> : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEnding(null)}>{t('common.cancel')}</Button>
+          <Button variant="contained" loading={busy} onClick={() => ending && endEarly(ending)}>{t('plan.endEarly')}</Button>
+        </DialogActions>
+      </Dialog>
+    </Paper>
   )
 }

@@ -6,7 +6,7 @@ import { todayIn } from '../lib/labels'
 import { currencies, fakeApi } from '../test/fakeApi'
 import { renderApp } from '../test/render'
 import { AccountDialog } from './AccountDialog'
-import { BillPanel } from './AccountBill'
+import { BillPanel, InstallmentsPanel } from './AccountBill'
 
 const book: Book = { id: 'b1', name: 'Personal', base_currency: 'VND', timezone: 'Asia/Ho_Chi_Minh', role: 'owner', archived_at: null, version: 1 }
 const blank = { last4: null, in_net_worth: true, contact_id: null, note: null, credit_limit: null, annual_fee: null, statement_day: null,
@@ -149,5 +149,66 @@ describe("a loan's installment (msaving#37)", () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(api.writes()).toHaveLength(1))
     expect(api.writes()[0].body).toMatchObject({ installment: 1_000_000, installment_fee: 240_000, payment_due_day: 15 })
+  })
+})
+
+describe('installments on a card (msaving#71)', () => {
+  const withPlans: Bill = { ...cardBill, amount: 2_120_000, paid: 0, remaining: 2_120_000, fee: 120_000, limit_used: 1_000_000,
+    installments: [{ plan_id: 'p1', transaction_id: 'laptop', payee: 'Laptop', number: 3, months: 6, amount: 1_000_000 }],
+    fees: [{ plan_id: 'p1', transaction_id: 'fee-1', payee: 'Laptop', amount: 120_000 }] }
+  const plan = { id: 'p1', account_id: 'card', transaction_id: 'laptop', payee: 'Laptop', occurred_on: '2026-09-10', amount: 6_000_000,
+    months: 6, converted_on: '2026-09-10', first_statement: '2026-09-25', fee: 120_000, fee_split: false, counts_toward_limit: false,
+    ended_on: null, version: 2, installment: 1_000_000, billed: 3, left_to_bill: 3_000_000 }
+  const elsewhere = { ...plan, id: 'p2', account_id: 'other-card', payee: 'Phone' }
+
+  it("shows this statement's installments, their fees and the limit used", async () => {
+    server(card, withPlans)
+    await panel(card)
+    expect(await screen.findByText('Laptop · 3 of 6')).toBeInTheDocument()
+    expect(screen.getByText('Laptop · 3 of 6').parentElement).toHaveTextContent('₫1,000,000')
+    expect(screen.getByText('Installment fees').parentElement).toHaveTextContent('₫120,000')
+    expect(screen.getByText('Limit used').parentElement).toHaveTextContent('₫1,000,000 of ₫10,000,000')
+  })
+
+  it('records each fee on the card, then the payment', async () => {
+    const api = server(card, withPlans)
+    await panel(card)
+    await userEvent.click(await screen.findByRole('button', { name: 'Pay' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    await userEvent.click(dialog.getByRole('button', { name: 'Confirm payment' }))
+    await waitFor(() => expect(posts(api)).toHaveLength(2))
+    expect(posts(api)[0]).toMatchObject({ id: 'fee-1', type: 'expense', note: 'Installment fee: Laptop',
+      entries: [{ account_id: 'card', amount: -120_000 }] })
+    expect(posts(api)[1]).toMatchObject({ type: 'transfer', entries: [{ account_id: 'cash', amount: -2_120_000 }, { account_id: 'card', amount: 2_120_000 }] })
+  })
+
+  it("lists the card's plans, and ends one early", async () => {
+    const api = fakeApi({
+      'GET /v1/currencies': currencies,
+      'GET /v1/books/b1/installments': [plan, elsewhere],
+      'PATCH /v1/books/b1/installments/p1': plan,
+    })
+    await renderApp(<InstallmentsPanel book={book} account={card} minorUnit={0} canEdit />)
+    expect(await screen.findByText('Laptop')).toBeInTheDocument()
+    expect(screen.queryByText('Phone')).not.toBeInTheDocument()
+    expect(screen.getByText(/3 of 6 billed · ₫1,000,000 a month · ₫3,000,000 left to bill/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'End early' }))
+    const confirm = within(await screen.findByRole('dialog'))
+    expect(confirm.getByText('Everything left is billed on the next statement.')).toBeInTheDocument()
+    await userEvent.click(confirm.getByRole('button', { name: 'End early' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    expect(api.writes()[0].body).toEqual({ version: 2, ended_on: todayIn(book.timezone) })
+  })
+
+  it("shows on the card's details", async () => {
+    fakeApi({
+      'GET /v1/currencies': currencies,
+      'GET /v1/books/b1/contacts': [],
+      'GET /v1/books/b1/accounts': [card],
+      'GET /v1/books/b1/accounts/card/bill': withPlans,
+      'GET /v1/books/b1/installments': [plan],
+    })
+    await renderApp(<AccountDialog book={book} account={card} onClose={() => {}} />)
+    expect(await screen.findByRole('heading', { name: 'Installments' })).toBeInTheDocument()
   })
 })
