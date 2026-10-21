@@ -5,6 +5,7 @@ import { useEffect, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, Outlet, RouterProvider, useParams } from 'react-router'
 import { useSession } from './auth/useSession'
 import { useErrorText } from './components/errors'
+import { IdleSignOut } from './components/IdleSignOut'
 import { Shell } from './components/Shell'
 import { UpdatingNotice } from './components/UpdatingNotice'
 import { setLanguage } from './i18n'
@@ -46,6 +47,7 @@ function Failed({ error }: { error: unknown }) {
 function RequireAccount() {
   const signedIn = useSession()
   const me = useMe(signedIn)
+  const idleMinutes = useInstance().data?.idle_sign_out_minutes ?? null
   const language = me.data?.profile.language
   useEffect(() => {
     if (language) setLanguage(language) // the saved language wins once signed in
@@ -55,8 +57,12 @@ function RequireAccount() {
   if (me.isPending) return <Loading />
   if (!me.data) return <Failed error={me.error} />
   const profile = me.data.profile
-  if (profile.deletion_requested_at) return <AccountClosing requestedAt={profile.deletion_requested_at} />
-  return <Outlet />
+  return (
+    <>
+      <IdleSignOut minutes={idleMinutes} />
+      {profile.deletion_requested_at ? <AccountClosing requestedAt={profile.deletion_requested_at} /> : <Outlet />}
+    </>
+  )
 }
 
 // "/" goes to the first open book, or to Create a book when there's none.

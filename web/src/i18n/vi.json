@@ -430,7 +430,11 @@
     "updateConfirm": "Cài phiên bản {{version}}? Máy chủ sẽ dựng phiên bản mới, sao lưu rồi khởi động lại; mọi người mất kết nối trong chốc lát, cả quá trình mất vài phút.",
     "updatingReload": "Đang cập nhật lên {{version}}. Máy chủ đang dựng lại và khởi động lại nên trang này có thể không hoạt động trong vài phút. Hãy tải lại trang sau khoảng 5 phút.",
     "updatedReload": "Đã cập nhật lên {{version}}. Hãy tải lại trang để dùng phiên bản mới.",
-    "reload": "Tải lại"
+    "reload": "Tải lại",
+    "idleSignOut": "Đăng xuất khi không hoạt động",
+    "idleSignOutHint": "Áp dụng cho mọi người trên máy chủ này: sau khoảng thời gian này không nhấp, gõ phím hay chạm, họ sẽ bị đăng xuất và phải đăng nhập lại.",
+    "idleOff": "Tắt",
+    "idleMinutes": "{{minutes}} phút"
   },
   "members": {
     "title": "Thành viên",
@@ -457,5 +461,11 @@
     "invitedYou": "{{who}} đã mời bạn vào sổ \"{{book}}\" với vai trò {{role}}.",
     "accept": "Đồng ý",
     "decline": "Từ chối"
+  },
+  "idle": {
+    "title": "Bạn còn ở đây không?",
+    "warning": "Bạn sẽ bị đăng xuất sau {{seconds}} giây vì đã lâu không có thao tác nào.",
+    "stay": "Vẫn đăng nhập",
+    "signedOut": "Bạn đã bị đăng xuất sau {{minutes}} phút không hoạt động."
   }
 }

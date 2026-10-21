@@ -430,7 +430,11 @@
     "updateConfirm": "Install version {{version}}? The server builds it, takes a backup, then restarts; everyone is offline for a moment, and the whole update takes a few minutes.",
     "updatingReload": "Updating to {{version}}. The server rebuilds and restarts, so this page may stop working for a few minutes. Reload it in about 5 minutes.",
     "updatedReload": "Updated to {{version}}. Reload the page to use the new version.",
-    "reload": "Reload"
+    "reload": "Reload",
+    "idleSignOut": "Sign out after inactivity",
+    "idleSignOutHint": "For everyone on this server: after this long with no click, key or touch, they're signed out and sign in again.",
+    "idleOff": "Off",
+    "idleMinutes": "{{minutes}} minutes"
   },
   "members": {
     "title": "Members",
@@ -457,5 +461,11 @@
     "invitedYou": "{{who}} invited you to the book \"{{book}}\" as {{role}}.",
     "accept": "Accept",
     "decline": "Decline"
+  },
+  "idle": {
+    "title": "Still there?",
+    "warning": "You'll be signed out in {{seconds}} seconds, as nothing has happened here for a while.",
+    "stay": "Stay signed in",
+    "signedOut": "You were signed out after {{minutes}} minutes without activity."
   }
 }
