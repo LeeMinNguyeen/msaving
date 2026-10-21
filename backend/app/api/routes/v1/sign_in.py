@@ -67,7 +67,7 @@ class NewAccount(BaseModel):
     username: Username
     password: Password
     display_name: DisplayName | None = None
-    language: Literal["vi", "en"] = "vi"
+    language: Literal["en", "vi"] = "en"
     timezone: Timezone = "UTC"
 
 

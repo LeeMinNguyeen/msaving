@@ -48,7 +48,7 @@ def me(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) 
 class UpdateProfile(BaseModel):
     username: Annotated[str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=3, max_length=30)] | None = None
     display_name: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None   # "" clears it
-    language: Literal["vi", "en"] | None = None
+    language: Literal["en", "vi"] | None = None
     timezone: Timezone | None = None
     # Sign me out after this many minutes without activity, on every device (msaving#26); null turns it off.
     idle_sign_out_minutes: Annotated[int, Field(ge=1, le=1440)] | None = None

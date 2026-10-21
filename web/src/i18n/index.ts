@@ -3,10 +3,9 @@ import { initReactI18next } from 'react-i18next'
 import en from './en.json'
 import vi from './vi.json'
 
-// Vietnamese first (default), English second. Before sign-in the choice is
-// remembered in this browser; once signed in, the user's saved language
-// (users.language) takes over.
-export const languages = ['vi', 'en'] as const
+// Before sign-in the choice is remembered in this browser; once signed in, the
+// user's saved language (users.language) takes over.
+export const languages = ['en', 'vi'] as const
 export type Language = (typeof languages)[number]
 
 const KEY = 'msaving.language'
@@ -14,9 +13,9 @@ const KEY = 'msaving.language'
 function remembered(): Language {
   try {
     const v = localStorage.getItem(KEY)
-    return v === 'en' ? 'en' : 'vi'
+    return v === 'vi' ? 'vi' : 'en'
   } catch {
-    return 'vi'
+    return 'en'
   }
 }
 
@@ -31,12 +30,13 @@ export function setLanguage(lang: Language) {
 }
 
 i18n.use(initReactI18next).init({
-  resources: { vi: { translation: vi }, en: { translation: en } },
+  resources: { en: { translation: en }, vi: { translation: vi } },
   lng: remembered(),
-  fallbackLng: 'vi',
+  fallbackLng: 'en',
   interpolation: { escapeValue: false }, // React already escapes
 })
+document.documentElement.lang = i18n.language
 
-export const currentLanguage = (): Language => (i18n.language === 'en' ? 'en' : 'vi')
+export const currentLanguage = (): Language => (i18n.language === 'vi' ? 'vi' : 'en')
 
 export default i18n

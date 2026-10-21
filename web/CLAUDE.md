@@ -21,7 +21,7 @@ src/
   lib/queries.ts     TanStack Query hooks and keys (useInstance, useMe, ...)
   lib/money.ts       format and parse amounts in minor units by language, no floats
   components/        Shell (sidebar, book switcher, admin link), AccountForm (fields before sign-in), pickers, errors
-  i18n/              vi.json (default), en.json, i18next setup; strings.test.ts checks the keys match
+  i18n/              en.json (default), vi.json, i18next setup; strings.test.ts checks the keys match
   test/              setup (cleanup after each test, 5 s for findBy), fakeApi (answers fetch from a table, records calls),
                      render (the app's providers; desktop() for the sidebar layout)
   pages/             one file per screen; App.tsx routes (sign-in, join, reset, setup when the server has no admin)
@@ -50,7 +50,7 @@ layout until the mobile app ships.
 - **Never call the database.** Everything goes through the API with the session token.
 - **Money:** integers in minor units from the API; `Intl.NumberFormat` in the user's locale (`1.250.000 ₫` in
   Vietnamese, `1,250,000 ₫` in English). Amount fields parse by the same locale and the currency's decimals.
-- **Languages:** Vietnamese default, English second. One string file per language, same keys (the tests fail
+- **Languages:** English default, Vietnamese second. One string file per language, same keys (the tests fail
   otherwise). API error codes are translated under `errors.*`. User-typed text is never translated.
 - **Concurrency:** send the `version` you loaded; on 409, reload and tell the user. Generate a transaction's id
   when the user taps Save and reuse it on retry.

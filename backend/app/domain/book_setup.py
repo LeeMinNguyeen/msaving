@@ -18,25 +18,25 @@ from sqlalchemy.orm import Session
 
 # (parent, kind, colour, children). Colours are from the app's preset grid.
 STARTER_CATEGORIES: dict[str, list[tuple[str, str, str, list[str]]]] = {
-    "vi": [
-        ("Thiết yếu", "expense", "#2563eb", ["Tiền nhà", "Ăn uống/Đi chợ", "Điện nước/Internet", "Di chuyển"]),
-        ("Cá nhân", "expense", "#9333ea", ["Ăn ngoài", "Giải trí", "Mua sắm"]),
-        ("Thu nhập", "income", "#16a34a", ["Lương", "Thưởng", "Quà tặng", "Đầu tư"]),
-        ("Chuyển khoản", "transfer", "#64748b", ["Tiết kiệm", "Trả nợ", "Đầu tư"]),
-    ],
     "en": [
         ("Needs", "expense", "#2563eb", ["Rent", "Groceries", "Utilities", "Transportation"]),
         ("Wants", "expense", "#9333ea", ["Dining out", "Entertainment", "Shopping"]),
         ("Income", "income", "#16a34a", ["Salary", "Bonus", "Gifts", "Investments"]),
         ("Transfers", "transfer", "#64748b", ["Savings", "Debt repayment", "Investment move"]),
     ],
+    "vi": [
+        ("Thiết yếu", "expense", "#2563eb", ["Tiền nhà", "Ăn uống/Đi chợ", "Điện nước/Internet", "Di chuyển"]),
+        ("Cá nhân", "expense", "#9333ea", ["Ăn ngoài", "Giải trí", "Mua sắm"]),
+        ("Thu nhập", "income", "#16a34a", ["Lương", "Thưởng", "Quà tặng", "Đầu tư"]),
+        ("Chuyển khoản", "transfer", "#64748b", ["Tiết kiệm", "Trả nợ", "Đầu tư"]),
+    ],
 }
 
 
-def add_starter_categories(db: Session, book_id: UUID, language: str = "vi") -> int:
+def add_starter_categories(db: Session, book_id: UUID, language: str = "en") -> int:
     """Insert the starter tree into a book the signed-in user can edit. Returns how many were added."""
     added = 0
-    for parent, kind, color, children in STARTER_CATEGORIES.get(language, STARTER_CATEGORIES["vi"]):
+    for parent, kind, color, children in STARTER_CATEGORIES.get(language, STARTER_CATEGORIES["en"]):
         parent_id = uuid.uuid4()
         rows = [{"i": parent_id, "p": None, "n": parent}] + [{"i": uuid.uuid4(), "p": parent_id, "n": c} for c in children]
         for r in rows:

@@ -640,6 +640,7 @@ def test_features_from_the_old_app(database):
     from app.domain.dashboard import dashboard
     from app.domain.export import build_export
     u, stranger = new_user("old_app_user"), new_user("old_app_stranger")
+    run(u, "update users set language = 'vi' where id = :u", u=u)
     b = new_book(u)
     chk, held = new_account(u, b, "Checking"), new_account(u, b, "Mum's savings", "savings")
     add(u, b, "opening_balance", date(2026, 10, 1), [(chk, 10000)])
@@ -656,16 +657,16 @@ def test_features_from_the_old_app(database):
     assert q(u, "select net_worth, missing_rates from book_net_worth where book_id = :b", b=b) == [(0, 0)]
     run(u, "update accounts set in_net_worth = true where id = :a", a=chk)
 
-    # R-CAT-3: starter categories in the user's language (Vietnamese by default), with sub-categories.
+    # R-CAT-3: starter categories in the user's language, with sub-categories.
     with session(u) as s:
-        assert add_starter_categories(s, b) == 18       # 4 parents, 14 sub-categories
+        assert add_starter_categories(s, b, "vi") == 18       # 4 parents, 14 sub-categories
     tree = dict(q(u, "select c.name, p.name from categories c left join categories p on p.id = c.parent_id"
                      " where c.book_id = :b", b=b))
     assert tree["Ăn uống/Đi chợ"] == "Thiết yếu" and tree["Lương"] == "Thu nhập" and tree["Thiết yếu"] is None
     assert q(u, "select count(*) from categories where book_id = :b and kind = 'income'", b=b)[0][0] == 5
     b_en = new_book(u)
     with session(u) as s:
-        add_starter_categories(s, b_en, "en")
+        add_starter_categories(s, b_en)
     assert q(u, "select kind from categories where book_id = :b and name = 'Groceries'", b=b_en) == [("expense",)]
     assert q(u, "select kind from categories where book_id = :b and name = 'Savings'", b=b_en) == [("transfer",)]
     # Nobody can add them to a book they can't edit.
@@ -718,8 +719,8 @@ def test_csv_export():
     import zipfile
     from app.domain.export import build_export
     u, partner = new_user("exp_user"), new_user("exp_partner")
-    assert q(partner, "select language from my_profile()")[0][0] == "vi"                # Vietnamese by default
-    run(u, "update users set language = 'en' where id = :u", u=u)
+    assert q(u, "select language from my_profile()")[0][0] == "en"
+    run(partner, "update users set language = 'vi' where id = :u", u=partner)
     b = new_book(u, "VND", name="Gia dinh")
     share(u, b, partner, "editor")
     cash, card = new_account(u, b, "Tien mat", "cash"), new_account(u, b, "Visa", "credit_card", "USD")
