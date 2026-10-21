@@ -48,12 +48,19 @@ def apply(conn: psycopg.Connection, migration: Path) -> None:
 
 
 def set_logins(conn: psycopg.Connection, passwords: dict[str, str]) -> None:
+    """Since PostgreSQL 16 only a superuser may name SUPERUSER or BYPASSRLS in ALTER ROLE, even to turn them off,
+    and an owner on Supabase isn't one: an existing login gets its password, then those two are checked, and
+    turned off only if one is on (which then needs a superuser owner, and fails loudly otherwise)."""
     for login, role in LOGINS.items():
-        exists = conn.execute("select 1 from pg_roles where rolname = %s", (login,)).fetchone()
-        verb = sql.SQL("alter") if exists else sql.SQL("create")
-        conn.execute(sql.SQL("{} role {} login nosuperuser nobypassrls password {}").format(
-            verb, sql.Identifier(login), sql.Literal(passwords[login])))
-        conn.execute(sql.SQL("grant {} to {}").format(sql.Identifier(role), sql.Identifier(login)))
+        name, password = sql.Identifier(login), sql.Literal(passwords[login])
+        found = conn.execute("select rolsuper or rolbypassrls from pg_roles where rolname = %s", (login,)).fetchone()
+        if found is None:
+            conn.execute(sql.SQL("create role {} login nosuperuser nobypassrls password {}").format(name, password))
+        else:
+            conn.execute(sql.SQL("alter role {} login password {}").format(name, password))
+            if found[0]:
+                conn.execute(sql.SQL("alter role {} nosuperuser nobypassrls").format(name))
+        conn.execute(sql.SQL("grant {} to {}").format(sql.Identifier(role), name))
 
 
 def new_setup_code(conn: psycopg.Connection) -> str | None:
