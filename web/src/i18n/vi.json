@@ -175,7 +175,10 @@
     "updater_off": "Máy chủ này chưa bật cập nhật bằng một nút bấm.",
     "origin_not_allowed": "Địa chỉ này không phải ứng dụng web của chính máy chủ.",
     "cannot_invite": "Không thể mời tên đăng nhập này: hãy kiểm tra chính tả, hoặc người đó có thể đã ở trong sổ.",
-    "server_unreachable": "Không kết nối được máy chủ. Nếu máy chủ đang khởi động lại hoặc cập nhật, hãy thử lại sau vài phút."
+    "server_unreachable": "Không kết nối được máy chủ. Nếu máy chủ đang khởi động lại hoặc cập nhật, hãy thử lại sau vài phút.",
+    "restore_invalid": "Tệp này không phải bản sao lưu MSaving.",
+    "restore_too_new": "Bản sao lưu này từ phiên bản MSaving mới hơn: hãy cập nhật máy chủ này trước.",
+    "restore_too_large": "Tệp quá lớn: tối đa 100 MB."
   },
   "nav": {
     "transactions": "Giao dịch",
@@ -529,5 +532,29 @@
     "warning": "Bạn sẽ bị đăng xuất sau {{seconds}} giây vì đã lâu không có thao tác nào.",
     "stay": "Vẫn đăng nhập",
     "signedOut": "Bạn đã bị đăng xuất sau {{minutes}} phút không hoạt động."
+  },
+  "restore": {
+    "title": "Khôi phục bản sao lưu",
+    "intro": "Thay toàn bộ dữ liệu trên máy chủ này bằng một bản sao lưu: tệp .dump trong thư mục sao lưu. Máy chủ sẽ sao lưu dữ liệu hiện có trước, rồi khởi động lại, và mọi người đăng nhập lại bằng mật khẩu của ngày sao lưu.",
+    "file": "Tệp sao lưu",
+    "choose": "Chọn…",
+    "purged": "Danh sách tài khoản đã xóa hẳn (không bắt buộc)",
+    "purgedHint": "Tệp purged_accounts.jsonl trong cùng thư mục sao lưu, khi bản sao lưu đến từ máy chủ khác.",
+    "password": "Mật khẩu của bạn",
+    "code": "Mã xác minh hai bước",
+    "confirm": "Tôi hiểu rằng toàn bộ dữ liệu trên máy chủ này sẽ được thay bằng bản sao lưu này",
+    "submit": "Khôi phục",
+    "restarting": "Đang khôi phục. Máy chủ khởi động lại trong một đến hai phút; trang này sẽ đăng xuất bạn khi máy chủ chạy lại.",
+    "setupRestarting": "Đang khôi phục. Máy chủ khởi động lại trong một đến hai phút; trang này sẽ tải lại khi máy chủ chạy lại.",
+    "last": "Lần khôi phục gần nhất: {{status}}, {{date}}",
+    "statuses": {
+      "requested": "đã yêu cầu",
+      "running": "đang chạy",
+      "done": "xong",
+      "failed": "thất bại"
+    },
+    "instead": "Khôi phục từ bản sao lưu",
+    "setupIntro": "Đưa máy chủ trở lại từ một bản sao lưu: mã thiết lập trong nhật ký máy chủ và tệp sao lưu.",
+    "back": "Thiết lập máy chủ mới"
   }
 }

@@ -1,6 +1,7 @@
 """Needs pg_dump, pg_restore and psql of the server's version on PATH. Restores with the `$` commands in backup.py's
 docstring. Drops every database it creates, and the roles it created that weren't there before."""
 import ast
+import json
 import os
 import shutil
 import subprocess
@@ -215,3 +216,74 @@ def test_failed_backup_leaves_nothing_and_hides_the_password(tmp_path, url):
     assert os.listdir(tmp_path) == []
     out = r.stdout + r.stderr
     assert SECRET not in out and quote(SECRET) not in out and url not in out
+
+
+@pytest.fixture
+def live(source, tmp_path):
+    """A running server's database, restored from a backup of the source, and that backup."""
+    name = f"backup_live_{uuid.uuid4().hex[:8]}"
+    sql(ADMIN_URL.database, f'create database "{name}"')
+    dump, _ = backup(tmp_path)
+    restore(dump, name, RESTORE, tmp_path)
+    yield name, dump
+    sql(ADMIN_URL.database, f'drop database "{name}" with (force)')
+
+
+def requested(tmp_path, dump_bytes, purged=None):
+    backups = tmp_path / "backups"
+    (backups / "restore").mkdir(parents=True)
+    (backups / "restore" / "request.dump").write_bytes(dump_bytes)
+    if purged is not None:
+        (backups / "restore" / "purged_accounts.jsonl").write_text(purged)
+    return backups
+
+
+def users(database):
+    return [r[0] for r in sql(database, "select username from users order by 1")]
+
+
+def test_restore_requested_from_the_web(live, tmp_path):
+    """R-INST-8: the launcher restores a backup the admin uploaded, after backing up what it replaces, and adds the
+    backup's purged accounts to PURGE_LOG."""
+    from app.jobs import restore as web_restore
+    name, dump = live
+    sql(name, "insert into users (id, username) values (gen_random_uuid(), 'after_backup')")
+    gone = str(uuid.uuid4())
+    backups = requested(tmp_path, dump.read_bytes(), json.dumps({"user_id": gone, "purged_at": "2026-10-20T00:00:00Z"}) + "\n")
+    assert web_restore.restore_if_requested(libpq_url(name), str(backups)) == "done"
+    assert users(name) == ["backup_user"]
+    status = json.loads((backups / "restore" / "status").read_text())
+    assert status["status"] == "done" and status["at"]
+    assert not (backups / "restore" / "request.dump").exists()
+    assert len(list(backups.glob("msaving-*.dump"))) == 1                 # what it replaced
+    assert gone in (backups / "purged_accounts.jsonl").read_text()
+    assert web_restore.restore_if_requested(libpq_url(name), str(backups)) is None
+
+
+def test_a_failed_restore_puts_the_database_back(live, tmp_path, monkeypatch):
+    from app.jobs import restore as web_restore
+    name, dump = live
+    sql(name, "insert into users (id, username) values (gen_random_uuid(), 'after_backup')")
+    backups = requested(tmp_path, dump.read_bytes())
+    real = web_restore._load
+
+    def broken_once(url, path):
+        if Path(path).name == "request.dump":
+            raise web_restore.RestoreError("pg_restore failed: something broke")
+        return real(url, path)
+
+    monkeypatch.setattr(web_restore, "_load", broken_once)
+    assert web_restore.restore_if_requested(libpq_url(name), str(backups)) == "failed"
+    assert users(name) == ["after_backup", "backup_user"]
+    status = json.loads((backups / "restore" / "status").read_text())
+    assert status["status"] == "failed" and "something broke" in status["detail"]
+    assert not (backups / "restore" / "request.dump").exists()
+
+
+def test_a_file_that_is_no_backup_changes_nothing(live, tmp_path):
+    from app.jobs import restore as web_restore
+    name, _ = live
+    backups = requested(tmp_path, b"not a dump at all")
+    assert web_restore.restore_if_requested(libpq_url(name), str(backups)) == "failed"
+    assert users(name) == ["backup_user"]
+    assert not list(backups.glob("msaving-*.dump"))

@@ -12,7 +12,8 @@ export function fakeApi(routes: Record<string, Handler>) {
   const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
     const method = (init.method ?? 'GET').toUpperCase()
     const path = url.split('?')[0]
-    const call: Call = { method, path, url, body: init.body ? JSON.parse(String(init.body)) : undefined }
+    const body = init.body instanceof FormData ? init.body : init.body ? JSON.parse(String(init.body)) : undefined
+    const call: Call = { method, path, url, body }
     calls.push(call)
     const key = [`${method} ${url}`, `${method} ${path}`].find((k) => k in routes)
     if (!key) return new Response(JSON.stringify({ detail: 'not_found' }), { status: 404 })

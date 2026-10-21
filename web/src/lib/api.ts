@@ -40,7 +40,7 @@ function authHeaders(init?: HeadersInit): Headers {
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = authHeaders(init.headers)
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
   const res = await reach(path, { ...init, headers })
   if (!res.ok) await fail(res)
@@ -63,6 +63,11 @@ export type AccountStatus = { deletion_requested_at: string | null; deletes_on: 
 
 export const send = <T>(method: string, path: string, body?: unknown) =>
   api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) })
+
+// Files and fields as multipart/form-data; the browser sets the boundary.
+export const upload = <T>(path: string, form: FormData) => api<T>(path, { method: 'POST', body: form })
+
+export type RestoreStatus = { status: 'requested' | 'running' | 'done' | 'failed'; at: string; detail: string | null }
 
 export type Language = 'vi' | 'en'
 

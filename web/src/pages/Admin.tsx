@@ -7,6 +7,8 @@ import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
+import Checkbox from '@mui/material/Checkbox'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -23,7 +25,10 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../components/errors'
 import { currentLanguage } from '../i18n'
-import { api, send } from '../lib/api'
+import { api, send, upload, type RestoreStatus } from '../lib/api'
+import { waitForServer } from '../lib/restart'
+import { session } from '../auth/session'
+import { FileField } from '../components/FileField'
 import { useInstance, useMe } from '../lib/queries'
 import { updating, useUpdating, type UpdateInfo } from '../lib/updating'
 
@@ -91,6 +96,7 @@ export function Admin() {
       <Jobs timezone={me.data.profile.timezone} />
       <Invites />
       <Users selfId={me.data.id} />
+      <Restore />
     </Stack>
   )
 }
@@ -466,6 +472,81 @@ function Users({ selfId }: { selfId: string }) {
       {reset && (
         <ShowOnce title={t('admin.resetReady', { name: reset.username })} body={t('admin.resetReadyBody')}
           link={reset.link} onClose={() => setReset(null)} />
+      )}
+    </Section>
+  )
+}
+
+// Replaces everything on this server with a backup: the API checks the file and stops the server, which restores it
+// as it starts again. The restored database has the sessions of the backup's day, so this browser signs in again.
+function Restore() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
+  const lang = currentLanguage()
+  const last = useQuery({ queryKey: ['admin', 'restore'], queryFn: () => api<RestoreStatus | null>('/v1/admin/restore') })
+  const twoFactor = useQuery({ queryKey: ['auth', 'two-factor'], queryFn: () => api<{ enabled: boolean }>('/v1/auth/two-factor') })
+  const [file, setFile] = useState<File | null>(null)
+  const [purged, setPurged] = useState<File | null>(null)
+  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [sure, setSure] = useState(false)
+  const [state, setState] = useState<{ busy?: boolean; error?: unknown; restarting?: boolean }>({})
+  const needsCode = !!twoFactor.data?.enabled
+  const ready = !!file && !!password && sure && (!needsCode || code.trim().length >= 6)
+  const when = (iso: string) => new Intl.DateTimeFormat(lang === 'vi' ? 'vi-VN' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+    .format(new Date(iso))
+
+  async function start(e: FormEvent) {
+    e.preventDefault()
+    if (!ready || !file) return
+    const form = new FormData()
+    form.append('file', file)
+    if (purged) form.append('purged', purged)
+    form.append('password', password)
+    form.append('confirm', 'true')
+    if (needsCode) form.append('code', code.trim())
+    setState({ busy: true })
+    try {
+      await upload('/v1/admin/restore', form)
+    } catch (err) {
+      setState({ error: err })
+      return
+    }
+    setState({ restarting: true })
+    await waitForServer()
+    session.set(null)
+  }
+
+  return (
+    <Section title={t('restore.title')}>
+      <Typography color="text.secondary">{t('restore.intro')}</Typography>
+      {last.data && (
+        <Typography variant="body2">
+          {t('restore.last', { status: t(`restore.statuses.${last.data.status}`), date: when(last.data.at) })}
+          {last.data.detail && <> · {last.data.detail}</>}
+        </Typography>
+      )}
+      {state.restarting ? (
+        <Alert severity="info">{t('restore.restarting')}</Alert>
+      ) : (
+        <Stack component="form" spacing={2} onSubmit={start}>
+          <FileField label={t('restore.file')} button={t('restore.choose')} file={file} onChange={setFile} accept=".dump" />
+          <FileField label={t('restore.purged')} button={t('restore.choose')} file={purged} onChange={setPurged} accept=".jsonl" />
+          <Typography variant="body2" color="text.secondary">{t('restore.purgedHint')}</Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField type="password" label={t('restore.password')} required value={password} onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password" sx={{ flex: 1 }} />
+            {needsCode && (
+              <TextField label={t('restore.code')} required value={code} onChange={(e) => setCode(e.target.value)}
+                slotProps={{ htmlInput: { inputMode: 'numeric', autoComplete: 'one-time-code' } }} sx={{ flex: 1 }} />
+            )}
+          </Stack>
+          <FormControlLabel control={<Checkbox checked={sure} onChange={(e) => setSure(e.target.checked)} />} label={t('restore.confirm')} />
+          {state.error ? <Alert severity="error">{errorText(state.error)}</Alert> : null}
+          <Button type="submit" variant="contained" color="error" loading={state.busy} disabled={!ready} sx={{ alignSelf: 'start' }}>
+            {t('restore.submit')}
+          </Button>
+        </Stack>
       )}
     </Section>
   )
