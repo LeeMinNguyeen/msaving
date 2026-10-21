@@ -50,9 +50,9 @@ def bearer(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def sign_up(client, name=None, password=PASSWORD, status=201, **extra):
+def sign_up(client, name=None, password=PASSWORD, status=201, headers=None, **extra):
     name = name or f"u{uuid.uuid4().hex[:10]}"
-    r = client.post("/v1/auth/sign-up", json={"username": name, "password": password, **extra})
+    r = client.post("/v1/auth/sign-up", json={"username": name, "password": password, **extra}, headers=headers)
     assert r.status_code == status, r.text
     return (name, r.json()["token"]) if status == 201 else r.json()
 
@@ -191,6 +191,63 @@ def test_change_password_signs_out_other_devices(client):
                        json={"current_password": PASSWORD, "new_password": "a new password"}).status_code == 204
     assert me(client, other).status_code == 401 and me(client, token).status_code == 200
     assert sign_in(client, name).status_code == 401 and sign_in(client, name, "a new password").status_code == 200
+
+
+CHROME_WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+SAFARI_IPHONE = ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+                 " Version/18.6 Mobile/15E148 Safari/604.1")
+
+
+def test_signed_in_devices(client, database):
+    """msaving#5: a user sees where they're signed in, this device first, and signs out one other device."""
+    name, laptop = sign_up(client, headers={"User-Agent": CHROME_WINDOWS})
+    phone = client.post("/v1/auth/sign-in", json={"username": name, "password": PASSWORD},
+                        headers={"User-Agent": SAFARI_IPHONE}).json()["token"]
+    script = sign_in(client, name).json()["token"]                          # no browser: no label
+    _, stranger = sign_up(client)
+
+    listed = client.get("/v1/auth/sessions", headers=bearer(phone)).json()
+    assert [(s["device"], s["current"]) for s in listed][:1] == [("Safari · iOS", True)]
+    assert sorted((s["device"] or "", s["current"]) for s in listed) == [
+        ("", False), ("Chrome · Windows", False), ("Safari · iOS", True)]
+    assert set(listed[0]) == {"id", "device", "created_at", "last_used_at", "current"}   # never a token or its hash
+    assert [s["current"] for s in client.get("/v1/auth/sessions", headers=bearer(stranger)).json()] == [True]  # only theirs
+
+    chrome = next(s["id"] for s in listed if s["device"] == "Chrome · Windows")
+    assert client.delete(f"/v1/auth/sessions/{chrome}", headers=bearer(stranger)).json() == {"detail": "not_found"}
+    assert me(client, laptop).status_code == 200
+    assert client.delete(f"/v1/auth/sessions/{chrome}", headers=bearer(phone)).status_code == 204
+    assert me(client, laptop).status_code == 401 and me(client, script).status_code == 200
+    assert client.delete(f"/v1/auth/sessions/{uuid.uuid4()}", headers=bearer(phone)).status_code == 404
+
+    # A session unused for 30 days isn't a device any more, even before the daily purge deletes it.
+    with database.connect() as c:
+        c.execute(text("update sessions set last_used_at = now() - interval '31 days'"
+                       " where token_sha256 = sha256(convert_to(:t, 'utf8'))"), {"t": script})
+    assert [s["device"] for s in client.get("/v1/auth/sessions", headers=bearer(phone)).json()] == ["Safari · iOS"]
+
+
+@pytest.mark.parametrize("agent, label", [
+    (CHROME_WINDOWS, "Chrome · Windows"),
+    (SAFARI_IPHONE, "Safari · iOS"),
+    ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+     "Safari · macOS"),
+    ("Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0", "Firefox · Linux"),
+    ("Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36",
+     "Chrome · Android"),
+    ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+     " Edg/141.0.0.0", "Edge · Windows"),
+    ("Mozilla/5.0 (Linux; Android 15; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/28.0"
+     " Chrome/130.0.0.0 Mobile Safari/537.36", "Samsung Internet · Android"),
+    ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0"
+     " Mobile/15E148 Safari/604.1", "Chrome · iOS"),
+    ("MSaving/1.0 (Android 15)", "MSaving · Android"),
+    ("python-httpx/0.28.1", None),
+    (None, None),
+])
+def test_device_label(agent, label):
+    from app.core.sign_in import device_label
+    assert device_label(agent) == label
 
 
 def test_two_factor_with_recovery_codes(client):

@@ -81,6 +81,8 @@ export type Me = { id: string; profile: Profile }
 // What a server says about itself before anyone signs in (GET /v1/instance).
 export type Instance = { name: string; server_version: string; api_version: number; signup: 'invite' | 'open'; setup_needed: boolean }
 export type Token = { token: string }
+// A signed-in device (msaving#5): the browser and system that signed in, never the token.
+export type DeviceSession = { id: string; device: string | null; created_at: string; last_used_at: string; current: boolean }
 
 export type Currency = { code: string; minor_unit: number; name: string }
 
