@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next'
 // en-gb starts weeks on Monday, as Vietnamese does.
 export function DatesProvider({ children }: { children: ReactNode }) {
   const { i18n } = useTranslation()
-  const vi = i18n.language !== 'en'
+  const vi = i18n.language === 'vi'
   const localeText = (vi ? viVN : enUS).components.MuiLocalizationProvider.defaultProps.localeText
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={vi ? 'vi' : 'en-gb'} localeText={localeText}>

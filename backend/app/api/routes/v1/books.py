@@ -1,9 +1,3 @@
-"""Books: create (with starter categories), list, settings, delete.
-
-Ids come from the client, so a retried create can't make a second book. Edits
-send the version the client loaded; a mismatch is 409 (docs: The ledger, several
-devices at once).
-"""
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -58,21 +52,19 @@ class CreateBook(BaseModel):
     name: Name
     base_currency: CurrencyCode
     timezone: Timezone
-    starter_categories: bool = True            # the "Add starter categories" tick, on by default
+    starter_categories: bool = True
 
 
 @router.post("", status_code=201)
 def create_book(body: CreateBook, user_id: UUID = Depends(current_user), db: Session = Depends(get_db)) -> Book:
-    # A retry finds the book made the first time. Otherwise a plain insert: no
-    # RETURNING and no ON CONFLICT, since both make Postgres apply the read
-    # policy to the new row, and the creator only becomes a member once the
-    # insert finishes (docs: Users and shared books). An id that belongs to
-    # a book this user can't see fails on the primary key: 409.
+    # A retry finds the book made the first time. Otherwise a plain insert: no RETURNING and no ON CONFLICT, since
+    # both make Postgres apply the read policy to the new row, and the creator only becomes a member once the insert
+    # finishes. An id that belongs to a book this user can't see fails on the primary key: 409.
     if db.execute(text("select 1 from books where id = :i"), {"i": body.id}).first() is None:
         db.execute(text("insert into books (id, created_by, name, base_currency, timezone) values (:i, :u, :n, :c, :tz)"),
                    {"i": body.id, "u": user_id, "n": body.name, "c": body.base_currency, "tz": body.timezone})
         if body.starter_categories:
-            language = db.execute(text("select language from my_profile()")).scalar() or "vi"
+            language = db.execute(text("select language from my_profile()")).scalar() or "en"
             add_starter_categories(db, body.id, language)
     db.commit()
     return get_book(db, body.id)
@@ -84,8 +76,6 @@ class Changes(BaseModel):
 
 @router.get("/{book_id}/changes")
 def changes(book_id: UUID, db: Session = Depends(get_db)) -> Changes:
-    """Cheap to poll (msaving#25): a marker that changes whenever anything in
-    the book does, by anyone. Clients refetch the book's data when it differs."""
     marker = db.execute(text("select book_change_marker(:b)"), {"b": book_id}).scalar()
     if marker is None:
         raise HTTPException(404, "not_found")

@@ -1,7 +1,4 @@
-"""Tests for the API, against the database from conftest.py. Users sign up
-through the API itself (open sign-up in the test database; invite-only and
-setup are in test_sign_in.py) and use the session token it returns.
-"""
+"""Users sign up through the API: the test database has open sign-up. Invite-only and setup are in test_sign_in.py."""
 import re
 import uuid
 
@@ -28,10 +25,10 @@ def auth(uid):
     return {"Authorization": f"Bearer {TOKENS[uid]}"}
 
 
-def signed_up(client, name=None, language="vi"):
+def signed_up(client, name=None, language=None):
     name = name or f"u{uuid.uuid4().hex[:10]}"
-    r = client.post("/v1/auth/sign-up", json={"username": name, "password": PASSWORD, "language": language,
-                                              "timezone": "Asia/Ho_Chi_Minh"})
+    body = {"username": name, "password": PASSWORD, "timezone": "Asia/Ho_Chi_Minh"}
+    r = client.post("/v1/auth/sign-up", json=body | ({"language": language} if language else {}))
     assert r.status_code == 201, r.text
     token = r.json()["token"]
     uid = uuid.UUID(client.get("/v1/me", headers={"Authorization": f"Bearer {token}"}).json()["id"])
@@ -42,7 +39,7 @@ def signed_up(client, name=None, language="vi"):
 def test_health_needs_no_token(client):
     r = client.get("/v1/health")
     assert r.json() == {"ok": True}
-    assert r.headers["cache-control"] == "no-store"      # nothing may cache API answers
+    assert r.headers["cache-control"] == "no-store"
 
 
 def test_instance_needs_no_token(client):
@@ -56,7 +53,7 @@ def test_me_returns_only_my_profile(client):
     r = client.get("/v1/me", headers=auth(mine))
     assert r.status_code == 200 and r.json()["id"] == str(mine)
     profile = r.json()["profile"]
-    assert profile["username"].startswith("me_") and profile["language"] == "vi" and profile["is_admin"] is False
+    assert profile["username"].startswith("me_") and profile["language"] == "en" and profile["is_admin"] is False
     assert set(profile) == {"username", "display_name", "timezone", "language", "created_at", "deletion_requested_at",
                             "is_admin", "idle_sign_out_minutes"}
     assert client.get("/v1/me", headers=auth(other)).json()["id"] == str(other)
@@ -74,8 +71,6 @@ def test_bad_tokens_are_refused(client, bad):
 
 
 def test_only_this_servers_web_app_and_any_phone(client):
-    """A browser on another site (or a copy of the web app hosted elsewhere) is refused;
-    the server's own web app and the mobile app (no Origin) get through."""
     u = signed_up(client)
     other = client.get("/v1/me", headers={**auth(u), "Origin": "https://copy-of-msaving.example"})
     assert (other.status_code, other.json()) == (403, {"detail": "origin_not_allowed"})
@@ -114,15 +109,13 @@ def test_web_app_files_and_routes(client, tmp_path, monkeypatch):
     assert client.get("/../../etc/passwd").text == "<html>app</html>"        # never outside the web app's folder
 
 
-# ---------------------------------------------------------------- books, accounts
-
 def test_currencies(client):
     ccy = {c["code"]: c for c in client.get("/v1/currencies", headers=auth(signed_up(client))).json()}
     assert ccy["VND"]["minor_unit"] == 0 and ccy["KWD"]["minor_unit"] == 3 and len(ccy) == 155
 
 
 def test_books(client):
-    owner, stranger = signed_up(client), signed_up(client, language="en")
+    owner, stranger = signed_up(client, language="vi"), signed_up(client)
     bid = str(uuid.uuid4())
     new = {"id": bid, "name": "Gia đình", "base_currency": "VND", "timezone": "Asia/Ho_Chi_Minh"}
     r = client.post("/v1/books", headers=auth(owner), json=new)
@@ -182,8 +175,6 @@ def test_accounts_with_opening_balances(client):
     assert back["archived_at"] is None
 
 
-# ---------------------------------------------------------------- milestone 3: categories, transactions
-
 def new_book_with_accounts(client, u, currency="VND"):
     bid = str(uuid.uuid4())
     client.post("/v1/books", headers=auth(u), json={"id": bid, "name": "B", "base_currency": currency, "timezone": "UTC",
@@ -206,8 +197,7 @@ def add_category(client, u, bid, name, kind="expense", parent=None):
 
 
 def test_account_details_by_kind(client):
-    """msaving#17: a note on any account, a credit card's limit, fee and days, an interest rate where one applies.
-    A detail for the wrong kind is refused; changing the kind clears the ones that stop applying."""
+    """A detail for the wrong kind is refused; changing the kind clears the ones that stop applying."""
     u = signed_up(client)
     bid, _ = new_book_with_accounts(client, u)
     base = f"/v1/books/{bid}/accounts"
@@ -239,27 +229,27 @@ def test_account_details_by_kind(client):
     loan = client.patch(url, headers=auth(u), json={"version": cleared["version"], "kind": "loan"}).json()
     assert {k: loan[k] for k in ("kind", "credit_limit", "statement_day", "payment_due_day", "interest_rate_bp")} == {
         "kind": "loan", "credit_limit": None, "statement_day": None, "payment_due_day": 10, "interest_rate_bp": 2_800}
-    assert loan["installment"] is None                                  # a loan's payment day stays (msaving#37)
+    assert loan["installment"] is None                                  # a loan's payment day stays
     cash = client.patch(url, headers=auth(u), json={"version": loan["version"], "kind": "cash"}).json()
     assert (cash["kind"], cash["interest_rate_bp"], cash["payment_due_day"]) == ("cash", None, None)
 
-    # The export has them, readable: amounts in the currency, the rate as a percentage (Vietnamese headers).
+    # The export has them, readable: amounts in the currency, the rate as a percentage.
     import csv
     import io
     import zipfile
     create("credit_card", note="Thẻ phụ", credit_limit=20_000_000, statement_day=5, payment_due_day=20, interest_rate_bp=2_550)
     create("loan", note="Điện thoại", installment=1_000_000, installment_fee=240_000, payment_due_day=15)
     z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
-    rows = {r["Ghi chú"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
-    assert {k: rows["Thẻ phụ"][k] for k in ("Hạn mức tín dụng", "Phí thường niên", "Ngày sao kê", "Ngày đến hạn thanh toán",
-                                            "Lãi suất (%/năm)")} == {"Hạn mức tín dụng": "20000000", "Phí thường niên": "",
-        "Ngày sao kê": "5", "Ngày đến hạn thanh toán": "20", "Lãi suất (%/năm)": "25.50"}
-    assert {k: rows["Điện thoại"][k] for k in ("Trả góp hằng tháng", "Phí trả góp", "Ngày đến hạn thanh toán")} == {
-        "Trả góp hằng tháng": "1000000", "Phí trả góp": "240000", "Ngày đến hạn thanh toán": "15"}
+    rows = {r["Note"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
+    assert {k: rows["Thẻ phụ"][k] for k in ("Credit limit", "Annual fee", "Statement day", "Payment due day",
+                                            "Interest rate (% a year)")} == {"Credit limit": "20000000", "Annual fee": "",
+        "Statement day": "5", "Payment due day": "20", "Interest rate (% a year)": "25.50"}
+    assert {k: rows["Điện thoại"][k] for k in ("Monthly installment", "Installment fee", "Payment due day")} == {
+        "Monthly installment": "1000000", "Installment fee": "240000", "Payment due day": "15"}
 
 
 def test_bill_dates():
-    """msaving#37: the statement day's own transactions belong to its statement; a month without that day uses its
+    """The statement day's own transactions belong to its statement; a month without that day uses its
     last; a card is due on the first repayment day after the statement date, a loan on its next payment day."""
     from datetime import date as d
 
@@ -275,7 +265,7 @@ def test_bill_dates():
 
 
 def test_monthly_bills(client, database):
-    """msaving#37: a credit card's bill is its statement balance minus the money in since; a loan's is its
+    """A credit card's bill is its statement balance minus the money in since; a loan's is its
     installment, with a one-off fee on the first payment and the interest part recorded as an expense."""
     from datetime import date as d
     from types import SimpleNamespace
@@ -316,7 +306,7 @@ def test_monthly_bills(client, database):
     assert (b.amount, b.paid, b.remaining, b.owed_now) == (1_500_000, 420_000, 1_080_000, 1_130_000)
     assert b.pay_from == uuid.UUID(accts["Bank"])
     txn("transfer", "2026-10-09", (accts["Bank"], -1_080_000), (card, 1_080_000))
-    assert bill(card, d(2026, 10, 20)).remaining == 0                   # paid off
+    assert bill(card, d(2026, 10, 20)).remaining == 0
     assert bill(card, d(2026, 9, 25)).period_end == d(2026, 8, 25)
 
     # A 0 % installment contract: 12,000,000 over 12 months, a 240,000 fee with the first payment.
@@ -393,6 +383,50 @@ def test_categories(client):
     assert client.patch(f"{base}/{savings['id']}", headers=auth(u), json={"version": 9, "name": "x"}).json() == {"detail": "conflict"}
 
 
+def test_transactions_have_a_time_of_day(client):
+    """R-TXN-6: every transaction has a date and a time of day; lists sort by both; one saved without a time has
+    00:00, and an edit that leaves the time out keeps it."""
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}/transactions"
+
+    def add(payee, time=None):
+        body = {"id": str(uuid.uuid4()), "type": "expense", "occurred_on": "2026-10-05", "payee": payee,
+                "entries": [{"account_id": accts["Cash"], "amount": -10_000}]} | ({"occurred_time": time} if time else {})
+        return client.post(base, headers=auth(u), json=body).json()
+
+    evening, morning, unset = add("Dinner", "18:45"), add("Coffee", "08:05"), add("Old app")
+    assert (evening["occurred_time"], morning["occurred_time"], unset["occurred_time"]) == ("18:45:00", "08:05:00", "00:00:00")
+    listed = client.get(base, headers=auth(u), params={"from": "2026-10-05", "to": "2026-10-05"}).json()["items"]
+    assert [x["payee"] for x in listed] == ["Dinner", "Coffee", "Old app"]
+
+    pages, after = [], None
+    while True:
+        page = client.get(base, headers=auth(u), params={"from": "2026-10-05", "limit": 1} | ({"after": after} if after else {})).json()
+        pages += [x["payee"] for x in page["items"]]
+        if not (after := page["next"]):
+            break
+    assert pages == ["Dinner", "Coffee", "Old app"]
+
+    running = client.get(base, headers=auth(u), params={"account_id": accts["Cash"], "from": "2026-10-05"}).json()["items"]
+    assert [x["running_balance"] for x in running] == [970_000, 980_000, 990_000]
+
+    edit = {k: v for k, v in morning.items() if k in ("type", "occurred_on", "entries", "payee")} | {"version": morning["version"]}
+    kept = client.put(f"{base}/{morning['id']}", headers=auth(u), json=edit).json()
+    assert (kept["occurred_time"], kept["version"]) == ("08:05:00", 1)
+    moved = client.put(f"{base}/{morning['id']}", headers=auth(u), json=edit | {"occurred_time": "21:00"}).json()
+    assert (moved["occurred_time"], moved["version"]) == ("21:00:00", 2)
+    history = client.get(f"{base}/{morning['id']}/history", headers=auth(u)).json()
+    assert [h["occurred_time"] for h in history] == ["08:05:00", "21:00:00"]
+
+    import csv
+    import io
+    import zipfile
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
+    times = {r["Payee"]: r["Time"] for r in csv.DictReader(io.StringIO(z.read("transactions.csv").decode("utf-8-sig")))}
+    assert (times["Dinner"], times["Coffee"], times["Old app"]) == ("18:45", "21:00", "00:00")
+
+
 def test_transactions_and_two_browsers(client):
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)
@@ -463,8 +497,6 @@ def test_transactions_and_two_browsers(client):
     assert client.get(f"{base}/{tid}/history", headers=auth(stranger)).json() == {"detail": "not_found"}
 
 
-# ---------------------------------------------------------------- milestone 4: dashboard
-
 def test_dashboard_converts_at_todays_rate(client, database):
     from datetime import date as d
     today = d.today()
@@ -503,8 +535,6 @@ def test_dashboard_converts_at_todays_rate(client, database):
     assert client.get(f"/v1/books/{bid}/dashboard", headers=auth(signed_up(client))).json() == {"detail": "not_found"}
 
 
-# ---------------------------------------------------------------- milestone 5: people, budgets
-
 def test_people_and_lending(client):
     u = signed_up(client)
     bid, accts = new_book_with_accounts(client, u)
@@ -541,7 +571,7 @@ def test_people_and_lending(client):
 
 
 def test_edits_to_amounts_or_accounts_alone_are_versions(client, database):
-    """msaving#18, #19: changing only an amount or an account is an edit like any other: a new version (so a
+    """Changing only an amount or an account is an edit like any other: a new version (so a
     second browser still gets 409) and its own line in the history. Saving with nothing changed is neither,
     and leaves the entries alone (no rows in the audit log for them)."""
     u = signed_up(client)
@@ -622,8 +652,6 @@ def test_budgets(client):
     assert len(client.get(base, headers=auth(u)).json()) == 1
 
 
-# ---------------------------------------------------------------- milestone 6: your data
-
 def events(capsys):
     import json
     return [json.loads(line)["account_event"] for line in capsys.readouterr().out.splitlines() if "account_event" in line]
@@ -631,8 +659,8 @@ def events(capsys):
 
 def test_profile_and_export(client):
     u = signed_up(client)
-    r = client.patch("/v1/me", headers=auth(u), json={"username": "New_Name_" + u.hex[:6], "language": "en", "display_name": "N"})
-    assert (r.json()["profile"]["username"], r.json()["profile"]["language"]) == (f"new_name_{u.hex[:6]}", "en")
+    r = client.patch("/v1/me", headers=auth(u), json={"username": "New_Name_" + u.hex[:6], "language": "vi", "display_name": "N"})
+    assert (r.json()["profile"]["username"], r.json()["profile"]["language"]) == (f"new_name_{u.hex[:6]}", "vi")
     assert client.patch("/v1/me", headers=auth(u), json={"display_name": ""}).json()["profile"]["display_name"] is None
 
     new_book_with_accounts(client, u)
@@ -660,7 +688,7 @@ def test_close_and_restore(client, capsys):
 
 
 def test_timezone_aliases_become_names_the_database_knows(client, database):
-    """Windows browsers report Asia/Saigon, which the postgres image doesn't know (the Overview failed on it)."""
+    """Windows browsers report Asia/Saigon, which the postgres image doesn't know."""
     u = signed_up(client)
     bid = str(uuid.uuid4())
     r = client.post("/v1/books", headers=auth(u), json={"id": bid, "name": "B", "base_currency": "VND", "timezone": "Asia/Saigon"})
@@ -673,7 +701,7 @@ def test_timezone_aliases_become_names_the_database_knows(client, database):
 
 
 def test_shared_books(client):
-    """Milestone 8: two users keep one book together, and a viewer can't change it."""
+    """Two users keep one book together, and a viewer can't change it."""
     names = {k: f"{k}_{uuid.uuid4().hex[:8]}" for k in ("owner", "editor", "viewer", "other")}
     owner, editor, viewer, other = (signed_up(client, names[k]) for k in ("owner", "editor", "viewer", "other"))
     bid, accts = new_book_with_accounts(client, owner)
@@ -738,7 +766,7 @@ def test_shared_books(client):
 
 
 def test_book_changes_marker(client):
-    """msaving#25: a member polls one cheap marker that changes when anyone changes the book."""
+    """A member polls one cheap marker that changes when anyone changes the book."""
     owner, editor, stranger = signed_up(client), signed_up(client), signed_up(client)
     bid, accts = new_book_with_accounts(client, owner)
     editor_name = client.get("/v1/me", headers=auth(editor)).json()["profile"]["username"]
@@ -769,7 +797,7 @@ def test_book_invites_are_rate_limited(client):
 
 
 def test_username_changes_are_rate_limited(client):
-    """A taken name answers username_taken, so trying names is slowed down (#4)."""
+    """A taken name answers username_taken, so trying names is slowed down."""
     taken = f"taken_{uuid.uuid4().hex[:8]}"
     signed_up(client, taken)
     u = signed_up(client)

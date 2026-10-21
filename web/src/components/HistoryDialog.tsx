@@ -24,7 +24,7 @@ export function HistoryDialog({ book, txnId, onClose }: { book: Book; txnId: str
   const errorText = useErrorText()
   const lang = currentLanguage()
   const history = useHistory(book.id, txnId)
-  // Only what was fetched since this opening: an older copy would hide the newest edit (msaving#18).
+  // Only what was fetched since this opening: an older copy would hide the newest edit.
   const fresh = history.isFetchedAfterMount ? history.data : undefined
   const accounts = useAccounts(book.id, true)
   const categories = useCategories(book.id, true)
@@ -58,7 +58,7 @@ export function HistoryDialog({ book, txnId, onClose }: { book: Book; txnId: str
                   <Typography variant="body2" color="text.secondary">
                     {[
                       t(`txn.types.${h.type}`),
-                      day.format(new Date(`${h.occurred_on}T00:00:00`)),
+                      day.format(new Date(`${h.occurred_on}T00:00:00`)) + (h.occurred_time ? ` ${h.occurred_time.slice(0, 5)}` : ''),
                       ...(h.entries ?? []).map(
                         (e) => `${accountName(e.account_id)} ${formatMoney(e.amount, e.currency ?? '', currencies.data?.get(e.currency ?? '')?.minor_unit ?? 0, lang)}`,
                       ),

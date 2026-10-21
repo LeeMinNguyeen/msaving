@@ -1,44 +1,15 @@
-"""How the `msaving` container starts (docker-compose.yml). Everything an
-operator would otherwise do by hand:
+"""How the `msaving` container starts:
 
-    python -m app.launch secrets   the `secrets` service, first start only: the
-                                   built-in database's password, in the secrets
-                                   volume, before Postgres first starts
-    python -m app.launch           the server:
-      1. the database logins' passwords: made once, kept in the secrets volume;
-      2. waits for the database;
-      3. a backup, then the migrations, when an update brings new ones
-         (app/jobs/migrate.py), and the logins;
-      4. prints the setup code while the server has no admin;
-      5. runs the API (and the web app's files) and the daily jobs
-         (app/jobs/scheduler.py) side by side; if either stops, the container
-         stops and Docker restarts it. With RUN_JOBS=off, the API alone.
-    python -m app.launch jobs      the jobs that are due, once, then exits
-                                   (non-zero if one failed). For a platform
-                                   that pauses the server between requests
-                                   (Cloud Run): a scheduled task runs this
-                                   every hour, and the server has RUN_JOBS=off.
-                                   It needs the server to have started once
-                                   (the migrations and the logins).
+    python -m app.launch secrets   first start only: the built-in database's password, before Postgres starts
+    python -m app.launch           the server: a backup when an update brings migrations, the migrations and logins,
+                                   the setup code, then the API and the scheduler side by side (if either stops,
+                                   the container stops and Docker restarts it)
+    python -m app.launch jobs      the due jobs, once, for a server with RUN_JOBS=off (Cloud Run); non-zero if one
+                                   failed. Needs the server to have started once.
 
-The API gets only its own login (api_login): never the owner's password, so
-even a flaw in the API can't get around row-level security. The daily jobs
-get the purge and exchange rate logins, and the owner's for the backup.
-
-The logins' passwords file (db_logins.json) can also be provided, read-only,
-by the platform (Cloud Run: a Secret Manager secret mounted in SECRETS_DIR):
-the server then sets those passwords instead of making new ones.
-
-Settings (all optional):
-    ADMIN_DATABASE_URL   your own Postgres or Supabase, as its owner. Unset:
-                         the built-in database container. Through Supabase's
-                         pooler the owner is postgres.<project ref>, and the
-                         server's logins get the same suffix (login_url).
-    RUN_JOBS             on; off: the server doesn't run the daily jobs
-    PORT                 8080
-    BACKUP_DIR           /backups
-    SECRETS_DIR          /secrets
-    DEV_RELOAD           development only: restart the API on code changes
+The API gets only its own login, never the owner's password, so even a flaw in the API can't get around row-level
+security. The logins' passwords file can be mounted read-only (Cloud Run's Secret Manager): the server then sets
+those passwords instead of making new ones.
 """
 import json
 import os
@@ -137,7 +108,6 @@ def jobs_here() -> bool:
 
 
 def run_jobs_once() -> None:
-    """python -m app.launch jobs: the scheduler's one look (app/jobs/scheduler.py --once)."""
     admin = admin_url()
     passwords = login_passwords()
     wait_for(admin)

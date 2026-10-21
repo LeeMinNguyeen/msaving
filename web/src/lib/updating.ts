@@ -2,8 +2,8 @@ import { useSyncExternalStore } from 'react'
 
 // What GET /v1/admin/update answers (admin only).
 export type UpdateInfo = {
-  current_version: string; latest_version: string | null; release_url: string | null; update_available: boolean
-  updater: boolean; status: string | null
+  current_version: string; latest_version: string | null; release_url: string | null; changelog_url: string | null
+  update_available: boolean; updater: boolean; status: string | null
 }
 
 // Whether the updater helper's status line ("done 2026-...", "failed ...") is about the update started at `since`.

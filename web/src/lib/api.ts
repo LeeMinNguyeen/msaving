@@ -44,8 +44,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await reach(path, { ...init, headers })
   if (!res.ok) await fail(res)
-  if (res.status === 204) return undefined as T
-  return res.json() as Promise<T>
+  const text = await res.text() // 202 and 204 come with no body
+  return (text ? JSON.parse(text) : undefined) as T
 }
 
 // A file from the API (the data export): saved by the browser under the name it sends.
@@ -74,15 +74,16 @@ export type Profile = {
   created_at: string
   deletion_requested_at: string | null
   is_admin: boolean
-  idle_sign_out_minutes: number | null // sign me out after this long without activity, on every device (msaving#26); 5 by default; null: never
+  idle_sign_out_minutes: number | null // without activity before sign-out, on every device; null: never
 }
 
 export type Me = { id: string; profile: Profile }
 
-// What a server says about itself before anyone signs in (GET /v1/instance).
+// GET /v1/instance, before anyone signs in.
 export type Instance = { name: string; server_version: string; api_version: number; signup: 'invite' | 'open'; setup_needed: boolean }
 export type Token = { token: string }
-// A signed-in device (msaving#5): the browser and system that signed in, never the token.
+export type SignedIn = Token & { device_token: string | null }
+// The browser and system that signed in, never the token.
 export type DeviceSession = { id: string; device: string | null; created_at: string; last_used_at: string; current: boolean }
 
 export type Currency = { code: string; minor_unit: number; name: string }
@@ -109,13 +110,12 @@ export const accountKinds = [
 export type AccountKind = (typeof accountKinds)[number]
 // Liabilities have negative balances: what's owed is entered as a positive amount.
 export const liabilityKinds: readonly AccountKind[] = ['credit_card', 'loan', 'other_liability']
-// Details by kind (msaving#17): which kinds have card or account numbers, an
-// interest rate, the credit card fields. A note goes on any account.
+// Which kinds have card or account numbers, an interest rate, the credit card
+// fields. A note goes on any account.
 export const last4Kinds: readonly AccountKind[] = ['checking', 'savings', 'investment', 'credit_card', 'loan']
 export const interestKinds: readonly AccountKind[] = ['savings', 'credit_card', 'loan', 'lent']
 
-// A credit card's or a loan's bill this month (msaving#37), worked out by the server from the transactions.
-// Amounts are positive, in minor units of the account's currency; dates are the book's.
+// Amounts are positive; dates are the book's.
 export type Bill = {
   kind: 'card' | 'loan'
   period_start: string // card: the statement's first day; loan: the day after the previous payment day
@@ -123,7 +123,7 @@ export type Bill = {
   due_on: string
   amount: number // what the bill asks for
   paid: number // money in since the period started
-  remaining: number // still to pay
+  remaining: number
   owed_now: number
   interest: number // loan: the month's interest, to record as an expense (0 once recorded)
   interest_transaction_id: string | null
@@ -141,11 +141,11 @@ export type Account = {
   in_net_worth: boolean
   contact_id: string | null
   note: string | null
-  credit_limit: number | null // credit cards: minor units of the account's currency
+  credit_limit: number | null
   annual_fee: number | null
   statement_day: number | null // day of the month
   payment_due_day: number | null // a credit card's repayment day, a loan's payment day
-  installment: number | null // loans: the monthly payment (msaving#37)
+  installment: number | null // loans: the monthly payment
   installment_fee: number | null // loans: a one-off fee, with the first payment
   interest_rate_bp: number | null // hundredths of a percent a year: 5.5 % = 550
   archived_at: string | null
@@ -182,6 +182,7 @@ export type Transaction = {
   id: string
   type: TxnType
   occurred_on: string
+  occurred_time: string // HH:MM:SS
   category_id: string | null
   payee: string | null
   note: string | null
@@ -202,6 +203,7 @@ export type HistoryEntry = {
   changed_by: string | null
   type: TxnType
   occurred_on: string
+  occurred_time: string | null
   category_id: string | null
   payee: string | null
   note: string | null
@@ -221,7 +223,7 @@ export type Dashboard = {
   budgets: { budget_id: string; category_id: string; category: string; period: string; period_start: string; period_end: string; budget: number; spent: number; remaining: number; percent_used: number | null; not_converted: number }[]
   accounts: { account_id: string; name: string; kind: AccountKind; currency: string; balance: number; converted_balance: number | null; in_net_worth: boolean }[]
   people: { contact_id: string; name: string; currency: string; owed_to_you: number; you_owe: number }[]
-  recent_transactions: { id: string; type: TxnType; occurred_on: string; payee: string | null; category: string | null; amount: number | null; currency: string | null }[]
+  recent_transactions: { id: string; type: TxnType; occurred_on: string; occurred_time: string; payee: string | null; category: string | null; amount: number | null; currency: string | null }[]
 }
 
 export type Contact = {

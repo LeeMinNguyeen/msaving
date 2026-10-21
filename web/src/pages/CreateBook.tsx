@@ -20,7 +20,7 @@ import { send, type Book } from '../lib/api'
 import { keys, useBooks } from '../lib/queries'
 import { newId } from '../lib/uuid'
 
-// Screen 3. Shown when the user has no book, and from the book switcher.
+// Shown when the user has no book, and from the book switcher.
 export function CreateBook() {
   const { t } = useTranslation()
   const errorText = useErrorText()

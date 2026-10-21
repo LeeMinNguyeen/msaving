@@ -1,17 +1,11 @@
-"""Create and edit transactions safely when several devices or book members
-work on the same book at once.
+"""Several devices or book members can work on a book at once:
 
-- Create is idempotent: the device generates the transaction id (a UUID) when
-  the user taps Save, and re-sends the same id on retry. A retry after a
-  dropped connection, or a double tap, can't create a duplicate.
-- Edit is guarded by version: the device sends the version it loaded. If
-  another device saved in between, nothing is written and the API returns 409
-  so the device can reload and show the newer data.
-- Balances need no locking: they are SUM(entries), so two devices adding
-  transactions at the same moment both count.
+- Create is idempotent: the device generates the id when the user taps Save and re-sends it on retry.
+- Edit is guarded by version: if another device saved in between, nothing is written (409).
+- Balances need no locking: they are SUM(entries), so two devices adding at the same moment both count.
 """
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from uuid import UUID
 
 from sqlalchemy import text
@@ -19,13 +13,13 @@ from sqlalchemy.orm import Session
 
 
 class Conflict(Exception):
-    """Another device changed or deleted this row first. Map to HTTP 409."""
+    """Another device changed or deleted this row first."""
 
 
 @dataclass
 class Entry:
     account_id: UUID
-    amount: int  # minor units, signed
+    amount: int  # signed
 
 
 @dataclass
@@ -38,6 +32,7 @@ class TxnIn:
     category_id: UUID | None = None
     payee: str | None = None
     note: str | None = None
+    occurred_time: time | None = None    # none: 00:00 on a new one, unchanged on an edit
 
 
 def _insert_entries(db: Session, t: TxnIn) -> None:
@@ -52,10 +47,10 @@ def create_transaction(db: Session, t: TxnIn) -> int:
     """Returns the version. Safe to call again with the same id.
     created_by is filled in by the database from the signed-in user."""
     row = db.execute(
-        text("insert into transactions (id, book_id, type, occurred_on, category_id, payee, note)"
-             " values (:id, :b, :type, :d, :c, :p, :n)"
+        text("insert into transactions (id, book_id, type, occurred_on, occurred_time, category_id, payee, note)"
+             " values (:id, :b, :type, :d, coalesce(cast(:tm as time), '00:00'), :c, :p, :n)"
              " on conflict (id) do nothing returning version"),
-        {"id": t.id, "b": t.book_id, "type": t.type, "d": t.occurred_on,
+        {"id": t.id, "b": t.book_id, "type": t.type, "d": t.occurred_on, "tm": t.occurred_time,
          "c": t.category_id, "p": t.payee, "n": t.note},
     ).first()
     if row is None:  # already saved by an earlier attempt
@@ -85,10 +80,11 @@ def update_transaction(db: Session, t: TxnIn, expected_version: int) -> int:
     # 0 rows. A viewer's UPDATE matches 0 rows too (RLS), which also ends as 409;
     # the API should check the role first to return 403 instead.
     row = db.execute(
-        text("update transactions set type = :type, occurred_on = :d, category_id = :c, payee = :p, note = :n"
+        text("update transactions set type = :type, occurred_on = :d,"
+             " occurred_time = coalesce(cast(:tm as time), occurred_time), category_id = :c, payee = :p, note = :n"
              + (", modified_at = now()" if entries_changed else "")
              + " where id = :id and version = :v returning version"),
-        {"id": t.id, "v": expected_version, "type": t.type, "d": t.occurred_on,
+        {"id": t.id, "v": expected_version, "type": t.type, "d": t.occurred_on, "tm": t.occurred_time,
          "c": t.category_id, "p": t.payee, "n": t.note},
     ).first()
     if row is None:

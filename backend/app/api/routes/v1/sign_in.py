@@ -1,14 +1,4 @@
-"""Setting up the server, joining, signing in and sign-in security
-(docs: Sign-in). No email anywhere.
-
-- Setup: the first account, with the setup code from the server's log
-  (app/jobs/migrate.py). It becomes the admin.
-- Join: with an invite code from the admin, or without one when the admin
-  has opened sign-up.
-- Sign in: username, password, and the authenticator code (or a recovery
-  code) when two-factor is on.
-Each returns a session token for `Authorization: Bearer`.
-"""
+"""Setup, joining and signing in each return a session token for `Authorization: Bearer`. No email anywhere."""
 import uuid
 from collections.abc import Callable
 from datetime import datetime
@@ -32,11 +22,16 @@ Password = Annotated[str, StringConstraints(min_length=si.MIN_PASSWORD, max_leng
 AnyPassword = Annotated[str, StringConstraints(max_length=si.MAX_PASSWORD)]
 Code = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20)]
 DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
+DeviceToken = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 RECOVERY_CODES = 10
 
 
 class Token(BaseModel):
     token: str
+
+
+class SignedIn(Token):
+    device_token: str | None = None    # with remember_device: send it back at the next sign-in on this device
 
 
 def _client_ip(request: Request) -> str:
@@ -67,15 +62,14 @@ class NewAccount(BaseModel):
     username: Username
     password: Password
     display_name: DisplayName | None = None
-    language: Literal["vi", "en"] = "vi"
+    language: Literal["en", "vi"] = "en"
     timezone: Timezone = "UTC"
 
 
 def _create_account(body: NewAccount, device: str | None, before_insert: str | None, after_insert: str | None,
                     code: bytes | None, then: Callable[[Session], object] | None = None) -> Token:
-    """The users row and its password in one transaction, with the setup or
-    invite claimed in it. The database refuses an account with no way in
-    (users_need_a_way_in). A taken username is 409 username_taken."""
+    """The users row and its password in one transaction, with the setup or invite claimed in it. The database
+    refuses an account with no way in (users_need_a_way_in)."""
     user_id = uuid.uuid4()
     with user_session(user_id) as s:
         if before_insert:
@@ -100,8 +94,7 @@ class Setup(NewAccount):
 
 @router.post("/setup", status_code=201)
 def setup(body: Setup, request: Request) -> Token:
-    """The first account, which becomes the admin. 403 setup_invalid for a
-    wrong code or a server that already has its admin."""
+    """The first account, which becomes the admin."""
     _limit((si.per_ip, f"setup:{_client_ip(request)}"))
     name = body.server_name
     return _create_account(body, _device(request), "select claim_setup(:c)", None, si.code_hash(body.setup_code),
@@ -118,7 +111,6 @@ class InviteStatus(BaseModel):
 
 @router.post("/auth/invite-check")
 def invite_check(body: InviteCheck, request: Request, db: Session = Depends(get_public_db)) -> InviteStatus:
-    """For the join screen, before the person types a password."""
     _limit((si.per_ip, f"invite:{_client_ip(request)}"))
     return InviteStatus(valid=bool(db.execute(text("select invite_is_valid(:c)"), {"c": si.code_hash(body.code)}).scalar()))
 
@@ -129,8 +121,7 @@ class SignUp(NewAccount):
 
 @router.post("/auth/sign-up", status_code=201)
 def sign_up(body: SignUp, request: Request) -> Token:
-    """403 invite_invalid for a bad invite; 403 invite_required with none on
-    an invite-only server."""
+    """Without an invite code, the database refuses unless sign-up is open (403 invite_required)."""
     ip = _client_ip(request)
     _limit((si.sign_ups_per_ip, ip), (si.per_ip, f"invite:{ip}"))
     if body.invite_code:
@@ -142,18 +133,33 @@ class SignIn(BaseModel):
     username: Annotated[str, StringConstraints(strip_whitespace=True, to_lower=True, max_length=30)]
     password: AnyPassword
     code: Code | None = None           # the authenticator's 6 digits, or a recovery code
+    remember_device: bool = False      # with a code: skip the code on this device for 30 days
+    device_token: DeviceToken | None = None
+
+
+def _remembered(user_id: uuid.UUID, device_token: str | None) -> bool:
+    if not device_token:
+        return False
+    with user_session(user_id) as s:
+        return s.execute(text("select 1 from remembered_devices where token_sha256 = :h and expires_at > now()"),
+                         {"h": si.token_hash(device_token)}).first() is not None
+
+
+def _remember(user_id: uuid.UUID) -> str:
+    token, digest = si.new_token()
+    with user_session(user_id) as s:
+        s.execute(text("insert into remembered_devices (token_sha256, user_id) values (:h, :u)"), {"h": digest, "u": user_id})
+    return token
 
 
 @router.post("/auth/sign-in")
-def sign_in(body: SignIn, request: Request, db: Session = Depends(get_public_db)) -> Token:
-    """401 invalid_credentials for a wrong username or password (the same
-    answer for both); 401 code_required when two-factor is on and no code
-    came; 401 invalid_code for a wrong one."""
+def sign_in(body: SignIn, request: Request, db: Session = Depends(get_public_db)) -> SignedIn:
     _limit((si.per_ip, f"sign-in:{_client_ip(request)}"), (si.per_username, body.username))
     row = db.execute(text("select * from sign_in_lookup(:u)"), {"u": body.username}).mappings().first()
     if not si.password_matches(row["password_hash"] if row else None, body.password):
         raise HTTPException(401, "invalid_credentials")
-    if row["totp_secret"]:
+    device_token = None
+    if row["totp_secret"] and not _remembered(row["user_id"], body.device_token):
         if not body.code:
             raise HTTPException(401, "code_required")
         ok = si.totp_matches(row["totp_secret"], body.code) or db.execute(
@@ -161,7 +167,9 @@ def sign_in(body: SignIn, request: Request, db: Session = Depends(get_public_db)
         db.commit()
         if not ok:
             raise HTTPException(401, "invalid_code")
-    return _start_session(row["user_id"], _device(request))
+        if body.remember_device:
+            device_token = _remember(row["user_id"])
+    return SignedIn(token=_start_session(row["user_id"], _device(request)).token, device_token=device_token)
 
 
 @router.post("/auth/sign-out", status_code=204)
@@ -174,16 +182,14 @@ def sign_out(caller: Caller = Depends(current_caller), db: Session = Depends(get
 class DeviceSession(BaseModel):
     id: uuid.UUID
     device: str | None          # "Chrome · Windows"; None: not recognised, or signed in before devices were kept
-    created_at: datetime        # signed in
+    created_at: datetime
     last_used_at: datetime      # updated at most once a minute
     current: bool               # the device making this request
 
 
 @router.get("/auth/sessions")
 def sessions(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> list[DeviceSession]:
-    """Where this user is signed in (msaving#5): this device first, then by last use. Never a token or its hash.
-    Sessions past their lifetime (30 days unused, or the user's own sign-out after inactivity) aren't listed,
-    even before they're deleted."""
+    """Never a token or its hash. Sessions past their lifetime aren't listed, even before the purge deletes them."""
     rows = db.execute(text("select id, device, created_at, last_used_at, token_sha256 = :h as current from sessions"
                            " where user_id = :u and last_used_at > now() - session_lifetime(:u)"
                            " order by token_sha256 = :h desc, last_used_at desc"),
@@ -193,7 +199,7 @@ def sessions(caller: Caller = Depends(current_caller), db: Session = Depends(get
 
 @router.delete("/auth/sessions/{session_id}", status_code=204)
 def end_session(session_id: uuid.UUID, caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> Response:
-    """Signs out one device; this one too, which is signing out. 404 for a session that isn't the caller's."""
+    """Ending this device's own session signs it out."""
     n = db.execute(text("delete from sessions where id = :i and user_id = :u"), {"i": session_id, "u": caller.id}).rowcount
     if not n:
         raise HTTPException(404, "not_found")
@@ -201,10 +207,19 @@ def end_session(session_id: uuid.UUID, caller: Caller = Depends(current_caller),
     return Response(status_code=204)
 
 
+class SignOutOthers(BaseModel):
+    device_token: DeviceToken | None = None    # this device's, which stays remembered
+
+
 @router.post("/auth/sign-out-others", status_code=204)
-def sign_out_others(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> Response:
+def sign_out_others(body: SignOutOthers | None = None, caller: Caller = Depends(current_caller),
+                    db: Session = Depends(get_db)) -> Response:
+    """Also forgets every other remembered device."""
     db.execute(text("delete from sessions where user_id = :u and token_sha256 <> :h"),
                {"u": caller.id, "h": caller.token_sha256})
+    keep = si.token_hash(body.device_token) if body and body.device_token else None
+    db.execute(text("delete from remembered_devices where user_id = :u and token_sha256 is distinct from cast(:k as bytea)"),
+               {"u": caller.id, "k": keep})
     db.commit()
     return Response(status_code=204)
 
@@ -217,7 +232,6 @@ class ChangePassword(BaseModel):
 @router.post("/auth/password", status_code=204)
 def change_password(body: ChangePassword, caller: Caller = Depends(current_caller),
                     db: Session = Depends(get_db)) -> Response:
-    """Signs out every other device too."""
     _limit((si.per_user_action, str(caller.id)))
     current = db.execute(text("select password_hash from local_credentials where user_id = :u"), {"u": caller.id}).scalar()
     if not si.password_matches(current, body.current_password):
@@ -237,8 +251,7 @@ class Reset(BaseModel):
 
 @router.post("/auth/reset")
 def reset_password(body: Reset, request: Request, db: Session = Depends(get_public_db)) -> Token:
-    """A reset link from the admin: sets a new password, turns two-factor off,
-    ends every session, signs in. 403 reset_invalid for a bad link."""
+    """use_password_reset also turns two-factor off and ends every session."""
     _limit((si.per_ip, f"reset:{_client_ip(request)}"))
     user_id = db.execute(text("select use_password_reset(:h)"), {"h": si.token_hash(body.token)}).scalar()
     db.commit()
@@ -247,8 +260,6 @@ def reset_password(body: Reset, request: Request, db: Session = Depends(get_publ
                   {"h": si.hash_password(body.new_password), "u": user_id})
     return _start_session(user_id, _device(request))
 
-
-# ---------------------------------------------------------------- two-factor sign-in (optional)
 
 class TwoFactor(BaseModel):
     enabled: bool
@@ -266,7 +277,7 @@ def two_factor(caller: Caller = Depends(current_caller), db: Session = Depends(g
 class TwoFactorSetup(BaseModel):
     secret: str
     uri: str            # otpauth://
-    qr: str             # the same, as a QR code image (data URI)
+    qr: str             # the same, as a QR code (data URI)
 
 
 @router.post("/auth/two-factor/setup")
@@ -310,7 +321,7 @@ def two_factor_enable(body: Enable, caller: Caller = Depends(current_caller),
 
 
 class CurrentCode(BaseModel):
-    code: Code          # the authenticator's current code
+    code: Code
 
 
 def _check_current_code(db: Session, caller: Caller, code: str) -> bool:
@@ -327,7 +338,6 @@ def _check_current_code(db: Session, caller: Caller, code: str) -> bool:
 @router.post("/auth/two-factor/recovery-codes")
 def two_factor_new_recovery_codes(body: CurrentCode, caller: Caller = Depends(current_caller),
                                   db: Session = Depends(get_db)) -> RecoveryCodes:
-    """New codes; the old ones stop working."""
     if not _check_current_code(db, caller, body.code):
         raise HTTPException(409, "two_factor_off")
     codes = _new_recovery_codes(db, caller.id)

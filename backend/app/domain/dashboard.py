@@ -1,10 +1,4 @@
-"""Home screen: everything the dashboard shows, in one API call.
-
-GET /v1/books/{book_id}/dashboard -> dashboard(db, book_id)
-Runs inside user_session(), so every query is already limited to the
-signed-in user by row-level security. Amounts are int minor units of the
-book's base currency.
-"""
+"""Runs in the user's session: row-level security limits every query to that user's books."""
 from datetime import date
 from uuid import UUID
 
@@ -33,7 +27,6 @@ def dashboard(db: Session, book_id: UUID, today: date | None = None) -> dict:
     by_month = {r["month"]: r for r in cashflow}
     return {
         "currency": nw["base_currency"] if nw else None,
-        # Where the newest market rates came from: some sources ask for a credit (jobs/fx_update.py).
         "rates_source": db.execute(text("select source from fx_rates order by as_of desc, fetched_at desc limit 1")).scalar()
                         if nw else None,
         "net_worth": nw["net_worth"] if nw else 0,
@@ -41,26 +34,26 @@ def dashboard(db: Session, book_id: UUID, today: date | None = None) -> dict:
         "spent_this_month": by_month.get(this_month, {}).get("spent", 0),
         "spent_last_month": by_month.get(last_month, {}).get("spent", 0),
         "income_this_month": by_month.get(this_month, {}).get("income", 0),
-        "cashflow_6_months": cashflow,                                   # bar chart: spent vs income
-        "top_categories_this_month": rows(                              # every category with spending; the app
+        "cashflow_6_months": cashflow,
+        "top_categories_this_month": rows(                              # all of them: the app rolls them up
             "select category_id, category, category_parent_id, spent, not_converted from book_monthly_category_spend"
-            " where book_id = :b and month = :this and spent > 0 order by spent desc"),   # rolls them up, shows the top 6
-        "budgets": rows(                                                # progress bars, most used first
+            " where book_id = :b and month = :this and spent > 0 order by spent desc"),
+        "budgets": rows(
             "select budget_id, category_id, category, period, period_start, period_end, budget, spent, remaining, percent_used, not_converted"
             "  from budget_progress where book_id = :b order by percent_used desc"),
-        "accounts": rows(                                               # in_net_worth false: show greyed out
+        "accounts": rows(
             "select bc.account_id, bc.name, bc.kind, bc.currency, bc.balance, bc.converted_balance, bc.in_net_worth"
             "  from book_balances_converted bc join accounts a on a.id = bc.account_id"
             " where bc.book_id = :b and a.archived_at is null order by bc.kind, bc.name"),
-        "people": rows(                                                 # who owes whom
+        "people": rows(
             "select contact_id, name, currency, owed_to_you, you_owe from contact_balances"
             " where book_id = :b and (owed_to_you <> 0 or you_owe <> 0) order by name"),
         "recent_transactions": rows(
-            "select t.id, t.type::text as type, t.occurred_on, t.payee, c.name as category,"
+            "select t.id, t.type::text as type, t.occurred_on, t.occurred_time, t.payee, c.name as category,"
             "       (select sum(e.amount) from entries e where e.transaction_id = t.id"
             "          and (t.type <> 'transfer' or e.amount < 0))::bigint as amount,"
             "       (select min(a.currency) from entries e join accounts a on a.id = e.account_id"
             "          where e.transaction_id = t.id and (t.type <> 'transfer' or e.amount < 0)) as currency"
             "  from transactions t left join categories c on c.id = t.category_id"
-            " where t.book_id = :b order by t.occurred_on desc, t.created_at desc limit 10"),
+            " where t.book_id = :b order by t.occurred_on desc, t.occurred_time desc, t.created_at desc limit 10"),
     }

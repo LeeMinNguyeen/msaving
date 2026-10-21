@@ -1,12 +1,6 @@
-"""Checks the session token on every request.
-
-Clients sign in through /v1/auth (app/api/routes/v1/sign_in.py) and get a
-random token, which they send as `Authorization: Bearer <token>`. The
-database keeps only its SHA-256 (sessions); session_user_id() returns the
-user, or null for an unknown, expired or ended session, or a disabled
-account. That id becomes app.user_id for the request's database transaction
-(see db.py), and row-level security does the rest.
-"""
+"""The database keeps only each session token's SHA-256. session_user_id() returns the user, or null for an unknown,
+expired or ended session or a disabled account; that id becomes app.user_id for the request's transaction (db.py),
+and row-level security does the rest."""
 from dataclasses import dataclass
 from uuid import UUID
 

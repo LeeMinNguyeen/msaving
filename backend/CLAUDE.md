@@ -87,8 +87,9 @@ Rules:
 ## Jobs
 
 `app/jobs/scheduler.py`, inside the `msaving` container, each job once a day at the time set on Server admin
-(`JOBS_HOUR`, UTC, until then; `app/core/jobs.py` says when one is due). On Cloud Run the server has
-`RUN_JOBS=off` and a scheduled Cloud Run job runs `python -m app.launch jobs` (one look) every hour.
+(`JOBS_HOUR`, UTC, until then; `app/core/jobs.py` says when one is due); a failed one runs again an hour later.
+On Cloud Run the server has `RUN_JOBS=off` and a scheduled Cloud Run job runs `python -m app.launch jobs` (one look)
+every hour.
 `account_deletion` (purge after 30 days, expired sessions; ids to `PURGE_LOG` in the backups volume), `backup`
 (pg_dump into `/backups`, about 6 days kept, owner-only files), `fx_update` (open.er-api.com, no key; Open
 Exchange Rates with `OXR_APP_ID`).

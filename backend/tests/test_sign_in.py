@@ -1,14 +1,10 @@
-"""Setting up a server, joining, signing in and the admin's tools
-(docs: Sign-in; Accounts on an instance), plus the migration runner,
-the launcher's helpers and the scheduler. Uses the database from conftest.py;
-tests that need a fresh server (setup) build their own.
-"""
+"""Tests that need a fresh server (setup, the migration runner) build their own database."""
 import json
 import os
 import subprocess
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import psycopg
@@ -71,8 +67,6 @@ def me(client, token):
     return client.get("/v1/me", headers=bearer(token))
 
 
-# ---------------------------------------------------------------- joining
-
 def test_invite_only_server_needs_an_invite(client, admin, invite_only):
     assert client.get("/v1/instance").json()["signup"] == "invite"
     assert sign_up(client, status=403) == {"detail": "invite_required"}
@@ -134,8 +128,6 @@ def test_nobody_can_make_themselves_admin(client, database):
         with db.user_session(uuid.UUID(uid)) as s:
             s.execute(text("update users set is_admin = true where id = :u"), {"u": uid})
 
-
-# ---------------------------------------------------------------- signing in
 
 def test_sign_in_and_wrong_credentials(client):
     name, _ = sign_up(client)
@@ -205,7 +197,7 @@ SAFARI_IPHONE = ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWe
 
 
 def test_signed_in_devices(client, database):
-    """msaving#5: a user sees where they're signed in, this device first, and signs out one other device."""
+    """A user sees where they're signed in, this device first, and signs out one other device."""
     name, laptop = sign_up(client, headers={"User-Agent": CHROME_WINDOWS})
     phone = client.post("/v1/auth/sign-in", json={"username": name, "password": PASSWORD},
                         headers={"User-Agent": SAFARI_IPHONE}).json()["token"]
@@ -234,7 +226,7 @@ def test_signed_in_devices(client, database):
 
 
 def test_idle_sign_out(client, database):
-    """msaving#26: each user's sessions end after so many minutes unused, 5 by default, or their own choice,
+    """Each user's sessions end after so many minutes unused, 5 by default, or their own choice,
     never included (30 days); nobody else's setting touches them."""
     name, token = sign_up(client)
     other = sign_in(client, name).json()["token"]
@@ -326,6 +318,70 @@ def test_two_factor_with_recovery_codes(client):
     assert sign_in(client, name).status_code == 200
 
 
+def test_remembered_device_skips_the_code_until_cancelled(client, admin, database, monkeypatch):
+    """R-AUTH-10: "remember this device" skips the two-factor code there, never the password, for 30 days. A new
+    password, two-factor turned off, an admin's reset link and "sign out other devices" (but this one) cancel it."""
+    from app.core import sign_in as si
+    monkeypatch.setattr(si, "per_username", si.RateLimit(100, 60))
+    name, token = sign_up(client)
+    uid = me(client, token).json()["id"]
+    secret = client.post("/v1/auth/two-factor/setup", headers=bearer(token)).json()["secret"]
+    client.post("/v1/auth/two-factor/enable", headers=bearer(token), json={"secret": secret, "code": pyotp.TOTP(secret).now()})
+    password = PASSWORD
+
+    def remember():
+        body = {"username": name, "password": password, "code": pyotp.TOTP(secret).now(), "remember_device": True}
+        return client.post("/v1/auth/sign-in", json=body).json()["device_token"]
+
+    def with_device(device_token, password_typed=None):
+        body = {"username": name, "password": password_typed or password, "device_token": device_token}
+        return client.post("/v1/auth/sign-in", json=body)
+
+    def remembered():
+        with database.connect() as c:
+            return c.execute(text("select count(*) from remembered_devices where user_id = :u"), {"u": uid}).scalar()
+
+    assert sign_in(client, name, code=pyotp.TOTP(secret).now()).json()["device_token"] is None
+    laptop, phone, tablet = remember(), remember(), remember()
+    assert with_device(laptop).status_code == 200
+    assert with_device(laptop, "wrong password!").json() == {"detail": "invalid_credentials"}
+    assert with_device("not-a-token").json() == {"detail": "code_required"}
+    other, _ = sign_up(client)
+    assert client.post("/v1/auth/sign-in", json={"username": other, "password": PASSWORD, "device_token": laptop}).status_code == 200
+
+    with database.connect() as c:                                  # 30 days later
+        c.execute(text("update remembered_devices set expires_at = now() - interval '1 second'"
+                       " where token_sha256 = sha256(convert_to(:t, 'utf8'))"), {"t": phone})
+    assert with_device(phone).json() == {"detail": "code_required"}
+
+    here = with_device(laptop).json()["token"]
+    assert client.post("/v1/auth/sign-out-others", headers=bearer(here), json={"device_token": laptop}).status_code == 204
+    assert with_device(laptop).status_code == 200 and with_device(tablet).json() == {"detail": "code_required"}
+
+    new_password = "another long password"
+    assert client.post("/v1/auth/password", headers=bearer(here),
+                       json={"current_password": password, "new_password": new_password}).status_code == 204
+    password = new_password
+    assert remembered() == 0 and with_device(laptop).json() == {"detail": "code_required"}
+
+    remember()
+    assert client.post("/v1/auth/two-factor/disable", headers=bearer(here), json={"code": pyotp.TOTP(secret).now()}).status_code == 204
+    assert remembered() == 0
+
+    client.post("/v1/auth/two-factor/enable", headers=bearer(here), json={"secret": secret, "code": pyotp.TOTP(secret).now()})
+    remember()
+    _, admin_token = admin
+    link = client.post(f"/v1/admin/users/{uid}/reset", headers=bearer(admin_token)).json()
+    assert client.post("/v1/auth/reset", json={"token": link["token"], "new_password": "a third long password"}).status_code == 200
+    assert remembered() == 0
+
+    with database.connect() as c:                                  # the daily purge: past their 30 days
+        c.execute(text("insert into remembered_devices (token_sha256, user_id, expires_at)"
+                       " values (sha256('old'::bytea), :u, now() - interval '1 day')"), {"u": uid})
+        c.execute(text("select purge_expired_sign_in()"))
+    assert remembered() == 0
+
+
 def test_rate_limits(client):
     from app.core import sign_in as si
     name, _ = sign_up(client)
@@ -342,8 +398,6 @@ def test_rate_limits(client):
     finally:
         si.sign_ups_per_ip = saved
 
-
-# ---------------------------------------------------------------- the admin
 
 def test_admin_disables_and_resets(client, admin):
     _, admin_token = admin
@@ -385,8 +439,6 @@ def test_purge_removes_sign_in(client, database):
         assert uuid.UUID(uid) in {r[0] for r in c.execute(text("select * from purge_deleted_accounts()"))}
     assert me(client, token).status_code == 401 and sign_in(client, name).status_code == 401
 
-
-# ---------------------------------------------------------------- a fresh server: migrate and setup
 
 @pytest.fixture
 def fresh_server(monkeypatch):
@@ -434,10 +486,9 @@ def test_migrate_builds_a_server_and_is_safe_to_repeat(fresh_server):
 
 
 def test_logins_are_set_again_by_an_owner_that_is_no_superuser(fresh_server):
-    """Supabase's owner (postgres) isn't a superuser, and since PostgreSQL 16 only a superuser may name SUPERUSER
-    or BYPASSRLS in ALTER ROLE: every start after the first failed with "permission denied to alter role". Such an
-    owner (CREATEROLE, with admin option on the logins and roles it made) sets the passwords again, and a login
-    someone made a superuser is refused loudly."""
+    """Supabase's owner isn't a superuser, and since PostgreSQL 16 only a superuser may name SUPERUSER or BYPASSRLS
+    in ALTER ROLE. Such an owner (CREATEROLE, with admin option on the logins and roles it made) sets the passwords
+    again on every start, and a login someone made a superuser is refused loudly."""
     from app.jobs import migrate
     url, passwords = fresh_server
     migrate.run(url, passwords)
@@ -561,7 +612,7 @@ def test_launcher_runs_the_due_jobs_once(fresh_server, tmp_path):
 
 
 def test_job_schedule_times(monkeypatch):
-    """msaving#6: each job at its time of day, the admin's (in their timezone) or JOBS_HOUR (UTC) until then; due
+    """Each job at its time of day, the admin's (in their timezone) or JOBS_HOUR (UTC) until then; due
     once its time has come since it last started and since its schedule changed."""
     from zoneinfo import ZoneInfo
 
@@ -594,7 +645,7 @@ def test_job_schedule_times(monkeypatch):
 
 
 def test_daily_jobs_on_server_admin(client, admin, database):
-    """msaving#6: the admin sees each job's time and last run, sets the time in their own timezone, and can turn
+    """The admin sees each job's time and last run, sets the time in their own timezone, and can turn
     only the exchange rates off."""
     _, admin_token = admin
     _, member = sign_up(client)
@@ -632,8 +683,6 @@ def test_daily_jobs_on_server_admin(client, admin, database):
             c.execute(text("update jobs set at_minute = null, timezone = null, enabled = true, changed_at = null"))
 
 
-# ---------------------------------------------------------------- updates
-
 def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     from app.core import updates
     _, admin_token = admin
@@ -641,12 +690,13 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     assert client.get("/v1/admin/update", headers=bearer(member_token)).json() == {"detail": "admin_only"}
 
     monkeypatch.setattr(updates, "UPDATES", tmp_path)
+    monkeypatch.delenv("PROJECT_SITE_URL", raising=False)
     monkeypatch.setattr(updates, "current_version", lambda: "1.2.0")
     monkeypatch.setattr(updates, "_cache", (0.0, None))
     monkeypatch.setattr(updates, "_github", lambda url: {"tag_name": "v1.3.0", "html_url": "https://github.com/x/releases/v1.3.0"})
     info = client.get("/v1/admin/update", headers=bearer(admin_token)).json()
     assert info | {"status": None} == {"current_version": "1.2.0", "latest_version": "1.3.0", "update_available": True,
-                                       "release_url": "https://github.com/x/releases/v1.3.0",
+                                       "release_url": "https://github.com/x/releases/v1.3.0", "changelog_url": None,
                                        "updater": False, "status": None}
     refused = client.post("/v1/admin/update", headers=bearer(admin_token))
     assert (refused.status_code, refused.json()) == (409, {"detail": "updater_off"})
@@ -669,6 +719,21 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     assert status_after(old, "2026-10-19T16:00:00+00:00") == old                   # failed while this server ran
     assert status_after("done 2026-10-20T16:28:05Z", "2026-10-20T16:28:30+00:00") == "done 2026-10-20T16:28:05Z"
     assert status_after("running 2026-10-20T16:20:00Z", "2026-10-20T16:27:30+00:00") is None
+
+    # The helper doesn't touch its heartbeat while it updates: a recent "running" counts as alive.
+    os.utime(tmp_path / "updater_alive", (0, 0))
+
+    def updater_with(line):
+        (tmp_path / "status").write_text(line + "\n")
+        return client.get("/v1/admin/update", headers=bearer(admin_token)).json()["updater"]
+    now = datetime.now(timezone.utc)
+    assert updater_with(f"running {now - timedelta(minutes=10):%Y-%m-%dT%H:%M:%SZ}") is True
+    assert updater_with(f"running {now - timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}") is False
+    assert updater_with(f"done {now:%Y-%m-%dT%H:%M:%SZ}") is False
+
+    monkeypatch.setenv("PROJECT_SITE_URL", "https://msaving.example/")
+    assert client.get("/v1/admin/update", headers=bearer(admin_token)).json()["changelog_url"] == \
+        "https://msaving.example/docs/changelog/"
 
 
 def test_versions_compare():

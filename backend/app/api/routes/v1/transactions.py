@@ -1,15 +1,8 @@
-"""Transactions: add, edit, delete, list with filters, edit history.
-
-Ids come from the client (made when the user taps Save, reused on retry), so a
-retry or a double tap can't save twice. Edits and deletes send the version the
-client loaded; if another device saved in between, nothing is written and the
-answer is 409 conflict (docs: The ledger, several devices). The shape rules
-(a transfer has two entries, an expense is negative) are checked by the
-database when the route commits.
-"""
+"""The shape rules (a transfer has two entries, an expense is negative) are checked by the database when the route
+commits."""
 import base64
 import json
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -31,7 +24,7 @@ Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 
 class Entry(BaseModel):
     account_id: UUID
-    amount: int                                # minor units of the account's currency, signed
+    amount: int                                # signed, in the account's currency
     currency: str | None = None                # filled in on the way out
 
 
@@ -39,6 +32,7 @@ class Transaction(BaseModel):
     id: UUID
     type: Type
     occurred_on: date
+    occurred_time: time
     category_id: UUID | None
     payee: str | None
     note: str | None
@@ -52,7 +46,7 @@ class Transaction(BaseModel):
 
 
 SELECT = """
-select t.id, t.type::text as type, t.occurred_on, t.category_id, t.payee, t.note, t.version, t.created_at, t.modified_at,
+select t.id, t.type::text as type, t.occurred_on, t.occurred_time, t.category_id, t.payee, t.note, t.version, t.created_at, t.modified_at,
        (select p.name from book_people p where p.book_id = t.book_id and p.user_id = t.created_by) as created_by,
        (select p.name from book_people p where p.book_id = t.book_id and p.user_id = t.modified_by) as modified_by,
        coalesce((select jsonb_agg(jsonb_build_object('account_id', e.account_id, 'amount', e.amount, 'currency', a.currency)
@@ -75,14 +69,14 @@ class Page(BaseModel):
 
 
 def _cursor(t: Transaction) -> str:
-    raw = json.dumps([t.occurred_on.isoformat(), t.created_at.isoformat(), str(t.id)])
+    raw = json.dumps([t.occurred_on.isoformat(), t.occurred_time.isoformat(), t.created_at.isoformat(), str(t.id)])
     return base64.urlsafe_b64encode(raw.encode()).decode()
 
 
-def _uncursor(c: str) -> tuple[date, datetime, UUID]:
+def _uncursor(c: str) -> tuple[date, time, datetime, UUID]:
     try:
-        on, at, i = json.loads(base64.urlsafe_b64decode(c.encode()))
-        return date.fromisoformat(on), datetime.fromisoformat(at), UUID(i)
+        on, tm, at, i = json.loads(base64.urlsafe_b64decode(c.encode()))
+        return date.fromisoformat(on), time.fromisoformat(tm), datetime.fromisoformat(at), UUID(i)
     except (ValueError, TypeError):
         raise HTTPException(422, "invalid") from None
 
@@ -100,14 +94,13 @@ def list_transactions(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     db: Session = Depends(get_db),
 ) -> Page:
-    """Newest first (date, then when it was entered)."""
     get_book(db, book_id)
-    c_on, c_at, c_id = _uncursor(after) if after else (None, None, None)
+    c_on, c_tm, c_at, c_id = _uncursor(after) if after else (None, None, None, None)
     rows = db.execute(text(SELECT + """,
        r.running_balance
   from transactions t
   left join (select e.transaction_id,
-                    sum(e.amount) over (order by t2.occurred_on, t2.created_at, t2.id rows unbounded preceding) as running_balance
+                    sum(e.amount) over (order by t2.occurred_on, t2.occurred_time, t2.created_at, t2.id rows unbounded preceding) as running_balance
                from entries e join transactions t2 on t2.id = e.transaction_id
               where e.account_id = cast(:acc as uuid)) r on r.transaction_id = t.id
  where t.book_id = :b
@@ -119,10 +112,11 @@ def list_transactions(
    and (cast(:q as text) is null
         or position(lower(cast(:q as text)) in lower(coalesce(t.payee, '') || ' ' || coalesce(t.note, ''))) > 0)
    and (cast(:c_on as date) is null
-        or (t.occurred_on, t.created_at, t.id) < (cast(:c_on as date), cast(:c_at as timestamptz), cast(:c_id as uuid)))
- order by t.occurred_on desc, t.created_at desc, t.id desc
+        or (t.occurred_on, t.occurred_time, t.created_at, t.id)
+           < (cast(:c_on as date), cast(:c_tm as time), cast(:c_at as timestamptz), cast(:c_id as uuid)))
+ order by t.occurred_on desc, t.occurred_time desc, t.created_at desc, t.id desc
  limit :n"""), {"b": book_id, "acc": account_id, "cat": category_id, "type": type, "from": date_from, "to": date_to,
-                "q": q.strip() if q and q.strip() else None, "c_on": c_on, "c_at": c_at, "c_id": c_id,
+                "q": q.strip() if q and q.strip() else None, "c_on": c_on, "c_tm": c_tm, "c_at": c_at, "c_id": c_id,
                 "n": limit + 1}).mappings().all()
     items = [Transaction(**r) for r in rows[:limit]]
     return Page(items=items, next=_cursor(items[-1]) if len(rows) > limit else None)
@@ -131,13 +125,14 @@ def list_transactions(
 class TxnBody(BaseModel):
     type: Type
     occurred_on: date
+    occurred_time: time | None = None          # none: 00:00 on a new one, unchanged on an edit
     entries: list[Entry] = Field(min_length=1, max_length=2)
     category_id: UUID | None = None
     payee: Text | None = None
     note: Text | None = None
 
     def to_domain(self, txn_id: UUID, book_id: UUID) -> TxnIn:
-        return TxnIn(id=txn_id, book_id=book_id, type=self.type, occurred_on=self.occurred_on,
+        return TxnIn(id=txn_id, book_id=book_id, type=self.type, occurred_on=self.occurred_on, occurred_time=self.occurred_time,
                      entries=[EntryIn(e.account_id, e.amount) for e in self.entries],
                      category_id=self.category_id, payee=self.payee or None, note=self.note or None)
 
@@ -188,6 +183,7 @@ class HistoryEntry(BaseModel):
     changed_by: str | None                     # username, or "Deleted user"
     type: Type
     occurred_on: date
+    occurred_time: time | None                 # none: saved before times were kept
     category_id: UUID | None
     payee: str | None
     note: str | None
@@ -207,5 +203,6 @@ def history(book_id: UUID, txn_id: UUID, db: Session = Depends(get_db)) -> list[
         raise HTTPException(404, "not_found")
     return [HistoryEntry(version=r["version"], action=r["action"], changed_at=r["changed_at"], changed_by=r["changed_by"],
                          type=r["snapshot"]["type"], occurred_on=r["snapshot"]["occurred_on"],
+                         occurred_time=r["snapshot"].get("occurred_time"),
                          category_id=r["snapshot"].get("category_id"), payee=r["snapshot"].get("payee"),
                          note=r["snapshot"].get("note"), entries=r["snapshot"].get("entries")) for r in rows]

@@ -1,27 +1,11 @@
-"""Daily job: pull market exchange rates into fx_rates.
+"""Daily job: market exchange rates into fx_rates, as fx_login, which can write fx_rates and read no user data.
 
-Run once a day by the scheduler with FX_DATABASE_URL pointing at fx_login, a
-member of fx_updater. That role can only write fx_rates; it can't read any
-user data.
-
-Providers (docs: Exchange rates), all USD-based like fx_rates:
-- Default, no key: open.er-api.com (ExchangeRate-API's open endpoint), daily,
-  about 160 currencies including VND. Its terms (checked 2026-10-20) allow
-  personal and commercial use and caching, forbid passing the data on, and
-  require the credit "Rates By Exchange Rate API", which the web app's
-  dashboard shows when these rates are in use. Each server fetches its own
-  rates for its own users; the project ships none.
-- If that fails or announces its end (time_eol_unix): fawazahmed0's
-  currency-api, public domain (CC0), no key, from jsDelivr with Cloudflare
-  Pages as its own fallback.
-- With OXR_APP_ID set: Open Exchange Rates, on the operator's own key.
-The provider is behind fetch_rates(), so adding one means changing only that.
-
-When no source answers, the job ends with one line saying why (the last line
-is what Server admin shows), not a traceback. A certificate that isn't
-trusted for every source means something on the network replaces HTTPS
-certificates (antivirus HTTPS scanning, a company proxy): the line says so
-and points to Troubleshooting.
+Sources, all USD-based like fx_rates:
+- open.er-api.com, no key. Its terms allow caching, forbid passing the data on (each server fetches its own; the
+  project ships none) and require the credit "Rates By Exchange Rate API", which the dashboard shows.
+- If that fails or announces its end (time_eol_unix): fawazahmed0's currency-api, public domain (CC0), from
+  jsDelivr with Cloudflare Pages as its fallback.
+- With OXR_APP_ID: Open Exchange Rates, on the operator's own key.
 """
 import json
 import os

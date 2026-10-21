@@ -16,6 +16,7 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import { useColorScheme } from '@mui/material/styles'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +29,7 @@ import { keys, useMe } from '../lib/queries'
 const IDLE_CHOICES = [0, 5, 10, 15, 30, 60] // minutes; 0: never (30 days unused)
 import { newAccountBody } from '../auth/forms'
 import { PasswordFields } from '../components/AccountForm'
+import { rememberedDevice } from '../auth/rememberedDevice'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -38,7 +40,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-// Profile and security: profile, password, two-step verification, signed-in devices, export, delete.
 export function Profile() {
   const { t } = useTranslation()
   const me = useMe()
@@ -47,10 +48,27 @@ export function Profile() {
     <Stack spacing={2} sx={{ maxWidth: 720 }}>
       <Typography variant="h5">{t('profile.title')}</Typography>
       <ProfileForm profile={me.data.profile} />
+      <Appearance />
       <Security />
       <Devices profile={me.data.profile} />
       <YourData profile={me.data.profile} />
     </Stack>
+  )
+}
+
+// For this browser only, so it applies at once rather than on Save.
+function Appearance() {
+  const { t } = useTranslation()
+  const { mode, setMode } = useColorScheme()
+  return (
+    <Section title={t('profile.appearance')}>
+      <TextField select label={t('profile.theme')} value={mode ?? 'system'} helperText={t('profile.themeHint')}
+        onChange={(e) => setMode(e.target.value as 'system' | 'light' | 'dark')}>
+        <MenuItem value="system">{t('profile.themeSystem')}</MenuItem>
+        <MenuItem value="light">{t('profile.themeLight')}</MenuItem>
+        <MenuItem value="dark">{t('profile.themeDark')}</MenuItem>
+      </TextField>
+    </Section>
   )
 }
 
@@ -246,8 +264,7 @@ function Security() {
   )
 }
 
-// Where this account is signed in (msaving#5): this device first, any other one signed out alone or all at once.
-// And the user's own sign-out after inactivity (msaving#26), for every device, saved as soon as it's picked.
+// Signed-in devices, and the user's own sign-out after inactivity for every device, saved as soon as it's picked.
 function Devices({ profile }: { profile: ProfileT }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
@@ -307,7 +324,8 @@ function Devices({ profile }: { profile: ProfileT }) {
       )}
       {others.length > 0 && (
         <Button variant="outlined" loading={busy === 'others'} sx={{ alignSelf: 'start' }}
-          onClick={() => run('others', () => send('POST', '/v1/auth/sign-out-others'), t('profile.signedOutOthers'))}>
+          onClick={() => run('others', () => send('POST', '/v1/auth/sign-out-others', { device_token: rememberedDevice.get(profile.username) }),
+            t('profile.signedOutOthers'))}>
           {t('profile.signOutOthers')}
         </Button>
       )}

@@ -1,8 +1,6 @@
-"""Home screen: everything the dashboard shows, in one call (docs: Home
-screen dashboard). Amounts are minor units of the book's currency unless a row
-says otherwise; *not_converted / missing_rates count what had no exchange rate
-and was left out of a total."""
-from datetime import date
+"""Amounts are in the book's currency unless a row says otherwise; *not_converted and missing_rates count what had no
+exchange rate and was left out of a total."""
+from datetime import date, time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -67,6 +65,7 @@ class RecentTxn(BaseModel):
     id: UUID
     type: str
     occurred_on: date
+    occurred_time: time
     payee: str | None
     category: str | None
     amount: int | None                   # in its own currency; a transfer shows the amount moved out

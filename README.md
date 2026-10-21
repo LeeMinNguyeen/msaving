@@ -9,7 +9,7 @@ machine or server: nobody else runs it, and the project collects nothing.
 - Who owes whom: money lent and borrowed, by person
 - Daily exchange rates with no account or key needed
 - Download everything as readable CSV files; delete your account any time
-- Vietnamese and English
+- English and Vietnamese
 
 Free and open source ([AGPL-3.0](LICENSE)).
 
@@ -35,6 +35,7 @@ To update later: `git pull && docker compose up -d --build`.
   [use it from other devices (HTTPS)](https://msaving.leminhnguyen.com/docs/getting-started/other-devices/), [updates](https://msaving.leminhnguyen.com/docs/getting-started/updates/),
   [backups and restore](https://msaving.leminhnguyen.com/docs/getting-started/backups/), [settings](https://msaving.leminhnguyen.com/docs/getting-started/settings/)
 - [How it works](https://msaving.leminhnguyen.com/docs/how-it-works/overview/) and the [security model](https://msaving.leminhnguyen.com/docs/how-it-works/security/)
+- [Changelog](https://msaving.leminhnguyen.com/docs/changelog/): what changed in each version
 - [Contributing](https://msaving.leminhnguyen.com/docs/contributing/run-locally/): run it from source, tests, conventions. Pull requests go to `dev`.
 
 Found a security problem? Please report it privately through

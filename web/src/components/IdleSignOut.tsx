@@ -14,8 +14,8 @@ const CHANNEL = 'msaving.activity'
 const ACTIVITY = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll'] as const
 const TELL_EVERY = 5_000 // ms: another tab hears about activity at most this often
 
-// Signs out after the admin's minutes with no activity in any tab (msaving#26),
-// with a warning first. Mounted while signed in; nothing happens when it's off.
+// Signs out after the user's minutes with no activity in any tab, with a
+// warning first. Mounted while signed in; nothing happens when it's off.
 export function IdleSignOut({ minutes }: { minutes: number | null }) {
   const { t } = useTranslation()
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)

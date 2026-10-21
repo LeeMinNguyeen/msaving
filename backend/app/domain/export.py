@@ -8,7 +8,7 @@ memberships, their own activity) and what was derived from it
 (balances). Written for people, not as a schema dump: named columns, amounts as
 decimals in their currency, usernames instead of ids ("Deleted user" for
 purged accounts), no internal ids. In the user's language (users.language):
-Vietnamese by default, or English. Only the labels are translated; what users
+English by default, or Vietnamese. Only the labels are translated; what users
 typed (names, payees, notes) is exported as typed.
 Not included: secrets (password hash, two-factor secret, recovery codes,
 sessions).
@@ -84,7 +84,8 @@ VI = {
     "Last edited at": "Sửa gần nhất lúc", "Parent category": "Danh mục cha", "Kind": "Loại",
     "Archived": "Đã lưu trữ", "Period": "Kỳ", "Starts": "Bắt đầu", "Ends": "Kết thúc",
     "They owe you": "Họ nợ bạn", "You owe them": "Bạn nợ họ", "From": "Từ", "To": "Sang", "Rate": "Tỷ giá",
-    "From date": "Áp dụng từ ngày", "Transaction date": "Ngày giao dịch", "Version": "Phiên bản",
+    "From date": "Áp dụng từ ngày", "Transaction date": "Ngày giao dịch", "Transaction time": "Giờ giao dịch",
+    "Version": "Phiên bản",
     "Action": "Thao tác", "Changed by": "Người thay đổi", "Changed at": "Thay đổi lúc", "Amounts": "Số tiền",
     "Time": "Thời gian", "What": "Mục", "Change": "Thay đổi",
     # values
@@ -128,7 +129,7 @@ def build_export(db: Session) -> bytes:
     files: dict[str, bytes] = {}
 
     profile = _rows(db, "select * from my_profile()")
-    lang = profile[0]["language"] if profile else "vi"
+    lang = profile[0]["language"] if profile else "en"
 
     def t(s):
         """Translate a fixed label or value into the user's language."""
@@ -190,7 +191,8 @@ def build_export(db: Session) -> bytes:
          "Installment fee"])
 
     txns = _rows(db, """
-        select b.name as book, t.occurred_on, t.type::text as type, c.name as category, t.payee, t.note,
+        select b.name as book, t.occurred_on, to_char(t.occurred_time, 'HH24:MI') as occurred_time, t.type::text as type,
+               c.name as category, t.payee, t.note,
                uc.name as added_by, t.created_at, um.name as edited_by, t.modified_at, t.version,
                (select json_agg(json_build_object('account', a.name, 'amount', e.amount,
                                                   'currency', a.currency, 'mu', cur.minor_unit) order by e.amount)
@@ -201,13 +203,13 @@ def build_export(db: Session) -> bytes:
           left join categories c on c.id = t.category_id
           left join book_people uc on uc.book_id = t.book_id and uc.user_id = t.created_by
           left join book_people um on um.book_id = t.book_id and um.user_id = t.modified_by
-         order by b.name, t.occurred_on, t.created_at""")
+         order by b.name, t.occurred_on, t.occurred_time, t.created_at""")
     rows = []
     for x in txns:
         es = x["entries"] or []
         first, second = es[0] if es else {}, es[1] if len(es) > 1 else None
         rows.append({
-            "Book": x["book"], "Date": x["occurred_on"], "Type": word(x["type"]),
+            "Book": x["book"], "Date": x["occurred_on"], "Time": x["occurred_time"], "Type": word(x["type"]),
             "Category": x["category"], "Payee": x["payee"], "Note": x["note"],
             "Account": first.get("account"), "Amount": _money(first.get("amount"), first.get("mu", 2)),
             "Currency": first.get("currency"),
@@ -217,7 +219,7 @@ def build_export(db: Session) -> bytes:
             "Added by": who(x["added_by"]), "Added at": x["created_at"],
             "Last edited by": who(x["edited_by"]) if x["version"] > 1 else None,
             "Last edited at": x["modified_at"] if x["version"] > 1 else None})
-    out("transactions.csv", rows, ["Book", "Date", "Type", "Category", "Payee", "Note", "Account", "Amount",
+    out("transactions.csv", rows, ["Book", "Date", "Time", "Type", "Category", "Payee", "Note", "Account", "Amount",
                                    "Currency", "To account", "Amount received", "Received currency",
                                    "Added by", "Added at", "Last edited by", "Last edited at"])
 
@@ -259,7 +261,8 @@ def build_export(db: Session) -> bytes:
         ["Book", "From", "To", "Rate", "From date"])
 
     history = _rows(db, """
-        select b.name as book, h.snapshot->>'occurred_on' as occurred_on, h.snapshot->>'type' as type,
+        select b.name as book, h.snapshot->>'occurred_on' as occurred_on, left(h.snapshot->>'occurred_time', 5) as occurred_time,
+               h.snapshot->>'type' as type,
                c.name as category, h.snapshot->>'payee' as payee, h.snapshot->>'note' as note,
                h.version, h.action, u.name as changed_by, h.changed_at,
                (select json_agg(json_build_object('account', a.name, 'amount', (e->>'amount')::bigint,
@@ -278,11 +281,12 @@ def build_export(db: Session) -> bytes:
         return " / ".join(f"{x['account'] or gone}: {_money(x['amount'], x['mu'])} {x['currency']}" if x["currency"]
                           else str(x["amount"]) for x in es or [])
     out("edit_history.csv", [{
-        "Book": h["book"], "Transaction date": h["occurred_on"], "Type": word(h["type"]), "Category": h["category"],
+        "Book": h["book"], "Transaction date": h["occurred_on"], "Transaction time": h["occurred_time"],
+        "Type": word(h["type"]), "Category": h["category"],
         "Payee": h["payee"], "Note": h["note"], "Version": h["version"], "Action": word(h["action"]),
         "Changed by": who(h["changed_by"]), "Changed at": h["changed_at"], "Amounts": amounts(h["entries"])}
         for h in history],
-        ["Book", "Transaction date", "Type", "Category", "Payee", "Note", "Version", "Action", "Changed by",
+        ["Book", "Transaction date", "Transaction time", "Type", "Category", "Payee", "Note", "Version", "Action", "Changed by",
          "Changed at", "Amounts"])
 
     out("my_activity.csv", [{

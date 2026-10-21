@@ -6,8 +6,7 @@ declare module '@mui/material/styles' {
   }
 }
 
-// Follows the device's light or dark setting. Colours and type are MUI's
-// defaults until there's a design.
+// Follows the device's light or dark setting.
 export const theme = createTheme({
   colorSchemes: {
     light: { palette: { background: { sidebar: '#f3f4f6' } } },

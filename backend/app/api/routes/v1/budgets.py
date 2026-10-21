@@ -1,8 +1,4 @@
-"""Budgets: a limit for one expense category per period (daily, weekly,
-monthly, quarterly, yearly), in the book's currency. Sub-categories count
-toward their parent. Progress comes from budget_progress, in the book's
-time zone; budgets outside their start/end dates or on archived categories
-have none."""
+"""Sub-categories count toward their parent's budget. Progress (budget_progress) is in the book's time zone."""
 from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
@@ -18,7 +14,7 @@ from app.api.routes.v1.books import get_book, require_role
 router = APIRouter(prefix="/books/{book_id}/budgets")
 
 Period = Literal["daily", "weekly", "monthly", "quarterly", "yearly"]
-Amount = Annotated[int, Field(gt=0)]           # minor units of the book's currency
+Amount = Annotated[int, Field(gt=0)]           # in the book's currency
 
 
 class Progress(BaseModel):

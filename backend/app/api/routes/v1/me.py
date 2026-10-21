@@ -25,7 +25,7 @@ class Profile(BaseModel):
     created_at: datetime
     deletion_requested_at: datetime | None
     is_admin: bool
-    idle_sign_out_minutes: int | None   # signs this user out after this long without activity (msaving#26); 5 by default; None: never
+    idle_sign_out_minutes: int | None   # without activity, before signing out; None: never
 
 
 class Me(BaseModel):
@@ -43,21 +43,18 @@ def me(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) 
     return _me(db, caller.id)
 
 
-# ---------------------------------------------------------------- profile
-
 class UpdateProfile(BaseModel):
     username: Annotated[str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=3, max_length=30)] | None = None
     display_name: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None   # "" clears it
-    language: Literal["vi", "en"] | None = None
+    language: Literal["en", "vi"] | None = None
     timezone: Timezone | None = None
-    # Sign me out after this many minutes without activity, on every device (msaving#26); null turns it off.
+    # On every device; null turns it off.
     idle_sign_out_minutes: Annotated[int, Field(ge=1, le=1440)] | None = None
 
 
 @router.patch("/me")
 def update_profile(body: UpdateProfile, caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> Me:
-    """Last write wins (docs: The ledger, several devices). Trying a new
-    username is rate limited (429 rate_limited); saving the same one isn't."""
+    """Last write wins: the profile has no version. Only trying a new username is rate limited."""
     if body.username is not None:
         current = db.execute(text("select username from users where id = :i"), {"i": caller.id}).scalar()
         if body.username != current and not si.username_changes.allow(str(caller.id)):
@@ -89,8 +86,6 @@ def account_status(db: Session = Depends(get_db)) -> AccountStatus:
     return AccountStatus(**row) if row else AccountStatus(deletion_requested_at=None, deletes_on=None)
 
 
-# ---------------------------------------------------------------- closing and restoring
-
 @router.post("/me/delete")
 def close_account(caller: Caller = Depends(current_caller), db: Session = Depends(get_db)) -> AccountStatus:
     """Closes the account now; deleted for good 30 days later by the daily purge."""
@@ -113,11 +108,8 @@ def restore(caller: Caller = Depends(current_caller), db: Session = Depends(get_
     raise HTTPException(409, "not_restorable")
 
 
-# ---------------------------------------------------------------- export
-
 @router.get("/me/export")
 def export(db: Session = Depends(get_db)) -> Response:
-    """A ZIP of readable CSV files, in the user's language."""
     body = build_export(db)
     name = f"msaving-export-{datetime.now(timezone.utc).date().isoformat()}.zip"
     return Response(body, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})

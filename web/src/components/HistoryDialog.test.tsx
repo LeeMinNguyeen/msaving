@@ -7,7 +7,7 @@ import { HistoryDialog } from './HistoryDialog'
 
 const book: Book = { id: 'b1', name: 'Personal', base_currency: 'VND', timezone: 'Asia/Ho_Chi_Minh', role: 'owner', archived_at: null, version: 1 }
 const version = (v: number, action: HistoryEntry['action'], amount: number): HistoryEntry => ({
-  version: v, action, changed_at: `2026-10-20T0${v}:00:00Z`, changed_by: 'admin', type: 'expense', occurred_on: '2026-10-03',
+  version: v, action, changed_at: `2026-10-20T0${v}:00:00Z`, changed_by: 'admin', type: 'expense', occurred_on: '2026-10-03', occurred_time: '12:30:00',
   category_id: null, payee: 'Pho', note: null, entries: [{ account_id: 'cash', amount, currency: 'VND' }],
 })
 

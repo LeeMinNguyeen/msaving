@@ -22,7 +22,6 @@ import { formatMoney } from '../lib/money'
 import { useContacts, useCurrencies } from '../lib/queries'
 import { PersonDialog } from './PersonDialog'
 
-// Screen 7's people: who you lent to or borrowed from, and where it stands.
 export function People({ book }: { book: Book }) {
   const { t } = useTranslation()
   const errorText = useErrorText()

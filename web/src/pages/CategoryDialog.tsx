@@ -40,7 +40,7 @@ type Props = {
 }
 
 // Add, show or edit a category. An existing one opens with its fields greyed
-// out and its budgets; Edit turns the fields on (msaving#23).
+// out and its budgets; Edit turns the fields on.
 export function CategoryDialog({ book, all, category, parent, editing: startEditing = false, onTransactions, onClose }: Props) {
   const { t } = useTranslation()
   const errorText = useErrorText()

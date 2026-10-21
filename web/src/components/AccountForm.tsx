@@ -2,22 +2,25 @@ import Alert from '@mui/material/Alert'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { showLanguage } from '../i18n'
 import { useInstance } from '../lib/queries'
 import { useErrorText } from './errors'
 import { LanguagePicker } from './LanguagePicker'
 
-// The title row of every screen before sign-in: the server's name and the language switch.
-export function PublicHeader({ title }: { title: string }) {
+// The title row of every screen before sign-in: the server's name and, but on sign-in, the language switch. These
+// screens open in English; the switch changes the language for that screen.
+export function PublicHeader({ title, languageSwitch = true }: { title: string; languageSwitch?: boolean }) {
   const instance = useInstance()
+  useEffect(() => showLanguage('en'), [])
   return (
     <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'start' }}>
       <Stack>
         <Typography variant="h5">{title}</Typography>
         {instance.data && <Typography color="text.secondary">{instance.data.name}</Typography>}
       </Stack>
-      <LanguagePicker />
+      {languageSwitch && <LanguagePicker />}
     </Stack>
   )
 }

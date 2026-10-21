@@ -1,17 +1,5 @@
-"""The building blocks of signing in (docs: Sign-in): passwords, codes,
-tokens and rate limits. The routes are in app/api/routes/v1/sign_in.py.
-
-- Passwords: argon2id (argon2-cffi's defaults), checked here; the database
-  keeps only the hash.
-- Two-factor, optional: TOTP (any authenticator app), 30-second steps, one
-  step of clock drift either way; or one of ten one-time recovery codes.
-- Tokens (sessions, password reset links) are random; codes people type
-  (invites, the setup code, recovery codes) are short and readable. The
-  database keeps the SHA-256 of each, never the value.
-- Rate limits: in memory, per server process (a server runs one).
-- Signed-in devices: each session keeps a short label of the browser and
-  system that signed in (device_label()), never versions or addresses.
-"""
+"""The database keeps only the SHA-256 of every token and code, never the value. Rate limits are in memory, per
+server process: a server runs one."""
 import base64
 import hashlib
 import secrets
@@ -109,7 +97,6 @@ def totp_matches(secret: str, code: str) -> bool:
 
 
 def qr_svg(data: str) -> str:
-    """A QR code as an SVG data URI, for an <img>."""
     out = BytesIO()
     segno.make(data, error="m").save(out, kind="svg", scale=4, border=2, xmldecl=False)
     return "data:image/svg+xml;base64," + base64.b64encode(out.getvalue()).decode()
@@ -138,8 +125,7 @@ class RateLimit:
             return True
 
 
-# Defaults, not decided (docs: Sign-in): enough for a person who
-# mistypes, far too few for guessing.
+# Enough for a person who mistypes, far too few for guessing.
 per_ip = RateLimit(30, 15 * 60)               # sign-in, join, setup, reset, invite checks
 per_username = RateLimit(10, 15 * 60)         # sign-in attempts on one account
 per_user_action = RateLimit(10, 15 * 60)      # password and two-factor changes by a signed-in user
