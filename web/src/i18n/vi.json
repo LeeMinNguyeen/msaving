@@ -264,7 +264,9 @@
     "archivedInstead": "Danh mục này đã có giao dịch nên được đóng thay vì xóa.",
     "empty": "Chưa có danh mục nào.",
     "details": "Chi tiết danh mục",
-    "budgets": "Ngân sách"
+    "budgets": "Ngân sách",
+    "showSubs": "Hiện danh mục con của {{name}}",
+    "hideSubs": "Ẩn danh mục con của {{name}}"
   },
   "people": {
     "deletedUser": "Người dùng đã xóa",

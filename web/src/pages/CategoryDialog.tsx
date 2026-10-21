@@ -24,6 +24,7 @@ import { categoryTree } from '../lib/categories'
 import { formatMoney } from '../lib/money'
 import { useBudgets, useCurrencies } from '../lib/queries'
 import { newId } from '../lib/uuid'
+import { CategoryPicker } from '../components/CategoryPicker'
 
 // The old app's preset grid (CategoryFormScreen).
 const COLORS = ['#64748b', '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#06b6d4',
@@ -115,10 +116,7 @@ export function CategoryDialog({ book, all, category, parent, editing: startEdit
               helperText={kind === 'transfer' ? t('cat.transferHint') : undefined}>
               {(['expense', 'income', 'transfer'] as const).map((k) => <MenuItem key={k} value={k}>{t(`cat.kinds.${k}`)}</MenuItem>)}
             </TextField>
-            <TextField select label={t('cat.parent')} disabled={ro} value={parentId} onChange={(e) => setParentId(e.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
-              <MenuItem value="">{t('cat.topLevel')}</MenuItem>
-              {parents.map(({ category: c, depth }) => <MenuItem key={c.id} value={c.id} sx={{ pl: 2 + depth * 2 }}>{c.name}</MenuItem>)}
-            </TextField>
+            <CategoryPicker label={t('cat.parent')} disabled={ro} noneLabel={t('cat.topLevel')} options={parents} value={parentId} onChange={setParentId} />
             <Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('cat.color')}</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(9, 32px)', gap: 1 }}>
