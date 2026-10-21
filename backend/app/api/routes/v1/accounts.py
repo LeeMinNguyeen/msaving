@@ -97,13 +97,15 @@ class Account(BaseModel):
     archived_at: datetime | None
     version: int
     balance: int
+    converted_balance: int | None    # in the book's currency at today's rate; None without a rate
 
 
 ACCOUNT = ("select a.id, a.name, a.kind::text as kind, a.currency, a.last4, a.in_net_worth, a.contact_id, a.archived_at, a.version,"
            "       a.note, a.credit_limit, a.annual_fee, a.statement_day, a.payment_due_day, a.installment, a.installment_fee,"
            "       a.interest_rate_bp,"
-           "       b.balance"
+           "       b.balance, bc.converted_balance"
            "  from accounts a join account_balances b on b.account_id = a.id"
+           "  left join book_balances_converted bc on bc.account_id = a.id"
            " where a.book_id = :book")
 
 

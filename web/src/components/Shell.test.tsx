@@ -50,7 +50,9 @@ describe('phone layout (msaving#28)', () => {
     await page()
     await userEvent.click(screen.getByRole('button', { name: 'More' }))
     const sheet = await screen.findByRole('presentation')
-    expect(within(sheet).getAllByRole('button').map((b) => b.textContent)).toEqual(['Book settings', 'Profile and security', 'Sign out'])
+    expect(within(sheet).getAllByRole('button').map((b) => b.textContent)).toEqual(['People', 'Book settings', 'Profile and security', 'Sign out'])
+    await userEvent.click(within(sheet).getByRole('button', { name: 'People' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/books/b1/people')
   })
 
   it('shows Server admin under More to the admin', async () => {
@@ -75,6 +77,15 @@ describe('desktop (msaving#22)', () => {
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
     const paper = document.querySelector('.MuiDrawer-paper')!
     expect(getComputedStyle(paper).backgroundColor).toBe('rgb(243, 244, 246)') // on a white page
+  })
+
+  it('lists People after Accounts (msaving#68)', async () => {
+    desktop(true)
+    server()
+    await page()
+    const nav = screen.getByRole('link', { name: 'Overview' }).closest('ul')!
+    expect(within(nav).getAllByRole('link').map((a) => a.textContent).slice(0, 5)).toEqual(['Overview', 'Transactions', 'Accounts', 'People', 'Categories'])
+    expect(within(nav).getByRole('link', { name: 'People' })).toHaveAttribute('href', '/books/b1/people')
   })
 
   it("shows the server's version next to the app's name", async () => {

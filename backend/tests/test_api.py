@@ -534,6 +534,9 @@ def test_dashboard_converts_at_todays_rate(client, database):
     assert dash["recent_transactions"][0]["type"] in ("expense", "opening_balance")
     assert client.get(f"/v1/books/{bid}/dashboard", headers=auth(signed_up(client))).json() == {"detail": "not_found"}
 
+    listed = {a["name"]: a for a in client.get(f"/v1/books/{bid}/accounts", headers=auth(u)).json()}
+    assert [listed[n]["converted_balance"] for n in ("Ví", "US bank", "Kuwait")] == [950_000, 2_470_000, None]
+
 
 def test_people_and_lending(client):
     u = signed_up(client)

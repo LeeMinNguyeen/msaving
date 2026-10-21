@@ -97,7 +97,10 @@
     "installment": "Monthly installment",
     "paymentDay": "Payment day each month",
     "installmentFee": "Installment fee",
-    "installmentFeeHint": "A one-off fee, added once, to the first payment (0 % installment contracts often have one)."
+    "installmentFeeHint": "A one-off fee, added once, to the first payment (0 % installment contracts often have one).",
+    "notIncluded_one": "{{count}} not included",
+    "notIncluded_other": "{{count}} not included",
+    "fold": "Fold or unfold {{kind}}"
   },
   "bill": {
     "cardTitle": "Statement {{from}} – {{to}}",
@@ -183,7 +186,8 @@
     "dashboard": "Overview",
     "profile": "Profile and security",
     "admin": "Server admin",
-    "more": "More"
+    "more": "More",
+    "people": "People"
   },
   "txn": {
     "add": "Add transaction",

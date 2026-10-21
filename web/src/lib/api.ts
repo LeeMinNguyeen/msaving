@@ -151,6 +151,7 @@ export type Account = {
   archived_at: string | null
   version: number
   balance: number
+  converted_balance?: number | null // in the book's currency at today's rate; null without a rate
 }
 
 export type CategoryKind = 'expense' | 'income' | 'transfer'
