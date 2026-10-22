@@ -97,7 +97,10 @@
     "installment": "Số tiền trả góp hằng tháng",
     "paymentDay": "Ngày trả hằng tháng",
     "installmentFee": "Phí trả góp",
-    "installmentFeeHint": "Phí trả một lần, cộng vào lần trả đầu tiên (các gói trả góp 0 % thường có phí này)."
+    "installmentFeeHint": "Phí trả một lần, cộng vào lần trả đầu tiên (các gói trả góp 0 % thường có phí này).",
+    "notIncluded_one": "{{count}} tài khoản chưa tính",
+    "notIncluded_other": "{{count}} tài khoản chưa tính",
+    "fold": "Thu gọn hoặc mở {{kind}}"
   },
   "bill": {
     "cardTitle": "Sao kê {{from}} – {{to}}",
@@ -189,7 +192,8 @@
     "dashboard": "Tổng quan",
     "profile": "Hồ sơ và bảo mật",
     "admin": "Quản trị máy chủ",
-    "more": "Khác"
+    "more": "Khác",
+    "people": "Vay mượn"
   },
   "txn": {
     "add": "Thêm giao dịch",

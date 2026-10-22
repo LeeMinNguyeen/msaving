@@ -173,10 +173,10 @@ export function Dashboard({ book }: { book: Book }) {
             </Card>
           )}
           {d.people.length > 0 && (
-            <Card title={t('dash.people')} action={<Button size="small" component={RouterLink} to={`/books/${book.id}/accounts`}>{t('dash.seeAll')}</Button>}>
+            <Card title={t('dash.people')} action={<Button size="small" component={RouterLink} to={`/books/${book.id}/people`}>{t('dash.seeAll')}</Button>}>
               <List disablePadding dense>
                 {d.people.map((p) => (
-                  <ListItemButton key={`${p.contact_id}-${p.currency}`} sx={{ px: 0 }} onClick={() => navigate(`/books/${book.id}/accounts`)}>
+                  <ListItemButton key={`${p.contact_id}-${p.currency}`} sx={{ px: 0 }} onClick={() => navigate(`/books/${book.id}/people`)}>
                     <ListItemText primary={p.name} />
                     <Stack sx={{ textAlign: 'right' }}>
                       {p.owed_to_you > 0 && <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>{t('people.owesYou', { amount: money(p.owed_to_you, p.currency) })}</Typography>}
