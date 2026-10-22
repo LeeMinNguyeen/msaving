@@ -374,6 +374,40 @@ def test_lending_and_borrowing():
     assert q(other, "select count(*) from contacts")[0][0] == 0
 
 
+def test_people_are_accounts():
+    """R-LEND-2: every person has their own account, with the person's id, in the book's currency: positive means they
+    owe you, negative that you owe them. Lending, repaying, borrowing and "paid for me" are ordinary transactions on
+    it, and it follows the person's name and archiving. It stays a person's account, and doesn't take an account's
+    name."""
+    u = new_user("person_user")
+    b = new_book(u, "VND")
+    minh, lan = uuid.uuid4(), uuid.uuid4()
+    run(u, "insert into contacts (id, book_id, name) values (:m, :b, 'Minh'), (:l, :b, 'Lan')", m=minh, l=lan, b=b)
+    assert q(u, "select id, kind::text, currency, name, contact_id from accounts where book_id = :b order by name", b=b) == [
+        (lan, "person", "VND", "Lan", lan), (minh, "person", "VND", "Minh", minh)]
+    cash = new_account(u, b, "Cash", "cash")
+    food = new_category(u, b, "Food")
+    add(u, b, "opening_balance", date(2026, 10, 1), [(cash, 1_000_000)])
+    add(u, b, "transfer", date(2026, 10, 2), [(cash, -500_000), (minh, 500_000)])         # lend Minh 500k
+    add(u, b, "transfer", date(2026, 10, 3), [(minh, -200_000), (cash, 200_000)])         # he pays back 200k
+    add(u, b, "expense", date(2026, 10, 4), [(minh, -450_000)], food)                     # he paid for dinner
+    add(u, b, "transfer", date(2026, 10, 5), [(lan, -300_000), (cash, 300_000)])          # borrow 300k from Lan
+    people = {n: (o, y) for n, o, y in q(u, "select name, owed_to_you, you_owe from contact_balances where book_id = :b", b=b)}
+    assert people == {"Minh": (0, 150_000), "Lan": (0, 300_000)}
+    assert q(u, "select net_worth from book_net_worth where book_id = :b", b=b)[0][0] == 1_000_000 - 450_000
+
+    run(u, "update contacts set name = 'Minh Anh', archived_at = now() where id = :m", m=minh)
+    assert q(u, "select name, archived_at is not null from accounts where id = :m", m=minh) == [("Minh Anh", True)]
+    new_account(u, b, "Lan", "savings")                                                    # an account may share a person's name
+    for sql, i in (("update accounts set kind = 'lent' where id = :i", lan), ("update accounts set kind = 'person' where id = :i", cash)):
+        with pytest.raises(DBAPIError, match="person_account"):
+            run(u, sql, i=i)
+    stray = uuid.uuid4()
+    run(u, "insert into contacts (id, book_id, name) values (:s, :b, 'Stray')", s=stray, b=b)
+    assert refused(u, "insert into accounts (id, book_id, name, kind, currency, contact_id)"
+                      " values (:i, :b, 'Stray 2', 'person', 'VND', :s)", i=uuid.uuid4(), b=b, s=stray) == "CheckViolation"
+
+
 def test_dashboard_and_budgets():
     from app.domain.dashboard import dashboard
     u, stranger = new_user("dash_user"), new_user("dash_stranger")
@@ -713,7 +747,8 @@ def test_csv_export():
         z = zipfile.ZipFile(io.BytesIO(build_export(s)))
     names = set(z.namelist())
     assert names == {"README.txt", "profile.csv", "books.csv", "accounts.csv", "transactions.csv", "categories.csv",
-                     "budgets.csv", "people.csv", "exchange_rates.csv", "edit_history.csv", "my_activity.csv"}
+                     "budgets.csv", "installments.csv", "people.csv", "exchange_rates.csv", "edit_history.csv",
+                     "my_activity.csv"}
 
     def read(name):
         return list(csv.DictReader(io.StringIO(z.read(name).decode("utf-8-sig"))))

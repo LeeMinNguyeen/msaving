@@ -1,11 +1,14 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Instance, Me } from '../lib/api'
 import { fakeApi } from '../test/fakeApi'
 import { renderApp } from '../test/render'
 import { UpdatingNotice } from '../components/UpdatingNotice'
 import { Admin } from './Admin'
+
+// The server restarting never comes back here: the notice stays.
+vi.mock('../lib/restart', () => ({ waitForServer: () => new Promise(() => {}) }))
 
 const admin: Me = {
   id: 'u1',
@@ -35,6 +38,8 @@ function server() {
     'GET /v1/admin/jobs': jobs,
     'PATCH /v1/admin/jobs/backup': undefined,
     'PATCH /v1/admin/jobs/rates': undefined,
+    'GET /v1/admin/restore': null,
+    'GET /v1/auth/two-factor': { enabled: false, recovery_codes_left: 0 },
   })
 }
 const pick = async (name: string | RegExp, option: string) => {
@@ -114,5 +119,51 @@ describe('updates on Server admin', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual([expect.stringMatching(/^Updating to 0\.2\.0/)])
     expect(api.writes().map((c) => c.path)).toEqual(['/v1/admin/update'])
+  })
+})
+
+describe('restoring a backup (msaving#72)', () => {
+  const section = async () => {
+    const title = await screen.findByText('Restore a backup')
+    return within(title.closest('.MuiPaper-root') as HTMLElement)
+  }
+
+  it('asks for the file, the password and the confirmation, then waits for the server', async () => {
+    const api = server()
+    api.routes['POST /v1/admin/restore'] = new Response(null, { status: 202 })
+    await renderApp(<Admin />)
+    const restore = await section()
+    const button = restore.getByRole('button', { name: 'Restore' })
+    expect(button).toBeDisabled()
+    await userEvent.upload(restore.getByLabelText('Backup file'), new File(['dump'], 'msaving-20261021T190000Z.dump'))
+    expect(restore.getByText('msaving-20261021T190000Z.dump')).toBeInTheDocument()
+    await userEvent.type(restore.getByLabelText(/^Your password/), 'a long password')
+    expect(button).toBeDisabled()
+    await userEvent.click(restore.getByRole('checkbox', { name: /everything on this server will be replaced/ }))
+    await userEvent.click(button)
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    const sent = api.writes()[0]
+    expect(sent.path).toBe('/v1/admin/restore')
+    const form = sent.body as FormData
+    expect((form.get('file') as File).name).toBe('msaving-20261021T190000Z.dump')
+    expect([form.get('password'), form.get('confirm'), form.get('code')]).toEqual(['a long password', 'true', null])
+    expect(await screen.findByText(/^Restoring\. The server restarts/)).toBeInTheDocument()
+  })
+
+  it('asks for the two-step code when it is on', async () => {
+    const api = server()
+    api.routes['GET /v1/auth/two-factor'] = { enabled: true, recovery_codes_left: 10 }
+    await renderApp(<Admin />)
+    const restore = await section()
+    expect(await restore.findByLabelText(/^Two-step code/)).toBeInTheDocument()
+  })
+
+  it('shows how the last restore went', async () => {
+    const api = server()
+    api.routes['GET /v1/admin/restore'] = { status: 'failed', at: '2026-10-22T01:00:00Z', detail: 'pg_restore failed: disk full' }
+    await renderApp(<Admin />)
+    const restore = await section()
+    expect(await restore.findByText(/^Last restore: failed/)).toBeInTheDocument()
+    expect(restore.getByText(/pg_restore failed: disk full/)).toBeInTheDocument()
   })
 })

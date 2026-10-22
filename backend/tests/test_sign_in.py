@@ -740,3 +740,101 @@ def test_versions_compare():
     from app.core.updates import current_version, newer
     assert newer("1.10.0", "1.9.3") and not newer("1.2.0", "1.2.0") and not newer("1.3.0", "dev")
     assert newer("9999.0.0", current_version())                  # the repository's VERSION file is a version
+
+
+@pytest.fixture
+def restore_dir(tmp_path, monkeypatch):
+    """Where the API leaves a restore request, and a record of it stopping the server."""
+    from app.api.routes.v1 import restore as route
+    stops = []
+    monkeypatch.setenv("BACKUP_DIR", str(tmp_path))
+    monkeypatch.setattr(route, "stop_server", lambda: stops.append(True))
+    return tmp_path, stops
+
+
+@pytest.fixture(scope="module")
+def a_backup(tmp_path_factory, database):
+    """A real backup of the test database, as the nightly job makes it."""
+    from conftest import DB_NAME
+
+    from app.jobs import backup
+    path, _, _ = backup.run_backup(ADMIN_URL.set(drivername="postgresql", database=DB_NAME).render_as_string(hide_password=False),
+                                   str(tmp_path_factory.mktemp("dump")))
+    return Path(path)
+
+
+def upload(client, path, token=None, content=None, **form):
+    return client.post(path, headers=bearer(token) if token else None, data=form,
+                       files={"file": ("msaving.dump", content, "application/octet-stream")})
+
+
+def test_admin_restores_a_backup_from_the_web(client, admin, restore_dir, a_backup, monkeypatch):
+    """R-INST-8 (the API's part): only the admin, with their password, and only a backup this server can read; the API
+    leaves it next to the backups and stops, so the launcher restores it as the server starts again."""
+    from app.jobs import restore as web_restore
+    backups, stops = restore_dir
+    _, token = admin
+    good = a_backup.read_bytes()
+
+    def send(token=token, content=good, **form):
+        return upload(client, "/v1/admin/restore", token, content, **({"password": PASSWORD, "confirm": "true"} | form))
+
+    _, someone = sign_up(client)
+    assert send(token=someone).json() == {"detail": "admin_only"}
+    assert send(password="not the password").json() == {"detail": "invalid_credentials"}
+    assert send(confirm="false").status_code == 422
+    assert send(content=b"not a dump").json() == {"detail": "restore_invalid"}
+    known = web_restore.server_versions()
+    monkeypatch.setattr(web_restore, "server_versions", lambda: known[:-1])       # this server a version behind the backup
+    assert send().json() == {"detail": "restore_too_new"}
+    monkeypatch.setattr(web_restore, "server_versions", lambda: known)
+    assert not stops and not (backups / "restore" / "request.dump").exists()
+
+    assert client.get("/v1/admin/restore", headers=bearer(token)).json() is None
+    r = send()
+    assert r.status_code == 202, r.text
+    assert (backups / "restore" / "request.dump").read_bytes() == good
+    assert stops == [True]
+    (backups / "restore" / "status").write_text(json.dumps({"status": "done", "at": "2026-10-22T08:00:00+00:00", "detail": None}))
+    assert client.get("/v1/admin/restore", headers=bearer(token)).json()["status"] == "done"
+    assert client.get("/v1/admin/restore", headers=bearer(someone)).json() == {"detail": "admin_only"}
+
+
+def test_restoring_asks_for_the_two_factor_code(client, admin, restore_dir, a_backup):
+    _, token = admin
+    secret = client.post("/v1/auth/two-factor/setup", headers=bearer(token)).json()["secret"]
+    client.post("/v1/auth/two-factor/enable", headers=bearer(token), json={"secret": secret, "code": pyotp.TOTP(secret).now()})
+    form = {"password": PASSWORD, "confirm": "true"}
+    assert upload(client, "/v1/admin/restore", token, a_backup.read_bytes(), **form).json() == {"detail": "code_required"}
+    assert upload(client, "/v1/admin/restore", token, a_backup.read_bytes(), code="000000", **form).json() == {"detail": "invalid_code"}
+    r = upload(client, "/v1/admin/restore", token, a_backup.read_bytes(), code=pyotp.TOTP(secret).now(), **form)
+    assert r.status_code == 202, r.text
+
+
+def test_restore_at_setup_with_the_setup_code(fresh_server, restore_dir, a_backup, monkeypatch):
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import sessionmaker
+
+    from app.api import deps
+    from app.core import db
+    from app.jobs import migrate
+    from app.launch import login_url
+    url, passwords = fresh_server
+    _, code = migrate.run(url, passwords)
+    engine = create_engine(login_url(url, "api_login", passwords["api_login"]), connect_args={"prepare_threshold": None})
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    for module, attr, value in ((db, "engine", engine), (db, "SessionLocal", sessions), (deps, "SessionLocal", sessions)):
+        monkeypatch.setattr(module, attr, value)
+    from app.api.main import app
+    client = TestClient(app)
+    backups, stops = restore_dir
+
+    wrong = upload(client, "/v1/setup/restore", content=a_backup.read_bytes(), setup_code="AAAA-BBBB-CCCC")
+    assert (wrong.status_code, wrong.json()) == (403, {"detail": "setup_invalid"})
+    ok = upload(client, "/v1/setup/restore", content=a_backup.read_bytes(), setup_code=code.lower())
+    assert ok.status_code == 202, ok.text
+    assert (backups / "restore" / "request.dump").exists() and stops == [True]
+    setup = client.post("/v1/setup", json={"username": "boss", "password": PASSWORD, "setup_code": code})     # not used up
+    assert setup.status_code == 201
+    again = upload(client, "/v1/setup/restore", content=a_backup.read_bytes(), setup_code=code)
+    assert again.json() == {"detail": "setup_invalid"}

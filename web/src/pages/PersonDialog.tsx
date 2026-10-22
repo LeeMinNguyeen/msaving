@@ -1,7 +1,6 @@
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Stack from '@mui/material/Stack'
@@ -9,18 +8,23 @@ import TextField from '@mui/material/TextField'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { CurrencyPicker } from '../components/CurrencyPicker'
 import { useErrorText } from '../components/errors'
 import { send, type Book, type Contact } from '../lib/api'
 import { newId } from '../lib/uuid'
+import { DialogFooter } from '../components/DialogFooter'
+import { useToast } from '../lib/toast'
 
-// Only a name and a note are kept.
+// Only a name and a note are kept, and the currency of the person's own account, set when they're added.
 export function PersonDialog({ book, person, onClose }: { book: Book; person: Contact | null; onClose: () => void }) {
   const { t } = useTranslation()
+  const toast = useToast()
   const errorText = useErrorText()
   const qc = useQueryClient()
   const id = useRef(person?.id ?? newId())
   const [name, setName] = useState(person?.name ?? '')
   const [note, setNote] = useState(person?.note ?? '')
+  const [currency, setCurrency] = useState<string | null>(person?.currency ?? book.base_currency)
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
 
@@ -30,7 +34,8 @@ export function PersonDialog({ book, person, onClose }: { book: Book; person: Co
     setError(null)
     try {
       if (person) await send('PATCH', `/v1/books/${book.id}/contacts/${person.id}`, { version: person.version, name: name.trim(), note: note.trim() })
-      else await send('POST', `/v1/books/${book.id}/contacts`, { id: id.current, name: name.trim(), note: note.trim() || null })
+      else await send('POST', `/v1/books/${book.id}/contacts`, { id: id.current, name: name.trim(), note: note.trim() || null, currency })
+      toast(t('toast.personSaved'))
       onClose()
     } catch (err) {
       setError(err)
@@ -48,13 +53,14 @@ export function PersonDialog({ book, person, onClose }: { book: Book; person: Co
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField label={t('people.name')} required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
             <TextField label={t('people.note')} value={note} onChange={(e) => setNote(e.target.value)} helperText={t('people.noteHint')} />
+            <CurrencyPicker label={t('accounts.currency')} value={currency} onChange={setCurrency} disabled={!!person} />
             {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="contained" loading={busy} disabled={!name.trim()}>{t('accounts.save')}</Button>
-        </DialogActions>
+        </DialogFooter>
       </form>
     </Dialog>
   )

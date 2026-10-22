@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -17,12 +17,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.api.models import CurrencyCode, Name
 from app.api.routes.v1.books import get_book, require_role
-from app.domain.bills import Bill, bill_for
+from app.domain.bills import Bill, bill_for, bills_for
 from app.domain.transactions import Entry, TxnIn, create_transaction
 
 router = APIRouter(prefix="/books/{book_id}/accounts")
 
 Kind = Literal["cash", "checking", "savings", "investment", "credit_card", "loan", "lent", "other_asset", "other_liability"]
+AnyKind = Kind | Literal["person"]                                  # a person's own account comes with the person
 Last4 = Annotated[str, StringConstraints(pattern=r"^[0-9]{4}$")]   # never a full card or account number
 OPENING = uuid.UUID("4f1c2b8e-6a53-4c1e-9d0b-0b9a51f0c7a2")
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
@@ -81,7 +82,7 @@ def opening_balance_id(account_id: UUID) -> UUID:
 class Account(BaseModel):
     id: UUID
     name: str
-    kind: Kind
+    kind: AnyKind
     currency: str
     last4: str | None
     in_net_worth: bool
@@ -97,13 +98,16 @@ class Account(BaseModel):
     archived_at: datetime | None
     version: int
     balance: int
+    converted_balance: int | None    # in the book's currency at today's rate; None without a rate
+    pinned: bool                     # on this user's Overview
 
 
 ACCOUNT = ("select a.id, a.name, a.kind::text as kind, a.currency, a.last4, a.in_net_worth, a.contact_id, a.archived_at, a.version,"
            "       a.note, a.credit_limit, a.annual_fee, a.statement_day, a.payment_due_day, a.installment, a.installment_fee,"
            "       a.interest_rate_bp,"
-           "       b.balance"
+           "       b.balance, bc.converted_balance, exists (select 1 from account_pins p where p.account_id = a.id) as pinned"
            "  from accounts a join account_balances b on b.account_id = a.id"
+           "  left join book_balances_converted bc on bc.account_id = a.id"
            " where a.book_id = :book")
 
 
@@ -167,6 +171,8 @@ class UpdateAccount(Details):
 def update_account(book_id: UUID, account_id: UUID, body: UpdateAccount, db: Session = Depends(get_db)) -> Account:
     require_role(get_book(db, book_id), "owner", "editor")
     current = get_account(db, book_id, account_id)
+    if current.kind == "person":
+        raise HTTPException(409, "person_account")
     details = body.values(body.kind or current.kind, only_sent=True)
     n = db.execute(text("update accounts set name = coalesce(:n, name), kind = coalesce(cast(:k as account_kind), kind),"
                         + "".join(f" {f} = :{f}," for f in details) +
@@ -185,8 +191,31 @@ def update_account(book_id: UUID, account_id: UUID, body: UpdateAccount, db: Ses
     return get_account(db, book_id, account_id)
 
 
+@router.put("/{account_id}/pin", status_code=204)
+def pin_account(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> Response:
+    get_account(db, book_id, account_id)
+    db.execute(text("insert into account_pins (account_id, book_id) values (:a, :b) on conflict do nothing"),
+               {"a": account_id, "b": book_id})
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/{account_id}/pin", status_code=204)
+def unpin_account(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> Response:
+    get_account(db, book_id, account_id)
+    db.execute(text("delete from account_pins where account_id = :a"), {"a": account_id})
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.get("/{account_id}/bill")
 def account_bill(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> Bill | None:
     """Null for an account with no bill: not a card or a loan, or missing what a bill needs."""
     book = get_book(db, book_id)
     return bill_for(db, get_account(db, book_id, account_id), datetime.now(ZoneInfo(book.timezone)).date())
+
+
+@router.get("/{account_id}/bills")
+def account_bills(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> list[Bill]:
+    book = get_book(db, book_id)
+    return bills_for(db, get_account(db, book_id, account_id), datetime.now(ZoneInfo(book.timezone)).date())

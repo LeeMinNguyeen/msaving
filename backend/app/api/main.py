@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.api import errors
 from app.api.deps import get_public_db
-from app.api.routes.v1 import (accounts, admin, books, budgets, categories, contacts, dashboard, me, members, reference,
-                               sign_in, transactions)
+from app.api.routes.v1 import (accounts, admin, books, budgets, categories, contacts, dashboard, installments, me, members,
+                               reference, restore, sign_in, transactions)
 from app.core import updates
 from app.core.settings import settings
 
@@ -86,7 +86,8 @@ def instance(db: Session = Depends(get_public_db)) -> Instance:
     return Instance(server_version=SERVER_VERSION, api_version=API_VERSION, **row)
 
 
-for module in (sign_in, admin, me, reference, books, members, accounts, contacts, categories, budgets, transactions, dashboard):
+for module in (sign_in, admin, restore, me, reference, books, members, accounts, contacts, categories, budgets,
+               transactions, installments, dashboard):
     v1.include_router(module.router)
 app.include_router(v1)
 

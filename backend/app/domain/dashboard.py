@@ -42,7 +42,8 @@ def dashboard(db: Session, book_id: UUID, today: date | None = None) -> dict:
             "select budget_id, category_id, category, period, period_start, period_end, budget, spent, remaining, percent_used, not_converted"
             "  from budget_progress where book_id = :b order by percent_used desc"),
         "accounts": rows(
-            "select bc.account_id, bc.name, bc.kind, bc.currency, bc.balance, bc.converted_balance, bc.in_net_worth"
+            "select bc.account_id, bc.name, bc.kind, bc.currency, bc.balance, bc.converted_balance, bc.in_net_worth,"
+            "       exists (select 1 from account_pins p where p.account_id = bc.account_id) as pinned"
             "  from book_balances_converted bc join accounts a on a.id = bc.account_id"
             " where bc.book_id = :b and a.archived_at is null order by bc.kind, bc.name"),
         "people": rows(

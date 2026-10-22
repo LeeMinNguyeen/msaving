@@ -7,3 +7,4 @@ tzdata==2026.5          # IANA timezones for validation; the slim image has no s
 argon2-cffi==25.1.0     # self-hosted sign-in: password hashes
 pyotp==2.10.0           # self-hosted sign-in: two-factor codes
 segno==1.6.6           # QR codes: invites and two-factor setup
+python-multipart==0.0.32  # file uploads: restoring a backup from the web app

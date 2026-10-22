@@ -23,7 +23,7 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import psycopg
 
-from app.jobs import backup, migrate
+from app.jobs import backup, migrate, restore
 
 SECRETS = Path(os.environ.get("SECRETS_DIR", "/secrets"))
 POSTGRES_PASSWORD = SECRETS / "postgres_password"
@@ -126,13 +126,16 @@ def serve() -> None:
         path, _, _ = backup.run_backup(admin, backup_dir)
         print(f"before updating: backed up to {path}", flush=True)
 
+    restored = restore.restore_if_requested(admin, backup_dir)
+    if restored:
+        print(f"restore from the web app: {restored}", flush=True)
     applied, setup_code = migrate.run(admin, passwords, before_migrating=backup_first)
     print(f"database ready ({len(applied)} migration(s) applied{': ' + ', '.join(applied) if applied else ''})",
           flush=True)
     if setup_code:
         print_setup_code(setup_code)
 
-    base = {**_without_owner(), "SERVER_STARTED_AT": str(started)}
+    base = {**_without_owner(), "SERVER_STARTED_AT": str(started), "LAUNCHER_PID": str(os.getpid())}
     api_env = {**base, "DATABASE_URL": login_url(admin, "api_login", passwords["api_login"])}
     port = os.environ.get("PORT", "8080")
     reload = ["--reload"] if os.environ.get("DEV_RELOAD") else []        # development only (scripts/dev.sh)

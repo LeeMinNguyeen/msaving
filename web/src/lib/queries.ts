@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { api, type Account, type Bill, type Book, type Budget, type Category, type Contact, type Currency, type Dashboard, type HistoryEntry, type Instance, type Me, type Member, type BookInvite, type TxnPage } from './api'
+import { api, type Account, type Bill, type Book, type Budget, type Category, type Contact, type Currency, type Dashboard, type HistoryEntry, type Instance, type InstallmentPlan, type Me, type Member, type BookInvite, type TxnPage } from './api'
 
 export const keys = {
   me: ['me'] as const,
@@ -29,10 +29,18 @@ export function useCurrencies() {
 }
 
 // Under the book's accounts, so it's fetched again whenever they are.
-export function useBill(bookId: string, accountId: string, enabled: boolean) {
+export function useBills(bookId: string, accountId: string, enabled: boolean) {
   return useQuery({
-    queryKey: ['books', bookId, 'accounts', 'bill', accountId],
-    queryFn: () => api<Bill | null>(`/v1/books/${bookId}/accounts/${accountId}/bill`),
+    queryKey: ['books', bookId, 'accounts', 'bills', accountId],
+    queryFn: () => api<Bill[]>(`/v1/books/${bookId}/accounts/${accountId}/bills`),
+    enabled,
+  })
+}
+
+export function useInstallments(bookId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['books', bookId, 'installments'],
+    queryFn: () => api<InstallmentPlan[]>(`/v1/books/${bookId}/installments`),
     enabled,
   })
 }
@@ -97,6 +105,7 @@ export function useInvalidateBook() {
       qc.invalidateQueries({ queryKey: ['books', bookId, 'dashboard'] }),
       qc.invalidateQueries({ queryKey: ['books', bookId, 'contacts'] }),
       qc.invalidateQueries({ queryKey: ['books', bookId, 'budgets'] }),
+      qc.invalidateQueries({ queryKey: ['books', bookId, 'installments'] }),
     ])
   }
 }

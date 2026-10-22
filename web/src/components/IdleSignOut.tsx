@@ -1,6 +1,5 @@
 import Button from '@mui/material/Button'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -8,6 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { signOut } from '../auth/signOut'
 import { idleNotice, idleState } from '../lib/idle'
+import { DialogFooter } from './DialogFooter'
 
 // Tabs of this browser tell each other about activity here; nothing is stored.
 const CHANNEL = 'msaving.activity'
@@ -79,9 +79,9 @@ export function IdleSignOut({ minutes }: { minutes: number | null }) {
       <DialogContent>
         <DialogContentText>{t('idle.warning', { seconds: secondsLeft ?? 0 })}</DialogContentText>
       </DialogContent>
-      <DialogActions>
+      <DialogFooter>
         <Button variant="contained" onClick={() => stay.current()}>{t('idle.stay')}</Button>
-      </DialogActions>
+      </DialogFooter>
     </Dialog>
   )
 }

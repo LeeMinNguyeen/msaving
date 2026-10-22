@@ -1,4 +1,5 @@
 """Users sign up through the API: the test database has open sign-up. Invite-only and setup are in test_sign_in.py."""
+import csv
 import re
 import uuid
 
@@ -306,8 +307,9 @@ def test_monthly_bills(client, database):
     assert (b.amount, b.paid, b.remaining, b.owed_now) == (1_500_000, 420_000, 1_080_000, 1_130_000)
     assert b.pay_from == uuid.UUID(accts["Bank"])
     txn("transfer", "2026-10-09", (accts["Bank"], -1_080_000), (card, 1_080_000))
-    assert bill(card, d(2026, 10, 20)).remaining == 0
-    assert bill(card, d(2026, 9, 25)).period_end == d(2026, 8, 25)
+    b = bill(card, d(2026, 10, 20))                                     # paid: the next statement so far
+    assert (b.statement_open, b.period_end, b.amount, b.remaining) == (True, d(2026, 10, 25), 50_000, 50_000)
+    assert bill(card, d(2026, 9, 25)).period_end == d(2026, 9, 25)      # the statement day itself is still open
 
     # A 0 % installment contract: 12,000,000 over 12 months, a 240,000 fee with the first payment.
     phone = account("loan", -12_000_000, "2026-10-01", installment=1_000_000, payment_due_day=15, installment_fee=240_000)
@@ -351,6 +353,217 @@ def test_monthly_bills(client, database):
         r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": uuid.uuid4().hex[:8],
                         "kind": kind, **details})
         assert r.status_code == 422, (kind, details)
+
+
+def test_open_statement(client, database):
+    """R-ACC-9: a card shows last month's statement while it has something to pay, then the next statement so far,
+    with only what's new in it: spending up to its date and the installments and fees it will bill, less any
+    payment beyond last month's statement. Once last month's is paid off, or had nothing to pay, only the open one
+    shows; when that one closes unpaid, it's the one due."""
+    from datetime import date as d
+    from types import SimpleNamespace
+
+    from sqlalchemy.orm import Session
+
+    from app.domain.bills import bill_for, bills_for
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}"
+
+    def account(**details):
+        r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": uuid.uuid4().hex[:8],
+                        "kind": "credit_card", "opening_balance": 0, "opened_on": "2026-08-01", "statement_day": 1,
+                        "payment_due_day": 15, **details})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    def txn(type_, day, *entries, payee=None):
+        txn_id = str(uuid.uuid4())
+        r = client.post(f"{base}/transactions", headers=auth(u), json={"id": txn_id, "type": type_, "occurred_on": day,
+                        "payee": payee, "entries": [{"account_id": a, "amount": m} for a, m in entries]})
+        assert r.status_code == 201, r.text
+        return txn_id
+
+    def bills(account_id, today, one=False):
+        a = SimpleNamespace(**next(x for x in client.get(f"{base}/accounts", headers=auth(u)).json() if x["id"] == account_id))
+        a.id = uuid.UUID(a.id)
+        with Session(database) as s:
+            return bill_for(s, a, today) if one else bills_for(s, a, today)
+
+    def summary(b):
+        return (b.statement_open, b.period_start, b.period_end, b.due_on, b.amount, b.remaining)
+
+    # Statements on the 1st, due on the 15th. September's 300,000 isn't paid yet; in October, a laptop in six
+    # installments with a 60,000 fee split into them, and a coffee.
+    card = account(credit_limit=10_000_000)
+    txn("expense", "2026-09-20", (card, -300_000))
+    laptop = txn("expense", "2026-10-05", (card, -4_390_793), payee="Laptop")
+    txn("expense", "2026-10-21", (card, -120_000))
+    r = client.post(f"{base}/installments", headers=auth(u), json={"id": str(uuid.uuid4()), "transaction_id": laptop,
+                    "months": 6, "fee": 60_000, "fee_split": True})
+    assert r.status_code == 201 and r.json()["first_statement"] == "2026-11-01"
+    due, upcoming = bills(card, d(2026, 10, 22))
+    assert summary(due) == (False, d(2026, 9, 2), d(2026, 10, 1), d(2026, 10, 15), 300_000, 300_000)
+    assert summary(upcoming) == (True, d(2026, 10, 2), d(2026, 11, 1), d(2026, 11, 15), 861_798, 861_798)
+    assert [(i["number"], i["amount"]) for i in upcoming.installments] == [(1, 731_798)]
+    assert ([f["amount"] for f in upcoming.fees], upcoming.fee, upcoming.paid) == ([10_000], 10_000, 0)
+    assert not bills(card, d(2026, 10, 22), one=True).statement_open           # the one due comes first
+
+    # Paid off: only the open statement. Paying more brings it down.
+    txn("transfer", "2026-10-10", (accts["Bank"], -300_000), (card, 300_000))
+    [only] = bills(card, d(2026, 10, 22))
+    assert summary(only) == (True, d(2026, 10, 2), d(2026, 11, 1), d(2026, 11, 15), 861_798, 861_798)
+    assert only.owed_now == 4_510_793
+    txn("transfer", "2026-10-22", (accts["Bank"], -100_000), (card, 100_000))
+    assert [b.amount for b in bills(card, d(2026, 10, 22))] == [761_798]
+
+    # Nothing on the last statement: the open one only. Once it closes unpaid, it's due, and the next has nothing yet.
+    fresh = account()
+    txn("expense", "2026-10-21", (fresh, -50_000))
+    assert [summary(b) for b in bills(fresh, d(2026, 10, 22))] == [(True, d(2026, 10, 2), d(2026, 11, 1), d(2026, 11, 15), 50_000, 50_000)]
+    assert [(b.statement_open, b.amount) for b in bills(fresh, d(2026, 11, 2))] == [(False, 50_000), (True, 0)]
+
+    # The API: the list, and the one due on its own.
+    r = client.get(f"{base}/accounts/{card}/bills", headers=auth(u))
+    assert r.status_code == 200 and all(b["statement_open"] for b in r.json())
+    assert client.get(f"{base}/accounts/{accts['Cash']}/bills", headers=auth(u)).json() == []
+    assert client.get(f"{base}/accounts/{card}/bills", headers=auth(signed_up(client))).status_code == 404
+
+
+def test_installment_plans(client, database):
+    """R-ACC-8: a card purchase paid in installments stays one expense for its full amount; each statement bills one
+    installment per plan, the fee at once or split into the installments, nothing charged twice; ending early bills
+    the rest; the unbilled part counts toward the limit unless the plan says otherwise."""
+    from datetime import date as d
+    from types import SimpleNamespace
+
+    from sqlalchemy.orm import Session
+
+    from app.domain.bills import bill_for, installment_plans
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}"
+
+    def account(kind, **details):
+        r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": f"{kind} {uuid.uuid4().hex[:6]}",
+                        "kind": kind, "opening_balance": 0, "opened_on": "2026-08-01", **details})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    def txn(type_, day, *entries, txn_id=None, payee=None):
+        txn_id = str(txn_id or uuid.uuid4())
+        r = client.post(f"{base}/transactions", headers=auth(u), json={"id": txn_id, "type": type_, "occurred_on": day,
+                        "payee": payee, "entries": [{"account_id": a, "amount": m} for a, m in entries]})
+        assert r.status_code == 201, r.text
+        return txn_id
+
+    def plan(transaction_id, as_user=None, **fields):
+        return client.post(f"{base}/installments", headers=auth(as_user or u),
+                           json={"id": str(uuid.uuid4()), "transaction_id": transaction_id, **fields})
+
+    def bill(account_id, today):
+        a = SimpleNamespace(**next(x for x in client.get(f"{base}/accounts", headers=auth(u)).json() if x["id"] == account_id))
+        a.id = uuid.UUID(a.id)
+        with Session(database) as s:
+            return bill_for(s, a, today)
+
+    # A card with its statement on the 25th, due on the 10th; a laptop for 6,000,000 over 6 months, a 120,000 fee.
+    card = account("credit_card", statement_day=25, payment_due_day=10, credit_limit=20_000_000)
+    laptop = txn("expense", "2026-09-10", (card, -6_000_000), payee="Laptop")
+    txn("expense", "2026-09-15", (card, -300_000))
+    r = plan(laptop, months=6, fee=120_000)
+    assert r.status_code == 201, r.text
+    p = r.json()
+    assert (p["account_id"], p["months"], p["converted_on"], p["first_statement"], p["fee"], p["fee_split"]) == (
+        card, 6, "2026-09-10", "2026-09-25", 120_000, False)
+    assert (p["counts_toward_limit"], p["ended_on"], p["installment"], p["version"]) == (True, None, 1_000_000, 1)
+    r = plan(laptop, months=3)
+    assert (r.status_code, r.json()) == (409, {"detail": "installment_exists"})       # one plan per purchase
+
+    # The September statement: 300,000 plus the first installment, and the whole fee.
+    b = bill(card, d(2026, 10, 1))
+    assert (b.amount, b.fee) == (1_420_000, 120_000)
+    assert [(i["number"], i["months"], i["amount"]) for i in b.installments] == [(1, 6, 1_000_000)]
+    [fee] = b.fees
+    assert fee["amount"] == 120_000
+    txn("expense", "2026-10-02", (card, -120_000), txn_id=fee["transaction_id"])           # what Pay records
+    txn("transfer", "2026-10-02", (accts["Bank"], -1_420_000), (card, 1_420_000))
+    b = bill(card, d(2026, 10, 3))                                     # paid: October's statement so far
+    assert (b.statement_open, b.amount, b.fee, b.fees) == (True, 1_000_000, 0, [])          # the fee once
+    assert [i["number"] for i in b.installments] == [2]
+
+    # October: the second installment only; the balance still says what's owed.
+    b = bill(card, d(2026, 11, 1))
+    assert (b.amount, b.owed_now) == (1_000_000, 5_000_000)
+    assert [i["number"] for i in b.installments] == [2]
+    assert b.limit_used == 5_000_000
+    r = client.patch(f"{base}/installments/{p['id']}", headers=auth(u), json={"version": 1, "counts_toward_limit": False})
+    assert r.status_code == 200 and r.json()["version"] == 2
+    assert bill(card, d(2026, 11, 1)).limit_used == 1_000_000          # the 4,000,000 not billed yet doesn't count
+
+    # A phone bought on the 30th, converted on 2 November: its first installment is on the November statement,
+    # and its fee is split into the three.
+    phone = txn("expense", "2026-10-30", (card, -3_000_000), payee="Phone")
+    r = plan(phone, months=3, converted_on="2026-11-02", fee=100_000, fee_split=True)
+    assert r.status_code == 201 and r.json()["first_statement"] == "2026-11-25"
+    assert bill(card, d(2026, 11, 3)).amount == 1_000_000              # not on the October statement
+    txn("transfer", "2026-11-05", (accts["Bank"], -1_000_000), (card, 1_000_000))
+    b = bill(card, d(2026, 11, 26))
+    assert b.amount == 2_033_333
+    assert sorted((i["months"], i["number"], i["amount"]) for i in b.installments) == [(3, 1, 1_000_000), (6, 3, 1_000_000)]
+    assert [f["amount"] for f in b.fees] == [33_333]
+
+    # Paid off early: the rest is on the next statement.
+    with Session(database) as s:
+        lap = next(x for x in installment_plans(s, uuid.UUID(bid), d(2026, 11, 26)) if str(x["transaction_id"]) == laptop)
+    assert (lap["billed"], lap["left_to_bill"]) == (3, 3_000_000)
+    r = client.patch(f"{base}/installments/{lap['id']}", headers=auth(u), json={"version": lap["version"], "ended_on": "2026-11-28"})
+    assert r.status_code == 200, r.text
+    b = bill(card, d(2026, 12, 26))
+    assert sorted((i["months"], i["number"], i["amount"]) for i in b.installments) == [(3, 2, 1_000_000), (6, 6, 3_000_000)]
+    assert [f["amount"] for f in b.fees] == [33_333, 33_333]         # November's part was never recorded: it carries over
+
+    # Editing the purchase's amount recalculates the plan; moving it off the card removes it.
+    client.put(f"{base}/transactions/{phone}", headers=auth(u), json={"type": "expense", "occurred_on": "2026-10-30", "version": 1,
+               "payee": "Phone", "entries": [{"account_id": card, "amount": -3_300_000}]})
+    ph = next(x for x in client.get(f"{base}/installments", headers=auth(u)).json() if x["transaction_id"] == phone)
+    assert ph["installment"] == 1_100_000
+    r = client.put(f"{base}/transactions/{phone}", headers=auth(u), json={"type": "expense", "occurred_on": "2026-10-30", "version": 2,
+                   "payee": "Phone", "entries": [{"account_id": accts["Cash"], "amount": -3_300_000}]})
+    assert r.status_code == 200, r.text
+    assert [x["transaction_id"] for x in client.get(f"{base}/installments", headers=auth(u)).json()] == [laptop]
+
+    # Deleting the purchase deletes its plan.
+    client.delete(f"{base}/transactions/{laptop}?version=1", headers=auth(u))
+    assert client.get(f"{base}/installments", headers=auth(u)).json() == []
+
+    # Only an expense on a credit card with a statement day, 2 to 60 months.
+    cash_buy = txn("expense", "2026-10-01", (accts["Cash"], -500_000))
+    no_day = account("credit_card")
+    no_day_buy = txn("expense", "2026-10-01", (no_day, -500_000))
+    refund = txn("refund", "2026-10-01", (card, 500_000))
+    card_buy = txn("expense", "2026-10-01", (card, -500_000))
+    for tid, fields in ((cash_buy, {"months": 3}), (no_day_buy, {"months": 3}), (refund, {"months": 3}),
+                        (card_buy, {"months": 1}), (card_buy, {"months": 61}), (card_buy, {"months": 3, "fee": -1}),
+                        (card_buy, {"months": 3, "converted_on": "2026-09-30"})):
+        r = plan(tid, **fields)
+        assert r.status_code == 422, (tid, fields, r.text)
+
+    # Nobody else sees it; a viewer can't add one.
+    assert client.get(f"{base}/installments", headers=auth(signed_up(client))).status_code == 404
+    viewer_name = f"v_{uuid.uuid4().hex[:8]}"
+    viewer = signed_up(client, viewer_name)
+    client.post(f"{base}/members", headers=auth(u), json={"username": viewer_name, "role": "viewer"})
+    client.post(f"/v1/me/book-invites/{bid}/accept", headers=auth(viewer))
+    assert plan(card_buy, as_user=viewer, months=3).status_code == 403
+
+    # The export lists them.
+    assert plan(card_buy, months=3).status_code == 201
+    import io
+    import zipfile
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
+    rows = z.read("installments.csv").decode("utf-8-sig").splitlines()
+    assert rows[0].startswith("Book,Card,Purchase,Date,Amount,Months") and len(rows) == 2
 
 
 def test_categories(client):
@@ -425,6 +638,51 @@ def test_transactions_have_a_time_of_day(client):
     z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
     times = {r["Payee"]: r["Time"] for r in csv.DictReader(io.StringIO(z.read("transactions.csv").decode("utf-8-sig")))}
     assert (times["Dinner"], times["Coffee"], times["Old app"]) == ("18:45", "21:00", "00:00")
+
+
+def test_suggestions_from_my_own_history(client):
+    """R-TXN-7: a new transaction is filled in from the user's own recent ones of the same type and a close amount
+    (within 10 %, the last 90 days): the account, category and payee that make up at least 2 of the last 3."""
+    from datetime import date, timedelta
+    names = {k: f"{k}_{uuid.uuid4().hex[:8]}" for k in ("owner", "editor")}
+    owner, editor = (signed_up(client, names[k]) for k in ("owner", "editor"))
+    bid, accts = new_book_with_accounts(client, owner)
+    client.post(f"/v1/books/{bid}/members", headers=auth(owner), json={"username": names["editor"], "role": "editor"})
+    client.post(f"/v1/me/book-invites/{bid}/accept", headers=auth(editor))
+    parking = add_category(client, owner, bid, "Gửi xe")["id"]
+    food = add_category(client, owner, bid, "Ăn uống")["id"]
+    today = date.today()
+
+    def add(u, amount, account, category, payee, days_ago=0, type_="expense"):
+        r = client.post(f"/v1/books/{bid}/transactions", headers=auth(u), json={
+            "id": str(uuid.uuid4()), "type": type_, "occurred_on": (today - timedelta(days=days_ago)).isoformat(),
+            "category_id": category, "payee": payee,
+            "entries": [{"account_id": accts[account], "amount": -amount if type_ == "expense" else amount}]})
+        assert r.status_code == 201, r.text
+
+    def suggest(u, amount, type_="expense"):
+        r = client.get(f"/v1/books/{bid}/transactions/suggest", headers=auth(u), params={"type": type_, "amount": amount})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    add(owner, 5_000, "Cash", parking, "Gửi xe", days_ago=3)
+    add(owner, 5_200, "Bank", food, "Bánh mì", days_ago=2)
+    add(owner, 4_800, "Cash", parking, "Gửi xe", days_ago=1)
+    assert suggest(owner, 5_000) == {"account_id": accts["Cash"], "category_id": parking, "payee": "Gửi xe"}
+    assert suggest(owner, 4_600) == suggest(owner, 5_000)                  # close amounts count
+    assert suggest(owner, 9_000) is None                                    # nothing close
+    assert suggest(owner, 5_000, "income") is None                          # another type
+
+    for _ in range(3):                                                      # someone else's habits aren't mine
+        add(editor, 20_000, "Bank", food, "Cơm")
+    assert suggest(owner, 20_000) is None
+    assert suggest(editor, 20_000) == {"account_id": accts["Bank"], "category_id": food, "payee": "Cơm"}
+
+    for _ in range(3):                                                      # older than 90 days
+        add(owner, 77_000, "Bank", food, "Old habit", days_ago=120)
+    assert suggest(owner, 77_000) is None
+    assert client.get(f"/v1/books/{bid}/transactions/suggest", headers=auth(signed_up(client)),
+                      params={"type": "expense", "amount": 5_000}).status_code == 404
 
 
 def test_transactions_and_two_browsers(client):
@@ -534,6 +792,44 @@ def test_dashboard_converts_at_todays_rate(client, database):
     assert dash["recent_transactions"][0]["type"] in ("expense", "opening_balance")
     assert client.get(f"/v1/books/{bid}/dashboard", headers=auth(signed_up(client))).json() == {"detail": "not_found"}
 
+    listed = {a["name"]: a for a in client.get(f"/v1/books/{bid}/accounts", headers=auth(u)).json()}
+    assert [listed[n]["converted_balance"] for n in ("Ví", "US bank", "Kuwait")] == [950_000, 2_470_000, None]
+
+
+def test_pinned_accounts(client, database):
+    """R-DASH-2: each member pins the accounts their Overview shows; pins are their own, a viewer pins too, and
+    leaving the book drops them."""
+    names = {k: f"{k}_{uuid.uuid4().hex[:8]}" for k in ("owner", "viewer")}
+    owner, viewer = (signed_up(client, names[k]) for k in ("owner", "viewer"))
+    bid, accts = new_book_with_accounts(client, owner)
+    client.post(f"/v1/books/{bid}/members", headers=auth(owner), json={"username": names["viewer"], "role": "viewer"})
+    client.post(f"/v1/me/book-invites/{bid}/accept", headers=auth(viewer))
+    base = f"/v1/books/{bid}/accounts"
+
+    def pinned(u):
+        return {a["name"] for a in client.get(base, headers=auth(u)).json() if a["pinned"]}
+
+    assert client.put(f"{base}/{accts['Cash']}/pin", headers=auth(owner)).status_code == 204
+    assert client.put(f"{base}/{accts['Cash']}/pin", headers=auth(owner)).status_code == 204      # twice is fine
+    assert (pinned(owner), pinned(viewer)) == ({"Cash"}, set())
+    assert client.put(f"{base}/{accts['Bank']}/pin", headers=auth(viewer)).status_code == 204
+    assert (pinned(owner), pinned(viewer)) == ({"Cash"}, {"Bank"})
+    dash = client.get(f"/v1/books/{bid}/dashboard", headers=auth(owner)).json()
+    assert {a["name"]: a["pinned"] for a in dash["accounts"]} == {"Cash": True, "Bank": False}
+
+    import io
+    import zipfile
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(owner)).content))
+    rows = list(csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig"))))
+    assert {r["Account"]: r["Pinned"] for r in rows} == {"Cash": "Yes", "Bank": "No"}
+
+    assert client.delete(f"{base}/{accts['Cash']}/pin", headers=auth(owner)).status_code == 204
+    assert pinned(owner) == set()
+    assert client.put(f"{base}/{accts['Cash']}/pin", headers=auth(signed_up(client))).status_code == 404
+    assert client.delete(f"/v1/books/{bid}/members/{viewer}", headers=auth(viewer)).status_code == 204
+    with database.connect() as c:
+        assert c.execute(text("select count(*) from account_pins where user_id = :u"), {"u": viewer}).scalar() == 0
+
 
 def test_people_and_lending(client):
     u = signed_up(client)
@@ -568,6 +864,48 @@ def test_people_and_lending(client):
 
     dash = client.get(f"/v1/books/{bid}/dashboard", headers=auth(u)).json()
     assert [(p["name"], p["owed_to_you"], p["you_owe"]) for p in dash["people"]] == [("Tom", 1_500_000, 0)]
+
+
+def test_people_as_accounts(client):
+    """R-LEND-2: adding a person adds their account, in the currency picked (the book's by default); it's changed
+    through the person, not as an account; deleting a person with nothing recorded deletes it, otherwise both are
+    archived."""
+    import csv
+    import io
+    import zipfile
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}"
+    minh = client.post(f"{base}/contacts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": "Minh"}).json()
+    bob = client.post(f"{base}/contacts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": "Bob", "currency": "USD"}).json()
+    assert (minh["currency"], bob["currency"]) == ("VND", "USD")
+    own = {a["id"]: a for a in client.get(f"{base}/accounts", headers=auth(u)).json()}
+    assert (own[minh["id"]]["kind"], own[minh["id"]]["name"], own[minh["id"]]["contact_id"]) == ("person", "Minh", minh["id"])
+    assert own[bob["id"]]["currency"] == "USD"
+
+    r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": "Sneaky", "kind": "person"})
+    assert r.status_code == 422
+    person = own[minh["id"]]
+    for body in ({"name": "Other"}, {"archived": True}, {"kind": "cash"}):
+        r = client.patch(f"{base}/accounts/{minh['id']}", headers=auth(u), json={"version": person["version"], **body})
+        assert (r.status_code, r.json()) == (409, {"detail": "person_account"}), body
+
+    r = client.post(f"{base}/transactions", headers=auth(u), json={"id": str(uuid.uuid4()), "type": "transfer",
+                    "occurred_on": "2026-10-02", "entries": [{"account_id": accts["Cash"], "amount": -200_000},
+                                                             {"account_id": minh["id"], "amount": 200_000}]})
+    assert r.status_code == 201, r.text
+    people = {c["name"]: c for c in client.get(f"{base}/contacts", headers=auth(u)).json()}
+    assert people["Minh"]["balances"] == [{"currency": "VND", "owed_to_you": 200_000, "you_owe": 0}]
+
+    assert client.delete(f"{base}/contacts/{bob['id']}?version=1", headers=auth(u)).json() == {"deleted": True, "archived": False}
+    assert bob["id"] not in {a["id"] for a in client.get(f"{base}/accounts?include_archived=true", headers=auth(u)).json()}
+    assert client.delete(f"{base}/contacts/{minh['id']}?version=1", headers=auth(u)).json() == {"deleted": False, "archived": True}
+    archived = {a["id"]: a for a in client.get(f"{base}/accounts?include_archived=true", headers=auth(u)).json()}
+    assert archived[minh["id"]]["archived_at"] is not None
+
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
+    rows = {r["Account"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
+    assert (rows["Minh"]["Type"], rows["Minh"]["Person"]) == ("person", "Minh")
 
 
 def test_edits_to_amounts_or_accounts_alone_are_versions(client, database):
