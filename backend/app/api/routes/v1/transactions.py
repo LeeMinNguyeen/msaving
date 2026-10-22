@@ -149,6 +149,37 @@ def create(book_id: UUID, body: CreateTxn, db: Session = Depends(get_db)) -> Tra
     return get_transaction(db, book_id, body.id)
 
 
+class Suggestion(BaseModel):
+    account_id: UUID
+    category_id: UUID | None
+    payee: str | None
+
+
+SUGGEST = """
+select e.account_id, t.category_id, t.payee
+  from transactions t join entries e on e.transaction_id = t.id join books b on b.id = t.book_id
+ where t.book_id = :b and t.type = cast(:ty as txn_type) and t.created_by = current_app_user()
+   and t.occurred_on >= (now() at time zone b.timezone)::date - 90
+   and abs(e.amount) between :lo and :hi
+   and (select count(*) from entries x where x.transaction_id = t.id) = 1
+ order by t.occurred_on desc, t.occurred_time desc, t.created_at desc
+ limit 3"""
+
+
+@router.get("/suggest")
+def suggest(book_id: UUID, type: Literal["expense", "income"], amount: Annotated[int, Query(gt=0)],
+            db: Session = Depends(get_db)) -> Suggestion | None:
+    """From this user's own transactions of the type, within 10 % of the amount, in the last 90 days: what makes up at
+    least 2 of the last 3, or null."""
+    get_book(db, book_id)
+    rows = [tuple(r) for r in db.execute(text(SUGGEST), {"b": book_id, "ty": type, "lo": amount * 9 // 10,
+                                                          "hi": amount * 11 // 10}).all()]
+    best = max(set(rows), key=rows.count, default=None)
+    if best is None or rows.count(best) < 2:
+        return None
+    return Suggestion(account_id=best[0], category_id=best[1], payee=best[2])
+
+
 @router.get("/{txn_id}")
 def read(book_id: UUID, txn_id: UUID, db: Session = Depends(get_db)) -> Transaction:
     get_book(db, book_id)
