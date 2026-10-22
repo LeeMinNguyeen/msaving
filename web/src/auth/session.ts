@@ -1,7 +1,7 @@
 // The session token from /v1/auth (sign-in, join, setup, reset), kept in this
 // browser until signing out. The API keeps only its hash; it stops working
 // after 30 days unused, on sign-out, or when the admin disables the account.
-const KEY = 'msaving.session'
+const KEY = 'waterflow.session'
 const listeners = new Set<() => void>()
 
 function read(): string | null {

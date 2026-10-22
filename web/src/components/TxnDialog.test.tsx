@@ -28,7 +28,7 @@ function server() {
   })
 }
 
-describe('people in the account pickers (msaving#85)', () => {
+describe('people in the account pickers (waterflow#85)', () => {
   it('lists people after the accounts, under "People", and saves a transfer to one', async () => {
     const minh: Account = { ...cash, id: 'minh', name: 'Minh', kind: 'person', contact_id: 'minh', balance: 0 }
     const api = fakeApi({
@@ -75,7 +75,7 @@ describe('the time of a transaction', () => {
   })
 })
 
-describe('filling in from my own history (msaving#65)', () => {
+describe('filling in from my own history (waterflow#65)', () => {
   const bank: Account = { ...cash, id: 'bank', name: 'Bank', kind: 'checking', balance: 5_000_000 }
   const parking = { id: 'parking', name: 'Parking', parent_id: null, kind: 'expense', color: null, archived_at: null, version: 1 }
   function history() {
@@ -112,7 +112,7 @@ describe('filling in from my own history (msaving#65)', () => {
   })
 })
 
-describe('picking a category (msaving#67)', () => {
+describe('picking a category (waterflow#67)', () => {
   it('opens a parent to pick a sub-category, and saves it', async () => {
     const api = fakeApi({
       'GET /v1/currencies': currencies,
@@ -134,7 +134,7 @@ describe('picking a category (msaving#67)', () => {
   })
 })
 
-describe('paying a card purchase in installments (msaving#71)', () => {
+describe('paying a card purchase in installments (waterflow#71)', () => {
   const visa: Account = { ...cash, id: 'visa', name: 'Visa', kind: 'credit_card', balance: 0, statement_day: 25, payment_due_day: 10,
     credit_limit: 20_000_000 }
   const laptop: Transaction = { ...lunch, id: 't2', payee: 'Laptop', version: 1,

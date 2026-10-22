@@ -10,7 +10,7 @@ import { IdleSignOut } from './IdleSignOut'
 const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms))
 const signedOut = (api: ReturnType<typeof fakeApi>) => api.calls.filter((c) => c.path === '/v1/auth/sign-out').length
 
-describe('signing out an idle tab (msaving#26)', () => {
+describe('signing out an idle tab (waterflow#26)', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 

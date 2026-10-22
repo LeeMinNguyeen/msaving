@@ -1,14 +1,14 @@
 # CLAUDE.md: backend
 
-The FastAPI API, its own sign-in, the daily jobs and the PostgreSQL schema for MSaving, self-hosted only.
+The FastAPI API, its own sign-in, the daily jobs and the PostgreSQL schema for Waterflow, self-hosted only.
 Monorepo rules: `../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. How it all works: the public
-docs (https://msaving.leminhnguyen.com/docs/, source `msaving-landing/src/content/docs/`); a change to documented
-behaviour comes with a docs PR there. Decisions: the private msaving-docs.
+docs (https://waterflow-app.net/docs/, source `waterflow-landing/src/content/docs/`); a change to documented
+behaviour comes with a docs PR there. Decisions: the private waterflow-docs.
 
 ## Layout
 
 ```
-migrations/              plain SQL, applied in order by app/jobs/migrate.py on every start (msaving.migrations)
+migrations/              plain SQL, applied in order by app/jobs/migrate.py on every start (waterflow.migrations)
 app/
   launch.py              the container's entry: secrets, wait for the db, backup + migrate, setup code, API + jobs
   admin.py               operator commands: reset-password, make-admin, repurge
@@ -86,7 +86,7 @@ Rules:
 
 ## Jobs
 
-`app/jobs/scheduler.py`, inside the `msaving` container, each job once a day at the time set on Server admin
+`app/jobs/scheduler.py`, inside the `waterflow` container, each job once a day at the time set on Server admin
 (`JOBS_HOUR`, UTC, until then; `app/core/jobs.py` says when one is due); a failed one runs again an hour later.
 On Cloud Run the server has `RUN_JOBS=off` and a scheduled Cloud Run job runs `python -m app.launch jobs` (one look)
 every hour.

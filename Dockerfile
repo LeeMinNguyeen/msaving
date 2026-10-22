@@ -1,7 +1,7 @@
-# The `msaving` image: the API, the built web app and the daily jobs, in one.
+# The `waterflow` image: the API, the built web app and the daily jobs, in one.
 # Built on the operator's machine (no published images): docker-compose.yml
-# builds it and runs it twice, `secrets` (first start only) and `msaving`.
-#   docker build -t msaving .
+# builds it and runs it twice, `secrets` (first start only) and `waterflow`.
+#   docker build -t waterflow .
 
 # The web app, built once into static files the API serves.
 FROM node:22-alpine AS web
@@ -32,9 +32,9 @@ COPY --from=web /web/dist ./web
 
 # Not root. The secrets, backups and updates volumes start from these folders,
 # so they belong to this user.
-RUN useradd --system --uid 10001 msaving \
- && mkdir /secrets /backups /updates && chown msaving /secrets /backups /updates
-USER msaving
+RUN useradd --system --uid 10001 waterflow \
+ && mkdir /secrets /backups /updates && chown waterflow /secrets /backups /updates
+USER waterflow
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \

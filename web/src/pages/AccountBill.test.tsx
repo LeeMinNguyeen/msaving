@@ -46,7 +46,7 @@ const panel = (account: Account, canPay = true) =>
   renderApp(<BillPanel book={book} account={account} minorUnit={0} canPay={canPay} />)
 const posts = (api: ReturnType<typeof fakeApi>) => api.writes().filter((c) => c.method === 'POST').map((c) => c.body as Record<string, unknown>)
 
-describe('the statement so far, once the last one is paid (msaving#82)', () => {
+describe('the statement so far, once the last one is paid (waterflow#82)', () => {
   const openBill: Bill = { ...cardBill, statement_open: true, period_start: '2026-10-02', period_end: '2026-11-01', due_on: '2026-11-15',
     amount: 861_798, paid: 0, remaining: 861_798, owed_now: 4_510_793, fee: 10_000, limit_used: 4_510_793,
     installments: [{ plan_id: 'p1', transaction_id: 't1', payee: 'Laptop', number: 1, months: 6, amount: 731_798 }],
@@ -90,7 +90,7 @@ describe('the statement so far, once the last one is paid (msaving#82)', () => {
   })
 })
 
-describe("a credit card's bill (msaving#37)", () => {
+describe("a credit card's bill (waterflow#37)", () => {
   it('shows the statement, what is paid and what is left, and when it is due', async () => {
     server(card, cardBill)
     await panel(card)
@@ -161,7 +161,7 @@ describe("a credit card's bill (msaving#37)", () => {
   })
 })
 
-describe("a loan's installment (msaving#37)", () => {
+describe("a loan's installment (waterflow#37)", () => {
   it('pays the installment with the fee once, recording the fee and the interest as expenses on the loan', async () => {
     const api = server(loan, loanBill)
     await panel(loan)
@@ -196,7 +196,7 @@ describe("a loan's installment (msaving#37)", () => {
   })
 })
 
-describe('installments on a card (msaving#71)', () => {
+describe('installments on a card (waterflow#71)', () => {
   const withPlans: Bill = { ...cardBill, amount: 2_120_000, paid: 0, remaining: 2_120_000, fee: 120_000, limit_used: 1_000_000,
     installments: [{ plan_id: 'p1', transaction_id: 'laptop', payee: 'Laptop', number: 3, months: 6, amount: 1_000_000 }],
     fees: [{ plan_id: 'p1', transaction_id: 'fee-1', payee: 'Laptop', amount: 120_000 }] }

@@ -24,7 +24,7 @@ CC0_URLS = ("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/cu
 
 
 def _get(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"User-Agent": "MSaving (self-hosted)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Waterflow (self-hosted)"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.load(resp, parse_float=Decimal)
 

@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "MSaving"
+    "name": "Waterflow"
   },
   "language": {
     "label": "Ngôn ngữ",
@@ -194,8 +194,8 @@
     "origin_not_allowed": "Địa chỉ này không phải ứng dụng web của chính máy chủ.",
     "cannot_invite": "Không thể mời tên đăng nhập này: hãy kiểm tra chính tả, hoặc người đó có thể đã ở trong sổ.",
     "server_unreachable": "Không kết nối được máy chủ. Nếu máy chủ đang khởi động lại hoặc cập nhật, hãy thử lại sau vài phút.",
-    "restore_invalid": "Tệp này không phải bản sao lưu MSaving.",
-    "restore_too_new": "Bản sao lưu này từ phiên bản MSaving mới hơn: hãy cập nhật máy chủ này trước.",
+    "restore_invalid": "Tệp này không phải bản sao lưu Waterflow.",
+    "restore_too_new": "Bản sao lưu này từ phiên bản Waterflow mới hơn: hãy cập nhật máy chủ này trước.",
     "restore_too_large": "Tệp quá lớn: tối đa 100 MB.",
     "installment_exists": "Khoản mua này đã có kế hoạch trả góp.",
     "person_account": "Đây là tài khoản riêng của một người: hãy sửa ở mục Vay mượn."
@@ -451,7 +451,7 @@
     "title": "Thiết lập máy chủ",
     "intro": "Máy chủ này chưa có quản trị viên. Quản trị viên có thể mời người khác, đặt lại mật khẩu cho họ và đổi cài đặt máy chủ.",
     "code": "Mã thiết lập",
-    "codeHint": "In trong nhật ký của máy chủ: chạy docker compose logs msaving trên máy đang chạy nó.",
+    "codeHint": "In trong nhật ký của máy chủ: chạy docker compose logs waterflow trên máy đang chạy nó.",
     "serverName": "Tên máy chủ",
     "serverNameHint": "Hiện trên màn hình đăng nhập, ví dụ \"Nhà Lan\".",
     "adminAccount": "Tài khoản quản trị của bạn",
@@ -505,7 +505,7 @@
     "updateFailed": "Lần cập nhật gần nhất bị lỗi: {{detail}}",
     "releaseNotes": "Có gì mới",
     "updateNow": "Cập nhật ngay",
-    "updateByHand": "Để cập nhật, chạy các lệnh sau trên máy chủ, trong thư mục msaving (thư mục bạn đã tải về bằng git clone):",
+    "updateByHand": "Để cập nhật, chạy các lệnh sau trên máy chủ, trong thư mục bạn đã tải về bằng git clone:",
     "updaterHint": "Để cập nhật bằng một nút bấm tại đây, thêm COMPOSE_PROFILES=updater vào .env (xem hướng dẫn cài đặt: việc này cho một trình trợ giúp quyền điều khiển Docker).",
     "updateConfirm": "Cài phiên bản {{version}}? Máy chủ sẽ dựng phiên bản mới, sao lưu rồi khởi động lại; mọi người mất kết nối trong chốc lát, cả quá trình mất vài phút.",
     "updatingReload": "Đang cập nhật lên {{version}}. Máy chủ đang dựng lại và khởi động lại nên trang này có thể không hoạt động trong vài phút. Hãy tải lại trang sau khoảng 5 phút.",

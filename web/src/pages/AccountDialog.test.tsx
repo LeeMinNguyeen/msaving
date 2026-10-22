@@ -33,7 +33,7 @@ const pick = async (name: string | RegExp, option: string) => {
   await userEvent.click(await screen.findByRole('option', { name: option }))
 }
 
-describe('account details (msaving#23)', () => {
+describe('account details (waterflow#23)', () => {
   it('opens greyed out; Edit turns the fields on without saving anything', async () => {
     const api = server()
     await renderApp(<AccountDialog book={book} account={card} onClose={() => {}} />)
@@ -91,7 +91,7 @@ describe('account details (msaving#23)', () => {
   })
 })
 
-describe('fields by kind (msaving#17)', () => {
+describe('fields by kind (waterflow#17)', () => {
   it('shows each kind its own fields', async () => {
     server()
     await renderApp(<AccountDialog book={book} account={null} onClose={() => {}} />)
@@ -139,7 +139,7 @@ describe('fields by kind (msaving#17)', () => {
   })
 })
 
-describe('setting the balance (msaving#24)', () => {
+describe('setting the balance (waterflow#24)', () => {
   it('adds an adjustment for the difference from the balance now, dated today', async () => {
     // Someone added 14,000 since the dialog opened: the save answers with 6,950,000.
     const api = server()

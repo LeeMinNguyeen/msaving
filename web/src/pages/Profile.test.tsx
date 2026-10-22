@@ -33,7 +33,7 @@ function server(sessions: DeviceSession[], idle: number | null = 5) {
 }
 const devices = async () => within((await screen.findByText('Chrome · Windows')).closest('ul')!)
 
-describe('signed-in devices (msaving#5)', () => {
+describe('signed-in devices (waterflow#5)', () => {
   it('lists where the account is signed in, this device first and marked', async () => {
     server([laptop, phone, script])
     await renderApp(<Profile />)
@@ -68,18 +68,18 @@ describe('signed-in devices (msaving#5)', () => {
 
 describe('signing out the other devices', () => {
   it("keeps this device's remembered two-step verification", async () => {
-    localStorage.setItem('msaving.device.lan', 'device-1')
+    localStorage.setItem('waterflow.device.lan', 'device-1')
     const api = server([laptop, phone])
     await renderApp(<Profile />)
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out other devices' }))
     await waitFor(() => expect(api.writes()).toHaveLength(1))
     expect(api.writes()[0]).toMatchObject({ path: '/v1/auth/sign-out-others', body: { device_token: 'device-1' } })
-    localStorage.removeItem('msaving.device.lan')
+    localStorage.removeItem('waterflow.device.lan')
   })
 })
 
 describe('the language', () => {
-  afterEach(() => localStorage.removeItem('msaving.language'))
+  afterEach(() => localStorage.removeItem('waterflow.language'))
 
   it('is a dropdown of each language in its own name, saved with the profile', async () => {
     const api = server([laptop])
@@ -90,11 +90,11 @@ describe('the language', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(api.writes()[0]).toMatchObject({ method: 'PATCH', path: '/v1/me', body: { language: 'vi' } }))
     expect(await screen.findByRole('combobox', { name: 'Ngôn ngữ' })).toHaveTextContent('Tiếng Việt')
-    expect(localStorage.getItem('msaving.language')).toBe('vi')
+    expect(localStorage.getItem('waterflow.language')).toBe('vi')
   })
 })
 
-describe('signing out after inactivity, the user\'s own choice (msaving#26)', () => {
+describe('signing out after inactivity, the user\'s own choice (waterflow#26)', () => {
   const setting = () => screen.findByRole('combobox', { name: 'Sign me out after inactivity' })
   const pick = async (option: string) => {
     await userEvent.click(await setting())
@@ -126,7 +126,7 @@ describe('light or dark', () => {
     return <span data-testid="mode">{useTheme().palette.mode}</span>
   }
   afterEach(() => {
-    localStorage.removeItem('msaving.theme')
+    localStorage.removeItem('waterflow.theme')
     desktop(true)
   })
 
@@ -139,6 +139,6 @@ describe('light or dark', () => {
     await userEvent.click(screen.getByRole('combobox', { name: 'Light or dark' }))
     await userEvent.click(await screen.findByRole('option', { name: 'Light' }))
     expect(screen.getByTestId('mode')).toHaveTextContent('light')
-    expect(localStorage.getItem('msaving.theme')).toBe('light')
+    expect(localStorage.getItem('waterflow.theme')).toBe('light')
   })
 })

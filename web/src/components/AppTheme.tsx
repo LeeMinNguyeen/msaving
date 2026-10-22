@@ -6,7 +6,7 @@ import { theme } from '../theme'
 // Light, dark, or the device's setting (the default), chosen on Profile and security and kept in this browser.
 export function AppTheme({ children }: { children: ReactNode }) {
   return (
-    <ThemeProvider theme={theme} defaultMode="system" modeStorageKey="msaving.theme">
+    <ThemeProvider theme={theme} defaultMode="system" modeStorageKey="waterflow.theme">
       <CssBaseline />
       {children}
     </ThemeProvider>

@@ -13,7 +13,7 @@ async function pick(name: string, option: string) {
   await userEvent.click(await screen.findByRole('option', { name: option }))
 }
 
-afterEach(() => localStorage.removeItem('msaving.language'))
+afterEach(() => localStorage.removeItem('waterflow.language'))
 
 describe('joining, in two steps', () => {
   function server(signup: 'open' | 'invite', valid: string[] = []) {
@@ -32,7 +32,7 @@ describe('joining, in two steps', () => {
     expect(await screen.findByLabelText(/^Invite code/)).toHaveValue('X7K2-9QPM')
     expect(screen.queryByLabelText(/^Username/)).not.toBeInTheDocument()
     await pick('Language', 'Tiếng Việt')
-    expect(localStorage.getItem('msaving.language')).toBe('vi')
+    expect(localStorage.getItem('waterflow.language')).toBe('vi')
     await userEvent.click(screen.getByRole('button', { name: 'Tiếp tục' }))
 
     await userEvent.type(await screen.findByLabelText(/^Tên người dùng/), 'lan')
@@ -81,7 +81,7 @@ describe('joining, in two steps', () => {
 describe('setting up a new server', () => {
   it("has the language dropdown, which changes the screen and is the admin's language", async () => {
     const api = fakeApi({
-      'GET /v1/instance': { name: 'MSaving', signup: 'invite', setup_needed: true },
+      'GET /v1/instance': { name: 'Waterflow', signup: 'invite', setup_needed: true },
       'POST /v1/setup': { token: 'admin-token' },
     })
     session.set(null)
@@ -96,21 +96,21 @@ describe('setting up a new server', () => {
     expect(api.writes()[0].body).toMatchObject({ username: 'lan', language: 'vi' })
   })
 
-  it('can restore a backup instead, with the setup code (msaving#72)', async () => {
+  it('can restore a backup instead, with the setup code (waterflow#72)', async () => {
     const api = fakeApi({
-      'GET /v1/instance': { name: 'MSaving', signup: 'invite', setup_needed: true },
+      'GET /v1/instance': { name: 'Waterflow', signup: 'invite', setup_needed: true },
       'POST /v1/setup/restore': new Response(null, { status: 202 }),
     })
     session.set(null)
     await renderApp(<Setup />)
     await userEvent.click(await screen.findByRole('button', { name: 'Restore a backup instead' }))
     await userEvent.type(screen.getByLabelText(/^Setup code/), 'cjjv-sj9h-edwz')
-    await userEvent.upload(screen.getByLabelText('Backup file'), new File(['dump'], 'msaving.dump'))
+    await userEvent.upload(screen.getByLabelText('Backup file'), new File(['dump'], 'waterflow.dump'))
     await userEvent.click(screen.getByRole('button', { name: 'Restore' }))
     await waitFor(() => expect(api.writes()).toHaveLength(1))
     const form = api.writes()[0].body as FormData
     expect(api.writes()[0].path).toBe('/v1/setup/restore')
-    expect([form.get('setup_code'), (form.get('file') as File).name]).toEqual(['CJJV-SJ9H-EDWZ', 'msaving.dump'])
+    expect([form.get('setup_code'), (form.get('file') as File).name]).toEqual(['CJJV-SJ9H-EDWZ', 'waterflow.dump'])
     expect(await screen.findByText(/^Restoring\. The server restarts/)).toBeInTheDocument()
   })
 })
@@ -123,6 +123,6 @@ describe('a reset link', () => {
     expect(await screen.findByRole('combobox', { name: 'Ngôn ngữ' })).toHaveTextContent('Tiếng Việt')
     await pick('Ngôn ngữ', 'English')
     expect(await screen.findByRole('combobox', { name: 'Language' })).toHaveTextContent('English')
-    expect(localStorage.getItem('msaving.language')).toBe('en')
+    expect(localStorage.getItem('waterflow.language')).toBe('en')
   })
 })

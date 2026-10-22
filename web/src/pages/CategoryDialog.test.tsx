@@ -23,7 +23,7 @@ function server() {
 }
 const name = () => screen.getByRole('textbox', { name: /category name/i })
 
-describe('category details (msaving#23)', () => {
+describe('category details (waterflow#23)', () => {
   it('opens greyed out with its budgets; Edit turns the fields on without saving', async () => {
     const api = server()
     await renderApp(<CategoryDialog book={book} all={[wants, dining]} category={dining} onClose={() => {}} />)

@@ -26,7 +26,7 @@ const open = async () => {
 }
 const shown = (list: ReturnType<typeof within>) => list.getAllByRole('option').map((o: HTMLElement) => o.querySelector('[data-name]')?.textContent)
 
-describe('CategoryPicker (msaving#67)', () => {
+describe('CategoryPicker (waterflow#67)', () => {
   it('shows the top level first and opens a branch without closing', async () => {
     const onChange = vi.fn()
     await renderApp(<Picker onChange={onChange} />)

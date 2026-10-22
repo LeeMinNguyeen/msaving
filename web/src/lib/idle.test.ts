@@ -3,7 +3,7 @@ import { idleState } from './idle'
 
 const min = 60_000
 
-describe('signing out after inactivity (msaving#26)', () => {
+describe('signing out after inactivity (waterflow#26)', () => {
   it('warns in the last minute and is due when the time is up', () => {
     expect(idleState(0, 3 * min, 5)).toEqual({ due: false, secondsLeft: null })
     expect(idleState(0, 4 * min, 5)).toEqual({ due: false, secondsLeft: 60 })

@@ -50,7 +50,7 @@ async function loaded(client: QueryClient, count: (path: string) => number) {
   }
 }
 
-describe('other members\' changes (msaving#25)', () => {
+describe('other members\' changes (waterflow#25)', () => {
   it('polls the book\'s marker every 5 seconds', async () => {
     server()
     const client = testClient()

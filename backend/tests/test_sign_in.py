@@ -109,7 +109,7 @@ def test_admin_can_open_sign_up(client, admin, invite_only):
     assert client.get("/v1/instance").json() | {"server_version": None} == {
         "name": "Nhà", "signup": "open", "api_version": 1, "setup_needed": False, "server_version": None}
     sign_up(client)
-    client.patch("/v1/admin/instance", headers=bearer(admin_token), json={"name": "MSaving"})
+    client.patch("/v1/admin/instance", headers=bearer(admin_token), json={"name": "Waterflow"})
 
 
 def test_only_the_admin_has_admin_tools(client, admin):
@@ -278,7 +278,7 @@ def test_idle_sign_out(client, database):
      " Chrome/130.0.0.0 Mobile Safari/537.36", "Samsung Internet · Android"),
     ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0"
      " Mobile/15E148 Safari/604.1", "Chrome · iOS"),
-    ("MSaving/1.0 (Android 15)", "MSaving · Android"),
+    ("Waterflow/1.0 (Android 15)", "Waterflow · Android"),
     ("python-httpx/0.28.1", None),
     (None, None),
 ])
@@ -291,7 +291,7 @@ def test_two_factor_with_recovery_codes(client):
     name, token = sign_up(client)
     assert client.get("/v1/auth/two-factor", headers=bearer(token)).json() == {"enabled": False, "recovery_codes_left": 0}
     setup = client.post("/v1/auth/two-factor/setup", headers=bearer(token)).json()
-    assert setup["uri"].startswith("otpauth://totp/MSaving:") and setup["qr"].startswith("data:image/svg+xml;base64,")
+    assert setup["uri"].startswith("otpauth://totp/Waterflow:") and setup["qr"].startswith("data:image/svg+xml;base64,")
     secret = setup["secret"]
     bad = client.post("/v1/auth/two-factor/enable", headers=bearer(token), json={"secret": secret, "code": "000000"})
     assert (bad.status_code, bad.json()) == (422, {"detail": "invalid_code"})
@@ -478,11 +478,40 @@ def test_migrate_builds_a_server_and_is_safe_to_repeat(fresh_server):
         assert not conn.execute("select bool_or(rolbypassrls or rolsuper) from pg_roles"
                                 " where rolname in ('api_login', 'purge_login', 'fx_login')").fetchone()[0]
         # A later update with a new migration backs up first, then applies it.
-        last = conn.execute("delete from msaving.migrations where version = (select max(version) from msaving.migrations)"
+        last = conn.execute("delete from waterflow.migrations where version = (select max(version) from waterflow.migrations)"
                             " returning name").fetchone()[0]
         conn.commit()
     applied3, _ = migrate.run(url, passwords, before_migrating=lambda: backups.append(1))
     assert backups == [1] and len(applied3) == 1 and last in applied3[0]
+
+
+def test_a_server_from_before_the_rename_keeps_its_migrations(fresh_server):
+    """Servers made while the app was named MSaving keep the applied migrations in the schema msaving: the next
+    start renames it, applies nothing again and takes no backup."""
+    from app.jobs import migrate
+    url, passwords = fresh_server
+    migrate.run(url, passwords)
+    with psycopg.connect(url, autocommit=True) as conn:
+        conn.execute("alter schema waterflow rename to msaving")
+    backups = []
+    applied, _ = migrate.run(url, passwords, before_migrating=lambda: backups.append(1))
+    assert applied == [] and backups == []
+    with psycopg.connect(url) as conn:
+        assert conn.execute("select to_regnamespace('msaving') is null, to_regnamespace('waterflow') is not null"
+                            ).fetchone() == (True, True)
+
+
+def test_the_old_default_server_name_becomes_waterflow(fresh_server):
+    from app.jobs import migrate
+    url, _ = fresh_server
+    with psycopg.connect(url, autocommit=True) as conn:
+        *before, last = migrate.pending(conn)
+        assert last.name.endswith("_waterflow.sql")
+        for migration in before:
+            migrate.apply(conn, migration)
+        assert conn.execute("select name from instance_settings").fetchone()[0] == "MSaving"
+        migrate.apply(conn, last)
+        assert conn.execute("select name from instance_settings").fetchone()[0] == "Waterflow"
 
 
 def test_logins_are_set_again_by_an_owner_that_is_no_superuser(fresh_server):
@@ -597,7 +626,7 @@ def test_launcher_runs_the_due_jobs_once(fresh_server, tmp_path):
         first = launch(backups)
         assert first.returncode == 0, first.stdout + first.stderr
         assert first.stdout.splitlines()[-1] == "jobs: purge, backup"
-        assert len(list(backups.glob("msaving-*.dump"))) == 1
+        assert len(list(backups.glob("waterflow-*.dump"))) == 1
         again = launch(backups)
         assert (again.returncode, again.stdout.splitlines()[-1]) == (0, "jobs: none due")
         with owner.begin() as c:
@@ -731,9 +760,9 @@ def test_update_info_and_one_click_update(client, admin, tmp_path, monkeypatch):
     assert updater_with(f"running {now - timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}") is False
     assert updater_with(f"done {now:%Y-%m-%dT%H:%M:%SZ}") is False
 
-    monkeypatch.setenv("PROJECT_SITE_URL", "https://msaving.example/")
+    monkeypatch.setenv("PROJECT_SITE_URL", "https://waterflow.example/")
     assert client.get("/v1/admin/update", headers=bearer(admin_token)).json()["changelog_url"] == \
-        "https://msaving.example/docs/changelog/"
+        "https://waterflow.example/docs/changelog/"
 
 
 def test_versions_compare():
@@ -765,7 +794,7 @@ def a_backup(tmp_path_factory, database):
 
 def upload(client, path, token=None, content=None, **form):
     return client.post(path, headers=bearer(token) if token else None, data=form,
-                       files={"file": ("msaving.dump", content, "application/octet-stream")})
+                       files={"file": ("waterflow.dump", content, "application/octet-stream")})
 
 
 def test_admin_restores_a_backup_from_the_web(client, admin, restore_dir, a_backup, monkeypatch):

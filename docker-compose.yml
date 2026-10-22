@@ -1,8 +1,8 @@
-# MSaving: your own spending tracker, for you or a private group.
+# Waterflow: your own spending tracker, for you or a private group.
 #
-#   git clone https://github.com/LeeMinNguyeen/msaving && cd msaving
+#   git clone https://github.com/LeeMinNguyeen/waterflow && cd waterflow
 #   docker compose up -d --build
-#   docker compose logs msaving          the setup code, the first time
+#   docker compose logs waterflow        the setup code, the first time
 #
 # Then open http://localhost:8080 and create the admin account with the setup
 # code. Everything is optional in a .env file next to this one (see
@@ -11,15 +11,15 @@
 # (the first build takes a few minutes).
 #
 # Update:  git pull && docker compose up -d --build   (takes a backup first)
-# Guide:   https://msaving.leminhnguyen.com/docs/
+# Guide:   https://waterflow-app.net/docs/
 
-name: msaving
+name: waterflow
 
 services:
   # First start only: makes the built-in database's password, in the secrets
   # volume, before the database first starts. Nothing to type or keep.
   secrets:
-    image: msaving:local
+    image: waterflow:local
     build: .
     pull_policy: build
     command: ["python", "-m", "app.launch", "secrets"]
@@ -48,8 +48,8 @@ services:
 
   # The server: the web app, the API and the daily jobs (purge, backup,
   # exchange rates). Not reachable from other machines unless BIND says so.
-  msaving:
-    image: msaving:local
+  waterflow:
+    image: waterflow:local
     build: .
     pull_policy: build
     ports:
@@ -59,7 +59,7 @@ services:
       OXR_APP_ID: ${OXR_APP_ID:-}
       JOBS_HOUR: ${JOBS_HOUR:-19}
       UPDATE_CHECK: ${UPDATE_CHECK:-on}
-      PROJECT_SITE_URL: ${PROJECT_SITE_URL:-https://msaving.leminhnguyen.com}
+      PROJECT_SITE_URL: ${PROJECT_SITE_URL:-https://waterflow-app.net}
     volumes:
       - secrets:/secrets
       - backups:/backups
@@ -80,7 +80,7 @@ services:
   caddy:
     image: caddy:2
     profiles: ["https"]
-    command: ["caddy", "reverse-proxy", "--from", "${DOMAIN:-localhost}", "--to", "msaving:8080"]
+    command: ["caddy", "reverse-proxy", "--from", "${DOMAIN:-localhost}", "--to", "waterflow:8080"]
     ports:
       - "80:80"
       - "443:443"
@@ -88,7 +88,7 @@ services:
     volumes:
       - caddy:/data
     depends_on:
-      - msaving
+      - waterflow
     restart: unless-stopped
 
   # Optional one-click updates from the web app's Server admin page. In .env:
@@ -106,7 +106,7 @@ services:
       dockerfile_inline: |
         FROM docker:29-cli
         RUN apk add --no-cache git su-exec
-    image: msaving-updater:local
+    image: waterflow-updater:local
     pull_policy: build
     profiles: ["updater"]
     working_dir: /project

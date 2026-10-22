@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "MSaving"
+    "name": "Waterflow"
   },
   "language": {
     "label": "Language",
@@ -194,8 +194,8 @@
     "origin_not_allowed": "This address isn't this server's own web app.",
     "cannot_invite": "No one with that username can be invited: check the spelling, or they may already be in this book.",
     "server_unreachable": "Can't reach the server. If it's restarting or updating, try again in a few minutes.",
-    "restore_invalid": "That file isn't an MSaving backup.",
-    "restore_too_new": "That backup is from a newer version of MSaving: update this server first.",
+    "restore_invalid": "That file isn't a Waterflow backup.",
+    "restore_too_new": "That backup is from a newer version of Waterflow: update this server first.",
     "restore_too_large": "That file is too large: 100 MB at most.",
     "installment_exists": "This purchase already has an installment plan.",
     "person_account": "This is a person's own account: change it on People."
@@ -451,7 +451,7 @@
     "title": "Set up this server",
     "intro": "This server has no admin yet. The admin can invite people, reset their passwords and change the server's settings.",
     "code": "Setup code",
-    "codeHint": "Printed in the server's log: run docker compose logs msaving on the machine it runs on.",
+    "codeHint": "Printed in the server's log: run docker compose logs waterflow on the machine it runs on.",
     "serverName": "Server name",
     "serverNameHint": "Shown on the sign-in screen, for example \"Nhà Lan\".",
     "adminAccount": "Your admin account",
@@ -505,7 +505,7 @@
     "updateFailed": "The last update failed: {{detail}}",
     "releaseNotes": "What's new",
     "updateNow": "Update now",
-    "updateByHand": "To update, run these on the server, in the msaving folder (the one you cloned):",
+    "updateByHand": "To update, run these on the server, in the folder you cloned:",
     "updaterHint": "For a one-click Update here, add COMPOSE_PROFILES=updater to .env (see the setup guide: it gives a helper control of Docker).",
     "updateConfirm": "Install version {{version}}? The server builds it, takes a backup, then restarts; everyone is offline for a moment, and the whole update takes a few minutes.",
     "updatingReload": "Updating to {{version}}. The server rebuilds and restarts, so this page may stop working for a few minutes. Reload it in about 5 minutes.",
