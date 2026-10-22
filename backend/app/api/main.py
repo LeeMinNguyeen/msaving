@@ -20,7 +20,7 @@ from app.core.settings import settings
 API_VERSION = 1
 SERVER_VERSION = updates.current_version()
 
-app = FastAPI(title="MSaving API", docs_url=None, redoc_url=None, openapi_url="/v1/openapi.json")
+app = FastAPI(title="Waterflow API", docs_url=None, redoc_url=None, openapi_url="/v1/openapi.json")
 errors.install(app)
 
 # Only this server's own web app may call the API from a browser: browsers send Origin, so a copy of the web app

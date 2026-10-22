@@ -8,21 +8,16 @@ async function freshI18n() {
 describe('the language a page opens in', () => {
   afterEach(() => localStorage.clear())
 
-  it('is English before sign-in, whatever this browser remembers', async () => {
-    localStorage.setItem('msaving.language', 'vi')
-    expect((await freshI18n()).language).toBe('en')
-    expect(document.documentElement.lang).toBe('en')
-  })
-
-  it("is the user's own once signed in", async () => {
-    localStorage.setItem('msaving.session', 'token')
-    localStorage.setItem('msaving.language', 'vi')
+  it('is the one this browser remembers, before sign-in too', async () => {
+    localStorage.setItem('waterflow.language', 'vi')
     expect((await freshI18n()).language).toBe('vi')
     expect(document.documentElement.lang).toBe('vi')
   })
 
-  it('is English for a signed-in user with nothing remembered', async () => {
-    localStorage.setItem('msaving.session', 'token')
+  it('is English when this browser remembers none, or one the app does not have', async () => {
     expect((await freshI18n()).language).toBe('en')
+    localStorage.setItem('waterflow.language', 'xx')
+    expect((await freshI18n()).language).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
   })
 })

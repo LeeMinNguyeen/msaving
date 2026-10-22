@@ -20,7 +20,7 @@ function server(admin = false) {
 }
 const page = (route = '/books/b1') => renderApp(<Shell book={personal}><p>page</p></Shell>, { route })
 
-describe('phone layout (msaving#28)', () => {
+describe('phone layout (waterflow#28)', () => {
   it('puts the pages in a bar at the bottom, with the current one selected', async () => {
     server()
     await page('/books/b1/transactions')
@@ -66,7 +66,7 @@ describe('phone layout (msaving#28)', () => {
   })
 })
 
-describe('desktop (msaving#22)', () => {
+describe('desktop (waterflow#22)', () => {
   afterEach(() => desktop(false))
 
   it('keeps the sidebar with the book dropdown, one shade darker than the page', async () => {
@@ -79,7 +79,7 @@ describe('desktop (msaving#22)', () => {
     expect(getComputedStyle(paper).backgroundColor).toBe('rgb(243, 244, 246)') // on a white page
   })
 
-  it('lists People after Accounts (msaving#68)', async () => {
+  it('lists People after Accounts (waterflow#68)', async () => {
     desktop(true)
     server()
     await page()

@@ -15,25 +15,32 @@ MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 LOGINS = {"api_login": "app_user", "purge_login": "account_purger", "fx_login": "fx_updater"}
 
 
+def rename_old_schema(conn: psycopg.Connection) -> None:
+    """Servers and backups from when the app was named MSaving keep the applied migrations in schema msaving."""
+    if conn.execute("select to_regnamespace('msaving') is not null and to_regnamespace('waterflow') is null").fetchone()[0]:
+        conn.execute("alter schema msaving rename to waterflow")
+
+
 def pending(conn: psycopg.Connection) -> list[Path]:
-    conn.execute("create schema if not exists msaving")
-    conn.execute("create table if not exists msaving.migrations"
+    rename_old_schema(conn)
+    conn.execute("create schema if not exists waterflow")
+    conn.execute("create table if not exists waterflow.migrations"
                  " (version text primary key, name text not null, applied_at timestamptz not null default now())")
-    done = {r[0] for r in conn.execute("select version from msaving.migrations")}
+    done = {r[0] for r in conn.execute("select version from waterflow.migrations")}
     return [f for f in sorted(MIGRATIONS.glob("*.sql")) if f.name.split("_", 1)[0] not in done]
 
 
 def has_data(conn: psycopg.Connection) -> bool:
     """True once the first migration has run: a backup is worth taking."""
-    return conn.execute("select to_regclass('msaving.migrations') is not null"
-                        " and exists (select 1 from msaving.migrations)").fetchone()[0]
+    return conn.execute("select to_regclass('waterflow.migrations') is not null"
+                        " and exists (select 1 from waterflow.migrations)").fetchone()[0]
 
 
 def apply(conn: psycopg.Connection, migration: Path) -> None:
     version, _, name = migration.stem.partition("_")
     with conn.transaction():
         conn.execute(migration.read_text())          # no parameters: % stays as written
-        conn.execute("insert into msaving.migrations (version, name) values (%s, %s)", (version, name))
+        conn.execute("insert into waterflow.migrations (version, name) values (%s, %s)", (version, name))
 
 
 def set_logins(conn: psycopg.Connection, passwords: dict[str, str]) -> None:

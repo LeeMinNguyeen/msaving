@@ -45,7 +45,7 @@ def test_health_needs_no_token(client):
 
 def test_instance_needs_no_token(client):
     r = client.get("/v1/instance").json()
-    assert r["api_version"] == 1 and r["signup"] == "open" and r["name"] == "MSaving"
+    assert r["api_version"] == 1 and r["signup"] == "open" and r["name"] == "Waterflow"
     assert set(r) == {"name", "server_version", "api_version", "signup", "setup_needed"}
 
 
@@ -73,7 +73,7 @@ def test_bad_tokens_are_refused(client, bad):
 
 def test_only_this_servers_web_app_and_any_phone(client):
     u = signed_up(client)
-    other = client.get("/v1/me", headers={**auth(u), "Origin": "https://copy-of-msaving.example"})
+    other = client.get("/v1/me", headers={**auth(u), "Origin": "https://copy-of-waterflow.example"})
     assert (other.status_code, other.json()) == (403, {"detail": "origin_not_allowed"})
     assert client.post("/v1/auth/sign-in", headers={"Origin": "null"}, json={"username": "x", "password": "y"}).status_code == 403
     assert client.get("/v1/me", headers={**auth(u), "Origin": "http://testserver"}).status_code == 200        # its own web app

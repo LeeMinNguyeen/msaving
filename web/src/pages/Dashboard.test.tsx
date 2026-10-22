@@ -27,7 +27,7 @@ beforeAll(() => {
 })
 
 describe('Overview', () => {
-  it('opens People from who owes whom (msaving#68)', async () => {
+  it('opens People from who owes whom (waterflow#68)', async () => {
     dashServer({ people: [{ contact_id: 'c1', name: 'Mẹ', currency: 'VND', owed_to_you: 0, you_owe: 10_000_000 }] })
     await renderApp(<Dashboard book={book} />)
     const card = (await screen.findByText('Who owes whom')).closest('.MuiPaper-root') as HTMLElement
@@ -42,7 +42,7 @@ const txn = (i: number) => ({ id: `t${i}`, type: 'expense' as const, occurred_on
   category: null, amount: -i * 1000, currency: 'VND' })
 const cardOf = async (title: string) => within((await screen.findByText(title)).closest('.MuiPaper-root') as HTMLElement)
 
-describe('the Overview lists (msaving#73, msaving#74)', () => {
+describe('the Overview lists (waterflow#73, waterflow#74)', () => {
   it('shows the 5 latest transactions', async () => {
     dashServer({ recent_transactions: [1, 2, 3, 4, 5, 6, 7].map(txn) })
     await renderApp(<Dashboard book={book} />)
@@ -59,7 +59,7 @@ describe('the Overview lists (msaving#73, msaving#74)', () => {
     expect(accounts.queryByText('Pin accounts on Accounts to choose these.')).not.toBeInTheDocument()
   })
 
-  it("leaves people's own accounts out (msaving#85)", async () => {
+  it("leaves people's own accounts out (waterflow#85)", async () => {
     dashServer({ accounts: [{ ...row(1), name: 'Minh', kind: 'person' as const }, row(2)] })
     await renderApp(<Dashboard book={book} />)
     const accounts = await cardOf('Accounts')

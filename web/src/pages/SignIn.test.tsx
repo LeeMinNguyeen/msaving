@@ -10,7 +10,7 @@ import { SignIn } from './SignIn'
 describe('the sign-in page', () => {
   afterEach(() => idleNotice.set(null))
 
-  it('says when the user was signed out for inactivity (msaving#26)', async () => {
+  it('says when the user was signed out for inactivity (waterflow#26)', async () => {
     fakeApi({ 'GET /v1/instance': { name: 'Nhà', signup: 'invite', setup_needed: false } })
     session.set(null)
     idleNotice.set(5)
@@ -20,12 +20,12 @@ describe('the sign-in page', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('is in English, with no language switch', async () => {
+  it('is in the language this browser remembers, with no language switch', async () => {
     fakeApi({ 'GET /v1/instance': { name: 'Nhà', signup: 'invite', setup_needed: false } })
     session.set(null)
     await renderApp(<SignIn />, { lang: 'vi' })
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Tiếng Việt' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Đăng nhập' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
   it('says nothing of the kind otherwise', async () => {
@@ -38,7 +38,7 @@ describe('the sign-in page', () => {
 
 describe('remembering this device for two-step verification', () => {
   const instance = { name: 'Nhà', signup: 'invite', setup_needed: false, language: 'en' }
-  afterEach(() => localStorage.removeItem('msaving.device.lan'))
+  afterEach(() => localStorage.removeItem('waterflow.device.lan'))
 
   function server(known: string[]) {
     return fakeApi({
@@ -65,12 +65,12 @@ describe('remembering this device for two-step verification', () => {
     await userEvent.type(await screen.findByLabelText(/^6-digit code/), '123456')
     await userEvent.click(screen.getByRole('checkbox', { name: 'Remember this device for 30 days' }))
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-    await waitFor(() => expect(localStorage.getItem('msaving.device.lan')).toBe('device-1'))
+    await waitFor(() => expect(localStorage.getItem('waterflow.device.lan')).toBe('device-1'))
     expect(api.writes()[1].body).toMatchObject({ code: '123456', remember_device: true, device_token: null })
   })
 
   it('sends the remembered device next time, and forgets one the server no longer knows', async () => {
-    localStorage.setItem('msaving.device.lan', 'device-1')
+    localStorage.setItem('waterflow.device.lan', 'device-1')
     let api = server(['device-1'])
     session.set(null)
     const { unmount } = await renderApp(<SignIn />)
@@ -84,7 +84,7 @@ describe('remembering this device for two-step verification', () => {
     await renderApp(<SignIn />)
     await signIn()
     expect(await screen.findByLabelText(/^6-digit code/)).toBeInTheDocument()
-    expect(localStorage.getItem('msaving.device.lan')).toBeNull()
+    expect(localStorage.getItem('waterflow.device.lan')).toBeNull()
     expect(api.writes()).toHaveLength(1)
   })
 })

@@ -65,6 +65,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - run: docker build -q -t msaving .
+      - run: docker build -q -t waterflow .
       - name: The compose file is valid
         run: docker compose config -q

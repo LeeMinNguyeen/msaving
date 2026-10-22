@@ -50,8 +50,8 @@ def new_token() -> tuple[str, bytes]:
 
 
 # Matched in order: Edge, Opera and Samsung Internet also say Chrome; Chrome also says Safari; an iPhone also says
-# Mac OS X, and Android also says Linux. The mobile app will send "MSaving/<version>".
-_BROWSERS = (("MSaving/", "MSaving"), ("Edg", "Edge"), ("OPR/", "Opera"), ("SamsungBrowser/", "Samsung Internet"),
+# Mac OS X, and Android also says Linux. The mobile app will send "Waterflow/<version>".
+_BROWSERS = (("Waterflow/", "Waterflow"), ("Edg", "Edge"), ("OPR/", "Opera"), ("SamsungBrowser/", "Samsung Internet"),
              ("Firefox/", "Firefox"), ("FxiOS/", "Firefox"), ("CriOS/", "Chrome"), ("Chrome/", "Chrome"),
              ("Safari/", "Safari"))
 _SYSTEMS = (("Windows", "Windows"), ("iPhone", "iOS"), ("iPad", "iOS"), ("iPod", "iOS"), ("Android", "Android"),

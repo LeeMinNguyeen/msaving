@@ -5,7 +5,7 @@ import { accountKinds } from './api'
 const all = { note: '  Main card  ', creditLimit: 50_000_000, annualFee: 499_000, statementDay: '25', dueDay: '10', interestBp: 2_880,
   installment: 1_000_000, installmentFee: 240_000 }
 
-describe('account details by kind (msaving#17)', () => {
+describe('account details by kind (waterflow#17)', () => {
   it('sends a credit card every detail', () => {
     expect(detailsPayload('credit_card', all)).toEqual({
       note: 'Main card', credit_limit: 50_000_000, annual_fee: 499_000, statement_day: 25, payment_due_day: 10, interest_rate_bp: 2_880,
@@ -13,7 +13,7 @@ describe('account details by kind (msaving#17)', () => {
     })
   })
 
-  it('sends a loan its installment, fee and payment day (msaving#37)', () => {
+  it('sends a loan its installment, fee and payment day (waterflow#37)', () => {
     expect(detailsPayload('loan', all)).toEqual({
       note: 'Main card', credit_limit: null, annual_fee: null, statement_day: null, payment_due_day: 10, interest_rate_bp: 2_880,
       installment: 1_000_000, installment_fee: 240_000,
@@ -43,7 +43,7 @@ describe('account details by kind (msaving#17)', () => {
   })
 })
 
-describe('setting a balance from the edit dialog (msaving#24)', () => {
+describe('setting a balance from the edit dialog (waterflow#24)', () => {
   it('adjusts an asset by the difference', () => {
     expect(adjustmentFor('cash', 7_000_000, 6_936_000)).toBe(64_000)
     expect(adjustmentFor('checking', 100, 250)).toBe(-150)

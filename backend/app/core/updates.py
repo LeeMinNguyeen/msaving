@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 UPDATES = Path(os.environ.get("UPDATES_DIR", "/updates"))
-REPO = os.environ.get("UPDATE_REPO", "LeeMinNguyeen/msaving")
+REPO = os.environ.get("UPDATE_REPO", "LeeMinNguyeen/waterflow")
 CHECK_EVERY = 6 * 3600
 ALIVE_WITHIN = 30          # seconds since the helper's last heartbeat
 # When this server started: set by app/launch.py before the backup and migrations, so it's the container's start.
@@ -74,7 +74,7 @@ def latest_release(fetch=None) -> Release | None:
 
 
 def _github(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "MSaving"})
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Waterflow"})
     with urllib.request.urlopen(req, timeout=5) as resp:
         return json.load(resp)
 

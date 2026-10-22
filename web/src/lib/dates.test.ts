@@ -6,7 +6,7 @@ import { isoOf, parseIso, useDraftDate } from './dates'
 // A date with the year still to type, as MUI X hands it over: an invalid date.
 const halfTyped = () => dayjs('2026-10-15').month(Number.NaN)
 
-describe('dates (msaving#27)', () => {
+describe('dates (waterflow#27)', () => {
   it('reads and writes the API format', () => {
     expect(isoOf(parseIso('2026-10-03'))).toBe('2026-10-03')
     expect(parseIso('')).toBeNull()

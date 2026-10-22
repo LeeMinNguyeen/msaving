@@ -12,7 +12,7 @@ function server(books: Book[]) {
   return fakeApi({ 'GET /v1/books': books, 'GET /v1/me/book-invites': [], 'GET /v1/currencies': currencies })
 }
 
-describe('Create a book (msaving#21)', () => {
+describe('Create a book (waterflow#21)', () => {
   it('has Cancel, back to the page before, when the user already has a book', async () => {
     server([personal])
     await renderApp(<CreateBook />, { history: ['/books/b1/accounts', { pathname: '/books/new', state: { fromApp: true } }] })

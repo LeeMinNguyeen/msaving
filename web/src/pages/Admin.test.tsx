@@ -46,7 +46,7 @@ const pick = async (name: string | RegExp, option: string) => {
   await userEvent.click(await screen.findByRole('combobox', { name }))
   await userEvent.click(await screen.findByRole('option', { name: option }))
 }
-describe('the daily jobs on Server admin (msaving#6)', () => {
+describe('the daily jobs on Server admin (waterflow#6)', () => {
   const row = async (name: string) => (await screen.findByText(name)).closest('tr')!
 
   it("shows each job's time in the admin's timezone and how it last ran", async () => {
@@ -85,14 +85,14 @@ describe('the daily jobs on Server admin (msaving#6)', () => {
 describe('updates on Server admin', () => {
   const update = (over: object) => ({
     current_version: '0.1.5', latest_version: '0.2.0', release_url: 'https://github.com/x/releases/tag/v0.2.0',
-    changelog_url: 'https://msaving.example/docs/changelog/', update_available: true, updater: true, status: null, ...over,
+    changelog_url: 'https://waterflow.example/docs/changelog/', update_available: true, updater: true, status: null, ...over,
   })
 
   it("opens the changelog from What's new", async () => {
     const api = server()
     api.routes['GET /v1/admin/update'] = update({})
     await renderApp(<Admin />)
-    expect(await screen.findByRole('link', { name: "What's new" })).toHaveAttribute('href', 'https://msaving.example/docs/changelog/')
+    expect(await screen.findByRole('link', { name: "What's new" })).toHaveAttribute('href', 'https://waterflow.example/docs/changelog/')
   })
 
   it('shows no commands to run while the server is up to date', async () => {
@@ -122,7 +122,7 @@ describe('updates on Server admin', () => {
   })
 })
 
-describe('restoring a backup (msaving#72)', () => {
+describe('restoring a backup (waterflow#72)', () => {
   const section = async () => {
     const title = await screen.findByText('Restore a backup')
     return within(title.closest('.MuiPaper-root') as HTMLElement)
@@ -135,8 +135,8 @@ describe('restoring a backup (msaving#72)', () => {
     const restore = await section()
     const button = restore.getByRole('button', { name: 'Restore' })
     expect(button).toBeDisabled()
-    await userEvent.upload(restore.getByLabelText('Backup file'), new File(['dump'], 'msaving-20261021T190000Z.dump'))
-    expect(restore.getByText('msaving-20261021T190000Z.dump')).toBeInTheDocument()
+    await userEvent.upload(restore.getByLabelText('Backup file'), new File(['dump'], 'waterflow-20261021T190000Z.dump'))
+    expect(restore.getByText('waterflow-20261021T190000Z.dump')).toBeInTheDocument()
     await userEvent.type(restore.getByLabelText(/^Your password/), 'a long password')
     expect(button).toBeDisabled()
     await userEvent.click(restore.getByRole('checkbox', { name: /everything on this server will be replaced/ }))
@@ -145,7 +145,7 @@ describe('restoring a backup (msaving#72)', () => {
     const sent = api.writes()[0]
     expect(sent.path).toBe('/v1/admin/restore')
     const form = sent.body as FormData
-    expect((form.get('file') as File).name).toBe('msaving-20261021T190000Z.dump')
+    expect((form.get('file') as File).name).toBe('waterflow-20261021T190000Z.dump')
     expect([form.get('password'), form.get('confirm'), form.get('code')]).toEqual(['a long password', 'true', null])
     expect(await screen.findByText(/^Restoring\. The server restarts/)).toBeInTheDocument()
   })

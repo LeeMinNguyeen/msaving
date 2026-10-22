@@ -1,4 +1,4 @@
-"""How the `msaving` container starts:
+"""How the `waterflow` container starts:
 
     python -m app.launch secrets   first start only: the built-in database's password, before Postgres starts
     python -m app.launch           the server: a backup when an update brings migrations, the migrations and logins,
@@ -111,6 +111,8 @@ def run_jobs_once() -> None:
     admin = admin_url()
     passwords = login_passwords()
     wait_for(admin)
+    with psycopg.connect(admin, autocommit=True) as conn:
+        migrate.rename_old_schema(conn)
     env = {**_without_owner(), **jobs_env(admin, passwords, os.environ.get("BACKUP_DIR", "/backups"))}
     sys.exit(subprocess.run([sys.executable, "-m", "app.jobs.scheduler", "--once"], env=env).returncode)
 
@@ -121,6 +123,8 @@ def serve() -> None:
     passwords = login_passwords()
     wait_for(admin)
     backup_dir = os.environ.get("BACKUP_DIR", "/backups")
+    with psycopg.connect(admin, autocommit=True) as conn:
+        migrate.rename_old_schema(conn)          # before any backup, which dumps schema waterflow
 
     def backup_first():
         path, _, _ = backup.run_backup(admin, backup_dir)

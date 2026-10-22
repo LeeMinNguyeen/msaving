@@ -3,7 +3,7 @@ owner's login, only checks the file, leaves it in BACKUP_DIR/restore/ and stops 
 again, the launcher calls restore_if_requested() before the migrations:
 
     1. a backup of the database as it is, like the nightly one;
-    2. the schemas public and msaving emptied and the upload loaded: the own-database steps on the public Backups
+    2. the schemas public and waterflow emptied and the upload loaded: the own-database steps on the public Backups
        and restore page, which work on the built-in database too;
     3. the upload's purged accounts added to PURGE_LOG, and every account in it purged again;
     4. if 2 or 3 fails, the backup from 1 loaded back.
@@ -44,15 +44,17 @@ def server_versions() -> list[str]:
 
 
 def dump_versions(path: Path) -> list[str]:
-    """The migrations a backup had applied. RestoreError when it isn't an MSaving backup."""
+    """The migrations a backup had applied. RestoreError when it isn't a Waterflow backup (or an MSaving one, the
+    app's former name, whose migrations are in schema msaving)."""
     _, pg_restore = backup._tools()
     toc = subprocess.run([pg_restore, "--list", str(path)], capture_output=True, text=True)
-    if toc.returncode != 0 or " TABLE DATA msaving migrations " not in toc.stdout or " TABLE DATA public users " not in toc.stdout:
-        raise RestoreError("not an MSaving backup")
-    data = subprocess.run([pg_restore, "--data-only", "--schema=msaving", "--table=migrations", "--file=-", str(path)],
+    schema = next((s for s in ("waterflow", "msaving") if f" TABLE DATA {s} migrations " in toc.stdout), None)
+    if toc.returncode != 0 or schema is None or " TABLE DATA public users " not in toc.stdout:
+        raise RestoreError("not a Waterflow backup")
+    data = subprocess.run([pg_restore, "--data-only", f"--schema={schema}", "--table=migrations", "--file=-", str(path)],
                           capture_output=True, text=True)
     lines = data.stdout.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.startswith("COPY msaving.migrations")), None)
+    start = next((i for i, line in enumerate(lines) if line.startswith(f"COPY {schema}.migrations")), None)
     if data.returncode != 0 or start is None:
         raise RestoreError("the backup's list of migrations can't be read")
     versions = [line.split("\t", 1)[0] for line in lines[start + 1:lines.index("\\.", start)]]
@@ -62,13 +64,14 @@ def dump_versions(path: Path) -> list[str]:
 
 
 def check(path: Path) -> None:
-    """Refuses a file that isn't an MSaving backup, or one from a newer version than this server."""
+    """Refuses a file that isn't a Waterflow backup, or one from a newer version than this server."""
     if set(dump_versions(path)) - set(server_versions()):
-        raise TooNew("the backup is from a newer version of MSaving than this server")
+        raise TooNew("the backup is from a newer version of Waterflow than this server")
 
 
 def _empty(url: str) -> None:
     with psycopg.connect(url, autocommit=True) as conn:
+        conn.execute("drop schema if exists waterflow cascade")
         conn.execute("drop schema if exists msaving cascade")
         conn.execute("drop schema if exists public cascade")
         conn.execute("create schema public")

@@ -111,5 +111,5 @@ def restore(caller: Caller = Depends(current_caller), db: Session = Depends(get_
 @router.get("/me/export")
 def export(db: Session = Depends(get_db)) -> Response:
     body = build_export(db)
-    name = f"msaving-export-{datetime.now(timezone.utc).date().isoformat()}.zip"
+    name = f"waterflow-export-{datetime.now(timezone.utc).date().isoformat()}.zip"
     return Response(body, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})

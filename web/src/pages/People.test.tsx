@@ -10,7 +10,7 @@ const book: Book = { id: 'b1', name: 'Personal', base_currency: 'VND', timezone:
 const minh: Contact = { id: 'minh', name: 'Minh', note: null, archived_at: null, version: 1, currency: 'VND',
   balances: [{ currency: 'VND', owed_to_you: 0, you_owe: 150_000 }] }
 
-describe('people are accounts (msaving#85)', () => {
+describe('people are accounts (waterflow#85)', () => {
   it('shows who owes whom, and opens their transactions', async () => {
     fakeApi({ 'GET /v1/currencies': currencies, 'GET /v1/books/b1/contacts': [minh] })
     await renderApp(<People book={book} />)
