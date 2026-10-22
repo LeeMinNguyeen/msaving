@@ -1,7 +1,7 @@
 # CLAUDE.md: web
 
 The React web app for Waterflow, served by the server itself (same origin as the API). Monorepo rules:
-`../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. How it works: the public docs
+`../CLAUDE.md`. Workspace rules: `~/projects/waterflow/CLAUDE.md`. How it works: the public docs
 (https://waterflow-app.net/docs/); decisions and the screens: the private waterflow-docs (MVP scope).
 
 ## Stack

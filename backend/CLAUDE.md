@@ -1,7 +1,7 @@
 # CLAUDE.md: backend
 
 The FastAPI API, its own sign-in, the daily jobs and the PostgreSQL schema for Waterflow, self-hosted only.
-Monorepo rules: `../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. How it all works: the public
+Monorepo rules: `../CLAUDE.md`. Workspace rules: `~/projects/waterflow/CLAUDE.md`. How it all works: the public
 docs (https://waterflow-app.net/docs/, source `waterflow-landing/src/content/docs/`); a change to documented
 behaviour comes with a docs PR there. Decisions: the private waterflow-docs.
 
@@ -25,7 +25,7 @@ scripts/dev.sh           the API from source with --reload, against the compose 
 ## Run and test
 
 ```bash
-source ~/projects/msaving/.venv/bin/activate
+source ~/projects/waterflow/.venv/bin/activate
 pip install -r requirements-dev.txt
 scripts/dev.sh                       # http://127.0.0.1:8000, reloads on change; web: npm run dev in ../web
 

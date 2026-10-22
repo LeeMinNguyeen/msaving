@@ -10,7 +10,7 @@ https://waterflow-app.net/docs/, source `waterflow-landing/src/content/docs/`. A
 documented behaviour (a route, setting, error code, setup step, command) comes with a docs PR there, linked both
 ways. The README is a short quickstart pointing to it; don't grow it back into a guide. Documentation is
 English only (Vietnamese is for the UI). The
-team's decisions are in the private waterflow-docs. Workspace-wide rules: `~/projects/msaving/CLAUDE.md`. Repo-part
+team's decisions are in the private waterflow-docs. Workspace-wide rules: `~/projects/waterflow/CLAUDE.md`. Repo-part
 rules: `backend/CLAUDE.md`, `web/CLAUDE.md`.
 
 ## Layout
