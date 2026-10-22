@@ -1,12 +1,15 @@
+import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, useSearchParams } from 'react-router'
 import { Centered } from '../components/Centered'
-import { send, type Token } from '../lib/api'
+import { send, upload, type Token } from '../lib/api'
+import { waitForServer } from '../lib/restart'
+import { FileField } from '../components/FileField'
 import { useInstance } from '../lib/queries'
 import { newAccountBody, useSignedInForm } from '../auth/forms'
 import { FormError, NewAccountFields, PasswordFields, PublicHeader } from '../components/AccountForm'
@@ -42,6 +45,8 @@ export function Join() {
 export function Setup() {
   const { t } = useTranslation()
   const { submit, error, busy } = useSignedInForm()
+  const [restoring, setRestoring] = useState(false)
+  if (restoring) return <SetupRestore onBack={() => setRestoring(false)} />
   return (
     <Centered>
       <Stack component="form" spacing={2} onSubmit={(e) => submit(e, (form) => {
@@ -61,6 +66,56 @@ export function Setup() {
         <NewAccountFields />
         <FormError error={error} />
         <Button type="submit" variant="contained" size="large" loading={busy}>{t('setup.submit')}</Button>
+        <Button onClick={() => setRestoring(true)}>{t('restore.instead')}</Button>
+      </Stack>
+    </Centered>
+  )
+}
+
+// A new server brought back from a backup: the setup code proves who installed it, as for creating the admin.
+function SetupRestore({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation()
+  const [code, setCode] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [purged, setPurged] = useState<File | null>(null)
+  const [state, setState] = useState<{ busy?: boolean; error?: unknown; restarting?: boolean }>({})
+
+  async function start(e: FormEvent) {
+    e.preventDefault()
+    if (!file || !code.trim()) return
+    const form = new FormData()
+    form.append('setup_code', code.trim().toUpperCase())
+    form.append('file', file)
+    if (purged) form.append('purged', purged)
+    setState({ busy: true })
+    try {
+      await upload('/v1/setup/restore', form)
+    } catch (err) {
+      setState({ error: err })
+      return
+    }
+    setState({ restarting: true })
+    await waitForServer()
+    window.location.reload()
+  }
+
+  return (
+    <Centered>
+      <Stack component="form" spacing={2} onSubmit={start}>
+        <PublicHeader title={t('restore.title')} />
+        {state.restarting ? <Alert severity="info">{t('restore.setupRestarting')}</Alert> : (
+          <>
+            <Typography color="text.secondary">{t('restore.setupIntro')}</Typography>
+            <TextField label={t('setup.code')} required value={code} onChange={(e) => setCode(e.target.value)} helperText={t('setup.codeHint')}
+              slotProps={{ htmlInput: { autoCapitalize: 'characters', autoComplete: 'off' } }} />
+            <FileField label={t('restore.file')} button={t('restore.choose')} file={file} onChange={setFile} accept=".dump" />
+            <FileField label={t('restore.purged')} button={t('restore.choose')} file={purged} onChange={setPurged} accept=".jsonl" />
+            <Typography variant="body2" color="text.secondary">{t('restore.purgedHint')}</Typography>
+            <FormError error={state.error} />
+            <Button type="submit" variant="contained" size="large" loading={state.busy} disabled={!file || !code.trim()}>{t('restore.submit')}</Button>
+            <Button onClick={onBack}>{t('restore.back')}</Button>
+          </>
+        )}
       </Stack>
     </Centered>
   )

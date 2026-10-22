@@ -186,6 +186,9 @@
     "origin_not_allowed": "This address isn't this server's own web app.",
     "cannot_invite": "No one with that username can be invited: check the spelling, or they may already be in this book.",
     "server_unreachable": "Can't reach the server. If it's restarting or updating, try again in a few minutes.",
+    "restore_invalid": "That file isn't an MSaving backup.",
+    "restore_too_new": "That backup is from a newer version of MSaving: update this server first.",
+    "restore_too_large": "That file is too large: 100 MB at most.",
     "installment_exists": "This purchase already has an installment plan."
   },
   "nav": {
@@ -544,6 +547,30 @@
     "warning": "You'll be signed out in {{seconds}} seconds, as nothing has happened here for a while.",
     "stay": "Stay signed in",
     "signedOut": "You were signed out after {{minutes}} minutes without activity."
+  },
+  "restore": {
+    "title": "Restore a backup",
+    "intro": "Replace everything on this server with a backup: a .dump file from the backups folder. The server first backs up what's here, then restarts, and everyone signs in again with the passwords from the backup's day.",
+    "file": "Backup file",
+    "choose": "Choose…",
+    "purged": "Purged accounts list (optional)",
+    "purgedHint": "purged_accounts.jsonl from the same backups folder, when the backup comes from another server.",
+    "password": "Your password",
+    "code": "Two-step code",
+    "confirm": "I understand that everything on this server will be replaced by this backup",
+    "submit": "Restore",
+    "restarting": "Restoring. The server restarts, which takes a minute or two; this page signs you out when it's back.",
+    "setupRestarting": "Restoring. The server restarts, which takes a minute or two; this page reloads when it's back.",
+    "last": "Last restore: {{status}}, {{date}}",
+    "statuses": {
+      "requested": "asked for",
+      "running": "running",
+      "done": "done",
+      "failed": "failed"
+    },
+    "instead": "Restore a backup instead",
+    "setupIntro": "Bring a server back from a backup: the setup code from the server's log, and the backup file.",
+    "back": "Set up a new server instead"
   },
   "plan": {
     "switch": "Pay in installments",
