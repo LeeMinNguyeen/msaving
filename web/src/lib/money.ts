@@ -61,7 +61,7 @@ export function groupWhileTyping(input: string, locale: Locale): string {
   const body = input.replaceAll(group, '').replace(/^\s*-/, '')
   const [whole, ...rest] = body.split(decimal)
   if (!/^\d*$/.test(whole)) return input
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group)
+  const grouped = whole.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, group)
   return (negative ? '-' : '') + grouped + (rest.length ? decimal + rest.join(decimal) : '')
 }
 

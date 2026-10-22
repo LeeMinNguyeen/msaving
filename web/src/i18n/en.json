@@ -529,5 +529,14 @@
     "warning": "You'll be signed out in {{seconds}} seconds, as nothing has happened here for a while.",
     "stay": "Stay signed in",
     "signedOut": "You were signed out after {{minutes}} minutes without activity."
+  },
+  "toast": {
+    "budgetAdded": "Budget added",
+    "txnSaved": "Transaction saved",
+    "txnDeleted": "Transaction deleted",
+    "accountSaved": "Account saved",
+    "categorySaved": "Category saved",
+    "personSaved": "Saved",
+    "paymentSaved": "Payment saved"
   }
 }

@@ -4,7 +4,6 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import FormControlLabel from '@mui/material/FormControlLabel'
@@ -31,6 +30,8 @@ import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { useContacts, useCurrencies, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
 import { BillPanel } from './AccountBill'
+import { DialogFooter } from '../components/DialogFooter'
+import { useToast } from '../lib/toast'
 
 type Props = {
   book: Book
@@ -55,6 +56,7 @@ export function AccountDialog(props: Props) {
 // for the difference, dated today, since balances only come from transactions.
 function AccountForm({ book, account, editing: startEditing = false, onTransactions, onClose, minorOf }: Props & { minorOf: (currency: string) => number }) {
   const { t } = useTranslation()
+  const toast = useToast()
   const errorText = useErrorText()
   const lang = currentLanguage()
   const qc = useQueryClient()
@@ -174,6 +176,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
           ...details(),
         })
       }
+      toast(t('toast.accountSaved'))
       onClose()
     } catch (err) {
       if (base && err instanceof ApiError && err.code === 'conflict') await reload(base, err)
@@ -328,7 +331,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
             {error ? <Alert severity={error instanceof ApiError && error.code === 'conflict' ? 'warning' : 'error'}>{errorText(error)}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <DialogFooter>
           {base && !editing && onTransactions && (
             <Button startIcon={<ReceiptLongIcon />} onClick={() => onTransactions(base)}>
               {t('common.viewTransactions')}
@@ -353,7 +356,7 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
               )}
             </>
           )}
-        </DialogActions>
+        </DialogFooter>
       </form>
     </Dialog>
   )
