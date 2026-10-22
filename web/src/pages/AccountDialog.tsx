@@ -29,7 +29,7 @@ import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { useContacts, useCurrencies, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
-import { BillPanel } from './AccountBill'
+import { BillPanel, InstallmentsPanel } from './AccountBill'
 import { DialogFooter } from '../components/DialogFooter'
 import { useToast } from '../lib/toast'
 
@@ -213,151 +213,151 @@ function AccountForm({ book, account, editing: startEditing = false, onTransacti
 
   const ro = !editing
   return (
-    <Dialog open onClose={onClose} fullScreen={fullScreen} fullWidth maxWidth="sm">
-      <form onSubmit={submit}>
-        <DialogTitle>
-          {t(!base ? 'accounts.add' : editing ? 'accounts.edit' : 'accounts.details')}
-          {base?.archived_at && <Chip size="small" label={t('accounts.archived')} sx={{ ml: 1 }} />}
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField label={t('accounts.name')} required disabled={ro} value={form.name} onChange={(e) => set({ name: e.target.value })}
-              autoFocus={editing} />
-            <TextField select label={t('accounts.kind')} disabled={ro} value={form.kind} onChange={(e) => changeKind(e.target.value as AccountKind)}>
-              {accountKinds.map((k) => (
-                <MenuItem key={k} value={k}>
-                  {t(`accounts.kinds.${k}`)}
-                </MenuItem>
-              ))}
-            </TextField>
-            {withPerson && (
-              <>
-                <TextField select label={t('people.person')} disabled={ro} value={form.person} onChange={(e) => set({ person: e.target.value })}
-                  slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} helperText={editing ? t('people.lendHint') : undefined}>
-                  <MenuItem value=""><em>{t('people.noPerson')}</em></MenuItem>
-                  {(contacts.data ?? []).filter((c) => !c.archived_at || c.id === form.person).map((c) => (
-                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                  ))}
-                  <MenuItem value="new">{t('people.newPerson')}</MenuItem>
-                </TextField>
-                {form.person === 'new' && (
-                  <TextField label={t('people.newPersonName')} required value={form.newPerson} onChange={(e) => set({ newPerson: e.target.value })} />
-                )}
-              </>
-            )}
-            <CurrencyPicker
-              label={t('accounts.currency')}
-              value={form.currency}
-              onChange={(currency) => set({ currency })}
-              disabled={ro}
-              helperText={base && editing ? t('accounts.currencyLocked') : undefined}
-            />
-            {base ? (
-              <AmountField
-                label={t(owed ? 'accounts.owedNow' : 'accounts.currentBalance')}
-                disabled={ro}
-                value={form.balance}
-                onChange={(balance) => set({ balance })}
-                minorUnit={minorUnit}
-                helperText={editing ? t('accounts.balanceHint') : form.currency ?? undefined}
-              />
-            ) : (
-              <Stack direction="row" spacing={2}>
-                <AmountField
-                  label={t(owed ? 'accounts.amountOwed' : 'accounts.openingBalance')}
-                  value={form.opening}
-                  onChange={(opening) => set({ opening })}
-                  minorUnit={minorUnit}
-                />
-                <DateField label={t('accounts.openedOn')} value={form.openedOn} onChange={(openedOn) => set({ openedOn })} onInvalid={setBadDate}
-                  sx={{ maxWidth: 190 }} />
-              </Stack>
-            )}
-            {base && !editing && (card || loan) && <BillPanel book={book} account={base} minorUnit={minorUnit} canPay={canEdit} />}
-            {card && (
-              <>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <AmountField
-                    label={t('accounts.creditLimit')}
-                    disabled={ro}
-                    value={form.creditLimit}
-                    onChange={(creditLimit) => set({ creditLimit })}
-                    minorUnit={minorUnit}
-                    helperText={base && creditLimit ? t('accounts.available', { amount: money(creditLimit + base.balance) }) : undefined}
-                  />
-                  <AmountField label={t('accounts.annualFee')} disabled={ro} value={form.annualFee} onChange={(annualFee) => set({ annualFee })}
-                    minorUnit={minorUnit} />
-                </Stack>
-                <Stack direction="row" spacing={2}>
-                  <DaySelect label={t('accounts.statementDay')} disabled={ro} value={form.statementDay} onChange={(statementDay) => set({ statementDay })} />
-                  <DaySelect label={t('accounts.dueDay')} disabled={ro} value={form.dueDay} onChange={(dueDay) => set({ dueDay })} />
-                </Stack>
-              </>
-            )}
-            {loan && (
-              <>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <AmountField label={t('accounts.installment')} disabled={ro} value={form.installment}
-                    onChange={(installment) => set({ installment })} minorUnit={minorUnit} />
-                  <DaySelect label={t('accounts.paymentDay')} disabled={ro} value={form.dueDay} onChange={(dueDay) => set({ dueDay })} />
-                </Stack>
-                <AmountField label={t('accounts.installmentFee')} disabled={ro} value={form.installmentFee}
-                  onChange={(installmentFee) => set({ installmentFee })} minorUnit={minorUnit}
-                  helperText={editing ? t('accounts.installmentFeeHint') : undefined} />
-              </>
-            )}
-            {withInterest && (
-              <AmountField label={t('accounts.interestRate')} disabled={ro} value={form.interest} onChange={(interest) => set({ interest })}
-                minorUnit={2} helperText={editing ? t('accounts.interestHint') : undefined} />
-            )}
-            {withLast4 && (
-              <TextField
-                label={t('accounts.last4')}
-                disabled={ro}
-                value={form.last4}
-                onChange={(e) => set({ last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                helperText={editing ? t('accounts.last4Hint') : undefined}
-                slotProps={{ htmlInput: { inputMode: 'numeric', pattern: '[0-9]{4}' } }}
-              />
-            )}
-            <TextField label={t('accounts.note')} disabled={ro} value={form.note} onChange={(e) => set({ note: e.target.value })}
-              multiline minRows={1} maxRows={4} slotProps={{ htmlInput: { maxLength: 500 } }} />
-            <FormControlLabel
-              disabled={ro}
-              control={<Switch checked={form.inNetWorth} onChange={(e) => set({ inNetWorth: e.target.checked })} />}
-              label={t('accounts.inNetWorth')}
-            />
-            {!form.inNetWorth && editing && <Alert severity="info">{t('accounts.inNetWorthHint')}</Alert>}
-            {error ? <Alert severity={error instanceof ApiError && error.code === 'conflict' ? 'warning' : 'error'}>{errorText(error)}</Alert> : null}
-          </Stack>
-        </DialogContent>
-        <DialogFooter>
-          {base && !editing && onTransactions && (
-            <Button startIcon={<ReceiptLongIcon />} onClick={() => onTransactions(base)}>
-              {t('common.viewTransactions')}
-            </Button>
-          )}
-          <Box sx={{ flex: 1 }} />
-          {editing ? (
+    <Dialog open onClose={onClose} fullScreen={fullScreen} fullWidth maxWidth="sm"
+      slotProps={{ paper: { component: 'form', onSubmit: submit } }}>
+      <DialogTitle>
+        {t(!base ? 'accounts.add' : editing ? 'accounts.edit' : 'accounts.details')}
+        {base?.archived_at && <Chip size="small" label={t('accounts.archived')} sx={{ ml: 1 }} />}
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          <TextField label={t('accounts.name')} required disabled={ro} value={form.name} onChange={(e) => set({ name: e.target.value })}
+            autoFocus={editing} />
+          <TextField select label={t('accounts.kind')} disabled={ro} value={form.kind} onChange={(e) => changeKind(e.target.value as AccountKind)}>
+            {accountKinds.map((k) => (
+              <MenuItem key={k} value={k}>
+                {t(`accounts.kinds.${k}`)}
+              </MenuItem>
+            ))}
+          </TextField>
+          {withPerson && (
             <>
-              <Button onClick={cancel}>{t('accounts.cancel')}</Button>
-              <Button key="save" type="submit" variant="contained" loading={busy} disabled={!valid}>
-                {t('accounts.save')}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button onClick={onClose}>{t('common.close')}</Button>
-              {/* Its own key: reusing the Save button's element would submit the form on this click */}
-              {canEdit && (
-                <Button key="edit" variant="contained" onClick={() => setEditing(true)}>
-                  {t('common.edit')}
-                </Button>
+              <TextField select label={t('people.person')} disabled={ro} value={form.person} onChange={(e) => set({ person: e.target.value })}
+                slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} helperText={editing ? t('people.lendHint') : undefined}>
+                <MenuItem value=""><em>{t('people.noPerson')}</em></MenuItem>
+                {(contacts.data ?? []).filter((c) => !c.archived_at || c.id === form.person).map((c) => (
+                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                ))}
+                <MenuItem value="new">{t('people.newPerson')}</MenuItem>
+              </TextField>
+              {form.person === 'new' && (
+                <TextField label={t('people.newPersonName')} required value={form.newPerson} onChange={(e) => set({ newPerson: e.target.value })} />
               )}
             </>
           )}
-        </DialogFooter>
-      </form>
+          <CurrencyPicker
+            label={t('accounts.currency')}
+            value={form.currency}
+            onChange={(currency) => set({ currency })}
+            disabled={ro}
+            helperText={base && editing ? t('accounts.currencyLocked') : undefined}
+          />
+          {base ? (
+            <AmountField
+              label={t(owed ? 'accounts.owedNow' : 'accounts.currentBalance')}
+              disabled={ro}
+              value={form.balance}
+              onChange={(balance) => set({ balance })}
+              minorUnit={minorUnit}
+              helperText={editing ? t('accounts.balanceHint') : form.currency ?? undefined}
+            />
+          ) : (
+            <Stack direction="row" spacing={2}>
+              <AmountField
+                label={t(owed ? 'accounts.amountOwed' : 'accounts.openingBalance')}
+                value={form.opening}
+                onChange={(opening) => set({ opening })}
+                minorUnit={minorUnit}
+              />
+              <DateField label={t('accounts.openedOn')} value={form.openedOn} onChange={(openedOn) => set({ openedOn })} onInvalid={setBadDate}
+                sx={{ maxWidth: 190 }} />
+            </Stack>
+          )}
+          {base && !editing && (card || loan) && <BillPanel book={book} account={base} minorUnit={minorUnit} canPay={canEdit} />}
+          {base && !editing && card && <InstallmentsPanel book={book} account={base} minorUnit={minorUnit} canEdit={canEdit} />}
+          {card && (
+            <>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <AmountField
+                  label={t('accounts.creditLimit')}
+                  disabled={ro}
+                  value={form.creditLimit}
+                  onChange={(creditLimit) => set({ creditLimit })}
+                  minorUnit={minorUnit}
+                  helperText={base && creditLimit ? t('accounts.available', { amount: money(creditLimit + base.balance) }) : undefined}
+                />
+                <AmountField label={t('accounts.annualFee')} disabled={ro} value={form.annualFee} onChange={(annualFee) => set({ annualFee })}
+                  minorUnit={minorUnit} />
+              </Stack>
+              <Stack direction="row" spacing={2}>
+                <DaySelect label={t('accounts.statementDay')} disabled={ro} value={form.statementDay} onChange={(statementDay) => set({ statementDay })} />
+                <DaySelect label={t('accounts.dueDay')} disabled={ro} value={form.dueDay} onChange={(dueDay) => set({ dueDay })} />
+              </Stack>
+            </>
+          )}
+          {loan && (
+            <>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <AmountField label={t('accounts.installment')} disabled={ro} value={form.installment}
+                  onChange={(installment) => set({ installment })} minorUnit={minorUnit} />
+                <DaySelect label={t('accounts.paymentDay')} disabled={ro} value={form.dueDay} onChange={(dueDay) => set({ dueDay })} />
+              </Stack>
+              <AmountField label={t('accounts.installmentFee')} disabled={ro} value={form.installmentFee}
+                onChange={(installmentFee) => set({ installmentFee })} minorUnit={minorUnit}
+                helperText={editing ? t('accounts.installmentFeeHint') : undefined} />
+            </>
+          )}
+          {withInterest && (
+            <AmountField label={t('accounts.interestRate')} disabled={ro} value={form.interest} onChange={(interest) => set({ interest })}
+              minorUnit={2} helperText={editing ? t('accounts.interestHint') : undefined} />
+          )}
+          {withLast4 && (
+            <TextField
+              label={t('accounts.last4')}
+              disabled={ro}
+              value={form.last4}
+              onChange={(e) => set({ last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+              helperText={editing ? t('accounts.last4Hint') : undefined}
+              slotProps={{ htmlInput: { inputMode: 'numeric', pattern: '[0-9]{4}' } }}
+            />
+          )}
+          <TextField label={t('accounts.note')} disabled={ro} value={form.note} onChange={(e) => set({ note: e.target.value })}
+            multiline minRows={1} maxRows={4} slotProps={{ htmlInput: { maxLength: 500 } }} />
+          <FormControlLabel
+            disabled={ro}
+            control={<Switch checked={form.inNetWorth} onChange={(e) => set({ inNetWorth: e.target.checked })} />}
+            label={t('accounts.inNetWorth')}
+          />
+          {!form.inNetWorth && editing && <Alert severity="info">{t('accounts.inNetWorthHint')}</Alert>}
+          {error ? <Alert severity={error instanceof ApiError && error.code === 'conflict' ? 'warning' : 'error'}>{errorText(error)}</Alert> : null}
+        </Stack>
+      </DialogContent>
+      <DialogFooter>
+        {base && !editing && onTransactions && (
+          <Button startIcon={<ReceiptLongIcon />} onClick={() => onTransactions(base)}>
+            {t('common.viewTransactions')}
+          </Button>
+        )}
+        <Box sx={{ flex: 1 }} />
+        {editing ? (
+          <>
+            <Button onClick={cancel}>{t('accounts.cancel')}</Button>
+            <Button key="save" type="submit" variant="contained" loading={busy} disabled={!valid}>
+              {t('accounts.save')}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button onClick={onClose}>{t('common.close')}</Button>
+            {/* Its own key: reusing the Save button's element would submit the form on this click */}
+            {canEdit && (
+              <Button key="edit" variant="contained" onClick={() => setEditing(true)}>
+                {t('common.edit')}
+              </Button>
+            )}
+          </>
+        )}
+      </DialogFooter>
     </Dialog>
   )
 }

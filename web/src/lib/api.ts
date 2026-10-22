@@ -130,6 +130,32 @@ export type Bill = {
   fee: number // loan: the installment fee added to this payment (0 once charged)
   fee_transaction_id: string | null
   pay_from: string | null // the account the last payment came from
+  installments?: BillInstallment[] // card: this statement's installments
+  fees?: { plan_id: string; transaction_id: string; payee: string | null; amount: number }[] // card: installment fees to record with the payment
+  limit_used?: number | null // card: owed now, less what plans that don't count toward the limit haven't billed
+}
+
+export type BillInstallment = { plan_id: string; transaction_id: string; payee: string | null; number: number; months: number; amount: number }
+
+// A credit card purchase paid in installments (backend/app/domain/bills.py works out the bills).
+export type InstallmentPlan = {
+  id: string
+  account_id: string
+  transaction_id: string
+  payee: string | null
+  occurred_on: string
+  amount: number // the purchase, positive
+  months: number
+  converted_on: string
+  first_statement: string // its month's statement bills the first installment
+  fee: number
+  fee_split: boolean // false: the whole fee on the first installment's bill
+  counts_toward_limit: boolean
+  ended_on: string | null
+  version: number
+  installment: number
+  billed: number
+  left_to_bill: number
 }
 
 export type Account = {

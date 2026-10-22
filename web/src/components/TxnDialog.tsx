@@ -22,12 +22,14 @@ import { categoryTree } from '../lib/categories'
 import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { personName } from '../lib/people'
-import { useAccounts, useCategories, useCurrencies, useInvalidateBook } from '../lib/queries'
+import { fromPlan, noPlan, validMonths, type PlanForm } from '../lib/installments'
+import { useAccounts, useCategories, useCurrencies, useInstallments, useInvalidateBook } from '../lib/queries'
 import { AmountField } from './AmountField'
 import { DateField } from './DateField'
 import { TimeField } from './TimeField'
 import { useErrorText } from './errors'
 import { HistoryDialog } from './HistoryDialog'
+import { InstallmentFields } from './InstallmentFields'
 import { newId } from '../lib/uuid'
 import { DialogFooter } from './DialogFooter'
 import { useToast } from '../lib/toast'
@@ -78,6 +80,8 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [planEdit, setPlanEdit] = useState<PlanForm | null>(null) // null: as saved
+  const planId = useRef(newId())
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }))
 
   const accountList = accounts.data ?? []
@@ -111,6 +115,36 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
   }
   const entries = money()
 
+  const card = form.type === 'expense' && from?.kind === 'credit_card' ? from : null
+  const savedOnCard = !!txn && txn.entries.some((e) => byId.get(e.account_id)?.kind === 'credit_card')
+  const installments = useInstallments(book.id, !!card || savedOnCard)
+  const saved = txn ? installments.data?.find((p) => p.transaction_id === txn.id) : undefined
+  const plan = planEdit ?? (saved ? fromPlan(saved, amountText(saved.fee, minor(saved.account_id), lang)) : noPlan)
+  const setPlan = (patch: Partial<PlanForm>) => setPlanEdit({ ...plan, ...patch })
+  const planned = !!card?.statement_day && plan.on
+  const fee = parseAmount(plan.fee || '0', minor(account), lang)
+  const planReady = !planned || (validMonths(plan.months) && fee !== null && fee >= 0)
+  const losesPlan = !!saved && !(card && card.id === saved.account_id)
+
+  async function savePlan() {
+    if (planned) {
+      const fields = {
+        months: Number(plan.months), converted_on: plan.convertedOn || (txn ? todayIn(book.timezone) : form.date), fee: fee ?? 0,
+        fee_split: plan.feeSplit, counts_toward_limit: plan.countsTowardLimit, ...(plan.firstStatement ? { first_statement: plan.firstStatement } : {}),
+      }
+      if (!saved) {
+        await send('POST', `/v1/books/${book.id}/installments`, { id: planId.current, transaction_id: id.current, ...fields })
+        return
+      }
+      const before: Record<string, unknown> = { months: saved.months, converted_on: saved.converted_on, fee: saved.fee,
+        fee_split: saved.fee_split, counts_toward_limit: saved.counts_toward_limit, first_statement: saved.first_statement }
+      const changed = Object.fromEntries(Object.entries(fields).filter(([k, v]) => before[k] !== v))
+      if (Object.keys(changed).length) await send('PATCH', `/v1/books/${book.id}/installments/${saved.id}`, { version: saved.version, ...changed })
+    } else if (saved && !losesPlan) {
+      await send('DELETE', `/v1/books/${book.id}/installments/${saved.id}?version=${saved.version}`)
+    }
+  }
+
   async function reload(message: unknown) {
     // Another device saved first: show the newer version and say so.
     try {
@@ -141,6 +175,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
     try {
       if (txn) await send('PUT', `/v1/books/${book.id}/transactions/${txn.id}`, { ...body, version: txn.version })
       else await send('POST', `/v1/books/${book.id}/transactions`, { ...body, id: id.current })
+      await savePlan()
       await invalidate(book.id)
       toast(t('toast.txnSaved'))
       onClose()
@@ -175,66 +210,82 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
   const accountLabel = (a: Account) => `${a.name} · ${formatMoney(a.balance, a.currency, minor(a.id), lang)}`
 
   return (
-    <Dialog open onClose={onClose} fullScreen={fullScreen} fullWidth maxWidth="sm">
-      <form onSubmit={submit}>
-        <DialogTitle>{t(txn ? 'txn.edit' : 'txn.add')}</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            {openingBalance ? (
-              <Typography color="text.secondary">{t('txn.types.opening_balance')}</Typography>
-            ) : (
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <ToggleButtonGroup
-                  exclusive
-                  color="primary"
-                  value={mainTypes.includes(form.type) ? form.type : null}
-                  onChange={(_, v: TxnType | null) => v && set({ type: v, category: '' })}
-                  sx={{ flex: 1 }}
-                >
-                  {mainTypes.map((ty) => (
-                    <ToggleButton key={ty} value={ty} sx={{ flex: 1, whiteSpace: 'nowrap', textTransform: 'none', px: 2 }}>
-                      {t(`txn.types.${ty}`)}
-                    </ToggleButton>
-                  ))}
-                </ToggleButtonGroup>
-                <TextField
-                  select
-                  size="small"
-                  label={t('txn.otherType')}
-                  value={otherTypes.includes(form.type) ? form.type : ''}
-                  onChange={(e) => set({ type: e.target.value as TxnType, category: '' })}
-                  sx={{ minWidth: 160 }}
-                >
-                  {otherTypes.map((ty) => (
-                    <MenuItem key={ty} value={ty}>
-                      {t(`txn.types.${ty}`)}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Stack>
-            )}
-            {noAccounts && <Alert severity="info">{t('txn.needAccount')}</Alert>}
-            {transfer && open.length < 2 && !noAccounts && <Alert severity="info">{t('txn.needTwoAccounts')}</Alert>}
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <AmountField
-                label={t('txn.amount')}
-                required
-                autoFocus={!txn}
-                value={form.amount}
-                onChange={(v) => set({ amount: v })}
-                minorUnit={minor(account)}
-                helperText={form.type === 'adjustment' ? t('txn.adjustmentHint') : from?.currency}
-              />
-              <DateField label={t('txn.date')} required value={form.date} onChange={(date) => set({ date })} sx={{ maxWidth: { sm: 190 } }} />
-              <TimeField label={t('txn.time')} required value={form.time} onChange={(time) => set({ time })} sx={{ maxWidth: { sm: 110 } }} />
+    <Dialog open onClose={onClose} fullScreen={fullScreen} fullWidth maxWidth="sm"
+      slotProps={{ paper: { component: 'form', onSubmit: submit } }}>
+      <DialogTitle>{t(txn ? 'txn.edit' : 'txn.add')}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          {openingBalance ? (
+            <Typography color="text.secondary">{t('txn.types.opening_balance')}</Typography>
+          ) : (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <ToggleButtonGroup
+                exclusive
+                color="primary"
+                value={mainTypes.includes(form.type) ? form.type : null}
+                onChange={(_, v: TxnType | null) => v && set({ type: v, category: '' })}
+                sx={{ flex: 1 }}
+              >
+                {mainTypes.map((ty) => (
+                  <ToggleButton key={ty} value={ty} sx={{ flex: 1, whiteSpace: 'nowrap', textTransform: 'none', px: 2 }}>
+                    {t(`txn.types.${ty}`)}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <TextField
+                select
+                size="small"
+                label={t('txn.otherType')}
+                value={otherTypes.includes(form.type) ? form.type : ''}
+                onChange={(e) => set({ type: e.target.value as TxnType, category: '' })}
+                sx={{ minWidth: 160 }}
+              >
+                {otherTypes.map((ty) => (
+                  <MenuItem key={ty} value={ty}>
+                    {t(`txn.types.${ty}`)}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Stack>
+          )}
+          {noAccounts && <Alert severity="info">{t('txn.needAccount')}</Alert>}
+          {transfer && open.length < 2 && !noAccounts && <Alert severity="info">{t('txn.needTwoAccounts')}</Alert>}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <AmountField
+              label={t('txn.amount')}
+              required
+              autoFocus={!txn}
+              value={form.amount}
+              onChange={(v) => set({ amount: v })}
+              minorUnit={minor(account)}
+              helperText={form.type === 'adjustment' ? t('txn.adjustmentHint') : from?.currency}
+            />
+            <DateField label={t('txn.date')} required value={form.date} onChange={(date) => set({ date })} sx={{ maxWidth: { sm: 190 } }} />
+            <TimeField label={t('txn.time')} required value={form.time} onChange={(time) => set({ time })} sx={{ maxWidth: { sm: 110 } }} />
+          </Stack>
+          <TextField
+            select
+            required
+            label={t(transfer ? 'txn.fromAccount' : 'txn.account')}
+            value={byId.has(account) ? account : ''}
+            onChange={(e) => set({ account: e.target.value })}
+            disabled={openingBalance}
+          >
+            {open.map((a) => (
+              <MenuItem key={a.id} value={a.id}>
+                {accountLabel(a)}
+              </MenuItem>
+            ))}
+          </TextField>
+          {transfer && (
             <TextField
               select
               required
-              label={t(transfer ? 'txn.fromAccount' : 'txn.account')}
-              value={byId.has(account) ? account : ''}
-              onChange={(e) => set({ account: e.target.value })}
-              disabled={openingBalance}
+              label={t('txn.toAccount')}
+              value={byId.has(form.toAccount) ? form.toAccount : ''}
+              onChange={(e) => set({ toAccount: e.target.value })}
+              error={!!form.toAccount && form.toAccount === account}
+              helperText={form.toAccount && form.toAccount === account ? t('txn.sameAccount') : undefined}
             >
               {open.map((a) => (
                 <MenuItem key={a.id} value={a.id}>
@@ -242,77 +293,65 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
                 </MenuItem>
               ))}
             </TextField>
-            {transfer && (
-              <TextField
-                select
-                required
-                label={t('txn.toAccount')}
-                value={byId.has(form.toAccount) ? form.toAccount : ''}
-                onChange={(e) => set({ toAccount: e.target.value })}
-                error={!!form.toAccount && form.toAccount === account}
-                helperText={form.toAccount && form.toAccount === account ? t('txn.sameAccount') : undefined}
-              >
-                {open.map((a) => (
-                  <MenuItem key={a.id} value={a.id}>
-                    {accountLabel(a)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-            {crossCurrency && (
-              <AmountField
-                label={`${t('txn.amountReceived')} (${to?.currency})`}
-                required
-                value={form.amountReceived}
-                onChange={(v) => set({ amountReceived: v })}
-                minorUnit={minor(form.toAccount)}
-              />
-            )}
-            {kind && (
-              <TextField select label={t('txn.category')} value={form.category} onChange={(e) => set({ category: e.target.value })}>
-                <MenuItem value="">
-                  <em>{t('txn.noCategory')}</em>
+          )}
+          {crossCurrency && (
+            <AmountField
+              label={`${t('txn.amountReceived')} (${to?.currency})`}
+              required
+              value={form.amountReceived}
+              onChange={(v) => set({ amountReceived: v })}
+              minorUnit={minor(form.toAccount)}
+            />
+          )}
+          {kind && (
+            <TextField select label={t('txn.category')} value={form.category} onChange={(e) => set({ category: e.target.value })}>
+              <MenuItem value="">
+                <em>{t('txn.noCategory')}</em>
+              </MenuItem>
+              {options.map(({ category, depth, path }) => (
+                <MenuItem key={category.id} value={category.id} sx={{ pl: 2 + depth * 2 }}>
+                  <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: category.color ?? 'action.disabled', mr: 1, flexShrink: 0 }} />
+                  {depth ? category.name : path}
                 </MenuItem>
-                {options.map(({ category, depth, path }) => (
-                  <MenuItem key={category.id} value={category.id} sx={{ pl: 2 + depth * 2 }}>
-                    <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: category.color ?? 'action.disabled', mr: 1, flexShrink: 0 }} />
-                    {depth ? category.name : path}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-            <TextField label={t('txn.payee')} value={form.payee} onChange={(e) => set({ payee: e.target.value })} />
-            <TextField label={t('txn.note')} value={form.note} onChange={(e) => set({ note: e.target.value })} multiline minRows={1} maxRows={4} />
-            {txn?.created_by && (
-              <Typography variant="body2" color="text.secondary">
-                {t('txn.createdBy', { name: personName(txn.created_by, t), editor: personName(txn.modified_by, t) })}
-              </Typography>
-            )}
-            {error ? <Alert severity={error instanceof ApiError && error.status === 409 ? 'warning' : 'error'}>{errorText(error)}</Alert> : null}
-          </Stack>
-        </DialogContent>
-        <DialogFooter>
-          {txn && (
-            <>
-              <Button startIcon={<HistoryIcon />} onClick={() => setShowHistory(true)}>
-                {t('txn.history')}
-              </Button>
-              {!readOnly && (
-                <Button color="error" startIcon={<DeleteIcon />} onClick={() => setConfirmDelete(true)}>
-                  {t('txn.delete')}
-                </Button>
-              )}
-            </>
+              ))}
+            </TextField>
           )}
-          <Box sx={{ flex: 1 }} />
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
-          {!readOnly && (
-            <Button type="submit" variant="contained" loading={busy} disabled={!entries || !form.date || !form.time}>
-              {t('txn.save')}
+          {card && !readOnly && (!txn || installments.isFetched) && (
+            <InstallmentFields card={card} plan={plan} onChange={setPlan} purchaseDate={form.date}
+              amount={entries ? Math.abs(entries[0].amount) : null} minorUnit={minor(card.id)} />
+          )}
+          {losesPlan && !readOnly && <Alert severity="warning">{t('plan.removedOnSave')}</Alert>}
+          <TextField label={t('txn.payee')} value={form.payee} onChange={(e) => set({ payee: e.target.value })} />
+          <TextField label={t('txn.note')} value={form.note} onChange={(e) => set({ note: e.target.value })} multiline minRows={1} maxRows={4} />
+          {txn?.created_by && (
+            <Typography variant="body2" color="text.secondary">
+              {t('txn.createdBy', { name: personName(txn.created_by, t), editor: personName(txn.modified_by, t) })}
+            </Typography>
+          )}
+          {error ? <Alert severity={error instanceof ApiError && error.status === 409 ? 'warning' : 'error'}>{errorText(error)}</Alert> : null}
+        </Stack>
+      </DialogContent>
+      <DialogFooter>
+        {txn && (
+          <>
+            <Button startIcon={<HistoryIcon />} onClick={() => setShowHistory(true)}>
+              {t('txn.history')}
             </Button>
-          )}
-        </DialogFooter>
-      </form>
+            {!readOnly && (
+              <Button color="error" startIcon={<DeleteIcon />} onClick={() => setConfirmDelete(true)}>
+                {t('txn.delete')}
+              </Button>
+            )}
+          </>
+        )}
+        <Box sx={{ flex: 1 }} />
+        <Button onClick={onClose}>{t('common.cancel')}</Button>
+        {!readOnly && (
+          <Button type="submit" variant="contained" loading={busy} disabled={!entries || !form.date || !form.time || !planReady}>
+            {t('txn.save')}
+          </Button>
+        )}
+      </DialogFooter>
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)}>
         <DialogTitle>{t('txn.deleteConfirm')}</DialogTitle>
         <DialogFooter>

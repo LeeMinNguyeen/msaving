@@ -37,6 +37,7 @@ accounts.csv         Accounts in each book with their current balance
 transactions.csv     Every transaction. Transfers show both accounts
 categories.csv       Your categories (archived ones included and marked)
 budgets.csv          Your budgets
+installments.csv     Credit card purchases paid in installments
 people.csv           People you lend to or borrow from, and who owes what
 exchange_rates.csv   Your books' own exchange rates
 edit_history.csv     Every saved version of every transaction, and who saved it
@@ -57,6 +58,7 @@ accounts.csv         Các tài khoản trong từng sổ và số dư hiện t�
 transactions.csv     Mọi giao dịch. Chuyển khoản hiển thị cả hai tài khoản
 categories.csv       Các danh mục của bạn (kể cả danh mục đã lưu trữ, có đánh dấu)
 budgets.csv          Các ngân sách của bạn
+installments.csv     Các khoản mua bằng thẻ tín dụng trả góp
 people.csv           Những người bạn cho vay hoặc vay, và ai nợ ai
 exchange_rates.csv   Tỷ giá riêng của các sổ
 edit_history.csv     Mọi phiên bản đã lưu của từng giao dịch, và người đã lưu
@@ -86,6 +88,9 @@ VI = {
     "They owe you": "Họ nợ bạn", "You owe them": "Bạn nợ họ", "From": "Từ", "To": "Sang", "Rate": "Tỷ giá",
     "From date": "Áp dụng từ ngày", "Transaction date": "Ngày giao dịch", "Transaction time": "Giờ giao dịch",
     "Version": "Phiên bản",
+    "Card": "Thẻ", "Purchase": "Khoản mua", "Months": "Số tháng", "Converted on": "Ngày chuyển trả góp",
+    "First statement": "Kỳ sao kê đầu tiên", "Fee": "Phí", "Fee split into installments": "Phí chia vào từng kỳ",
+    "Counts toward the limit": "Tính vào hạn mức", "Paid off early": "Tất toán sớm",
     "Action": "Thao tác", "Changed by": "Người thay đổi", "Changed at": "Thay đổi lúc", "Amounts": "Số tiền",
     "Time": "Thời gian", "What": "Mục", "Change": "Thay đổi",
     # values
@@ -242,6 +247,22 @@ def build_export(db: Session) -> bytes:
         "Amount": _money(r["amount"], r["minor_unit"]), "Currency": r["base_currency"],
         "Starts": r["starts_on"], "Ends": r["ends_on"]} for r in budgets],
         ["Book", "Category", "Period", "Amount", "Currency", "Starts", "Ends"])
+
+    plans = _rows(db, """
+        select b.name as book, a.name as card, t.payee, t.occurred_on, -e.amount as amount, a.currency, cur.minor_unit,
+               p.months, p.converted_on, p.first_statement, p.fee, p.fee_split, p.counts_toward_limit, p.ended_on
+          from installment_plans p join books b on b.id = p.book_id join accounts a on a.id = p.account_id
+          join transactions t on t.id = p.transaction_id join entries e on e.transaction_id = t.id
+          join currencies cur on cur.code = a.currency order by 1, 2, t.occurred_on""")
+    out("installments.csv", [{
+        "Book": r["book"], "Card": r["card"], "Purchase": r["payee"], "Date": r["occurred_on"],
+        "Amount": _money(r["amount"], r["minor_unit"]), "Months": r["months"], "Converted on": r["converted_on"],
+        "First statement": r["first_statement"], "Fee": _money(r["fee"], r["minor_unit"]),
+        "Fee split into installments": word("Yes" if r["fee_split"] else "No"),
+        "Counts toward the limit": word("Yes" if r["counts_toward_limit"] else "No"), "Paid off early": r["ended_on"],
+        "Currency": r["currency"]} for r in plans],
+        ["Book", "Card", "Purchase", "Date", "Amount", "Months", "Converted on", "First statement", "Fee",
+         "Fee split into installments", "Counts toward the limit", "Paid off early", "Currency"])
 
     people = _rows(db, """
         select b.name as book, c.name, c.note, cb.currency, cb.owed_to_you, cb.you_owe, cur.minor_unit
