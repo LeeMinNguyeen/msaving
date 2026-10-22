@@ -133,6 +133,32 @@ export type Bill = {
   fee: number // loan: the installment fee added to this payment (0 once charged)
   fee_transaction_id: string | null
   pay_from: string | null // the account the last payment came from
+  installments?: BillInstallment[] // card: this statement's installments
+  fees?: { plan_id: string; transaction_id: string; payee: string | null; amount: number }[] // card: installment fees to record with the payment
+  limit_used?: number | null // card: owed now, less what plans that don't count toward the limit haven't billed
+}
+
+export type BillInstallment = { plan_id: string; transaction_id: string; payee: string | null; number: number; months: number; amount: number }
+
+// A credit card purchase paid in installments (backend/app/domain/bills.py works out the bills).
+export type InstallmentPlan = {
+  id: string
+  account_id: string
+  transaction_id: string
+  payee: string | null
+  occurred_on: string
+  amount: number // the purchase, positive
+  months: number
+  converted_on: string
+  first_statement: string // its month's statement bills the first installment
+  fee: number
+  fee_split: boolean // false: the whole fee on the first installment's bill
+  counts_toward_limit: boolean
+  ended_on: string | null
+  version: number
+  installment: number
+  billed: number
+  left_to_bill: number
 }
 
 export type Account = {
@@ -154,6 +180,8 @@ export type Account = {
   archived_at: string | null
   version: number
   balance: number
+  converted_balance?: number | null // in the book's currency at today's rate; null without a rate
+  pinned?: boolean // on this user's Overview
 }
 
 export type CategoryKind = 'expense' | 'income' | 'transfer'
@@ -224,7 +252,7 @@ export type Dashboard = {
   cashflow_6_months: { month: string; spent: number; income: number; not_converted: number }[]
   top_categories_this_month: { category_id: string | null; category: string; category_parent_id: string | null; spent: number; not_converted: number }[]
   budgets: { budget_id: string; category_id: string; category: string; period: string; period_start: string; period_end: string; budget: number; spent: number; remaining: number; percent_used: number | null; not_converted: number }[]
-  accounts: { account_id: string; name: string; kind: AccountKind; currency: string; balance: number; converted_balance: number | null; in_net_worth: boolean }[]
+  accounts: { account_id: string; name: string; kind: AccountKind; currency: string; balance: number; converted_balance: number | null; in_net_worth: boolean; pinned?: boolean }[]
   people: { contact_id: string; name: string; currency: string; owed_to_you: number; you_owe: number }[]
   recent_transactions: { id: string; type: TxnType; occurred_on: string; occurred_time: string; payee: string | null; category: string | null; amount: number | null; currency: string | null }[]
 }

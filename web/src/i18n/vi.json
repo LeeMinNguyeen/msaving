@@ -97,7 +97,12 @@
     "installment": "Số tiền trả góp hằng tháng",
     "paymentDay": "Ngày trả hằng tháng",
     "installmentFee": "Phí trả góp",
-    "installmentFeeHint": "Phí trả một lần, cộng vào lần trả đầu tiên (các gói trả góp 0 % thường có phí này)."
+    "installmentFeeHint": "Phí trả một lần, cộng vào lần trả đầu tiên (các gói trả góp 0 % thường có phí này).",
+    "notIncluded_one": "{{count}} tài khoản chưa tính",
+    "notIncluded_other": "{{count}} tài khoản chưa tính",
+    "fold": "Thu gọn hoặc mở {{kind}}",
+    "pin": "Ghim vào Tổng quan",
+    "unpin": "Bỏ ghim khỏi Tổng quan"
   },
   "bill": {
     "cardTitle": "Sao kê {{from}} – {{to}}",
@@ -129,7 +134,12 @@
     "cardNote": "Sao kê đến {{date}}",
     "loanNote": "Kỳ trả góp {{date}}",
     "interestNote": "Tiền lãi, kỳ trả góp {{date}}",
-    "feeNote": "Phí trả góp"
+    "feeNote": "Phí trả góp",
+    "installmentLine": "{{payee}} · kỳ {{number}}/{{months}}",
+    "installmentFees": "Phí trả góp",
+    "limitUsed": "Hạn mức đã dùng",
+    "limitOf": "{{used}} / {{limit}}",
+    "installmentFeeNote": "Phí trả góp: {{payee}}"
   },
   "common": {
     "cancel": "Hủy",
@@ -175,7 +185,8 @@
     "updater_off": "Máy chủ này chưa bật cập nhật bằng một nút bấm.",
     "origin_not_allowed": "Địa chỉ này không phải ứng dụng web của chính máy chủ.",
     "cannot_invite": "Không thể mời tên đăng nhập này: hãy kiểm tra chính tả, hoặc người đó có thể đã ở trong sổ.",
-    "server_unreachable": "Không kết nối được máy chủ. Nếu máy chủ đang khởi động lại hoặc cập nhật, hãy thử lại sau vài phút."
+    "server_unreachable": "Không kết nối được máy chủ. Nếu máy chủ đang khởi động lại hoặc cập nhật, hãy thử lại sau vài phút.",
+    "installment_exists": "Khoản mua này đã có kế hoạch trả góp."
   },
   "nav": {
     "transactions": "Giao dịch",
@@ -183,7 +194,8 @@
     "dashboard": "Tổng quan",
     "profile": "Hồ sơ và bảo mật",
     "admin": "Quản trị máy chủ",
-    "more": "Khác"
+    "more": "Khác",
+    "people": "Vay mượn"
   },
   "txn": {
     "add": "Thêm giao dịch",
@@ -314,7 +326,8 @@
     "budgets": "Ngân sách",
     "people": "Ai nợ ai",
     "emptyViewer": "Sổ này chưa có gì.",
-    "ratesBy": "Tỷ giá:"
+    "ratesBy": "Tỷ giá:",
+    "pinHint": "Ghim tài khoản ở trang Tài khoản để chọn những tài khoản hiện ở đây."
   },
   "budget": {
     "title": "Ngân sách",
@@ -529,5 +542,35 @@
     "warning": "Bạn sẽ bị đăng xuất sau {{seconds}} giây vì đã lâu không có thao tác nào.",
     "stay": "Vẫn đăng nhập",
     "signedOut": "Bạn đã bị đăng xuất sau {{minutes}} phút không hoạt động."
+  },
+  "plan": {
+    "switch": "Trả góp",
+    "needsStatementDay": "Đặt ngày sao kê của thẻ để trả góp.",
+    "months": "Số tháng",
+    "convertedOn": "Ngày chuyển trả góp",
+    "firstStatement": "Kỳ sao kê đầu tiên",
+    "fee": "Phí chuyển đổi",
+    "feeCharged": "Cách tính phí",
+    "feeOnce": "Tính hết vào kỳ đầu",
+    "feeSplit": "Chia đều vào từng kỳ",
+    "countsTowardLimit": "Tính vào hạn mức thẻ",
+    "removedOnSave": "Khi lưu, kế hoạch trả góp của khoản mua này sẽ bị xóa.",
+    "purchase": "Khoản mua",
+    "purchaseOn": "Khoản mua ngày {{date}}",
+    "title": "Trả góp",
+    "progress": "Đã tính {{billed}}/{{months}} kỳ · {{installment}} mỗi tháng · còn {{left}} chưa tính",
+    "endsNext": "Đã tất toán sớm: {{left}} vào kỳ sao kê tới",
+    "endEarly": "Tất toán sớm",
+    "endEarlyTitle": "Tất toán sớm khoản trả góp này?",
+    "endEarlyText": "Toàn bộ phần còn lại sẽ được tính vào kỳ sao kê tới."
+  },
+  "toast": {
+    "budgetAdded": "Đã thêm ngân sách",
+    "txnSaved": "Đã lưu giao dịch",
+    "txnDeleted": "Đã xóa giao dịch",
+    "accountSaved": "Đã lưu tài khoản",
+    "categorySaved": "Đã lưu danh mục",
+    "personSaved": "Đã lưu",
+    "paymentSaved": "Đã lưu khoản thanh toán"
   }
 }

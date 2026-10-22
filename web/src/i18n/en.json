@@ -97,7 +97,12 @@
     "installment": "Monthly installment",
     "paymentDay": "Payment day each month",
     "installmentFee": "Installment fee",
-    "installmentFeeHint": "A one-off fee, added once, to the first payment (0 % installment contracts often have one)."
+    "installmentFeeHint": "A one-off fee, added once, to the first payment (0 % installment contracts often have one).",
+    "notIncluded_one": "{{count}} not included",
+    "notIncluded_other": "{{count}} not included",
+    "fold": "Fold or unfold {{kind}}",
+    "pin": "Pin to the Overview",
+    "unpin": "Unpin from the Overview"
   },
   "bill": {
     "cardTitle": "Statement {{from}} – {{to}}",
@@ -129,7 +134,12 @@
     "cardNote": "Statement to {{date}}",
     "loanNote": "Installment due {{date}}",
     "interestNote": "Interest, installment due {{date}}",
-    "feeNote": "Installment fee"
+    "feeNote": "Installment fee",
+    "installmentLine": "{{payee}} · {{number}} of {{months}}",
+    "installmentFees": "Installment fees",
+    "limitUsed": "Limit used",
+    "limitOf": "{{used}} of {{limit}}",
+    "installmentFeeNote": "Installment fee: {{payee}}"
   },
   "common": {
     "cancel": "Cancel",
@@ -175,7 +185,8 @@
     "updater_off": "One-click updates are off on this server.",
     "origin_not_allowed": "This address isn't this server's own web app.",
     "cannot_invite": "No one with that username can be invited: check the spelling, or they may already be in this book.",
-    "server_unreachable": "Can't reach the server. If it's restarting or updating, try again in a few minutes."
+    "server_unreachable": "Can't reach the server. If it's restarting or updating, try again in a few minutes.",
+    "installment_exists": "This purchase already has an installment plan."
   },
   "nav": {
     "transactions": "Transactions",
@@ -183,7 +194,8 @@
     "dashboard": "Overview",
     "profile": "Profile and security",
     "admin": "Server admin",
-    "more": "More"
+    "more": "More",
+    "people": "People"
   },
   "txn": {
     "add": "Add transaction",
@@ -314,7 +326,8 @@
     "budgets": "Budgets",
     "people": "Who owes whom",
     "emptyViewer": "Nothing in this book yet.",
-    "ratesBy": "Exchange rates:"
+    "ratesBy": "Exchange rates:",
+    "pinHint": "Pin accounts on Accounts to choose these."
   },
   "budget": {
     "title": "Budgets",
@@ -529,5 +542,35 @@
     "warning": "You'll be signed out in {{seconds}} seconds, as nothing has happened here for a while.",
     "stay": "Stay signed in",
     "signedOut": "You were signed out after {{minutes}} minutes without activity."
+  },
+  "plan": {
+    "switch": "Pay in installments",
+    "needsStatementDay": "Set the card's statement day to pay in installments.",
+    "months": "Months",
+    "convertedOn": "Converted on",
+    "firstStatement": "First statement",
+    "fee": "Conversion fee",
+    "feeCharged": "Fee charged",
+    "feeOnce": "All on the first bill",
+    "feeSplit": "Split into the installments",
+    "countsTowardLimit": "Counts toward the card's limit",
+    "removedOnSave": "Saving removes this purchase's installment plan.",
+    "purchase": "Purchase",
+    "purchaseOn": "Purchase on {{date}}",
+    "title": "Installments",
+    "progress": "{{billed}} of {{months}} billed · {{installment}} a month · {{left}} left to bill",
+    "endsNext": "Ended early: {{left}} on the next statement",
+    "endEarly": "End early",
+    "endEarlyTitle": "End this plan early?",
+    "endEarlyText": "Everything left is billed on the next statement."
+  },
+  "toast": {
+    "budgetAdded": "Budget added",
+    "txnSaved": "Transaction saved",
+    "txnDeleted": "Transaction deleted",
+    "accountSaved": "Account saved",
+    "categorySaved": "Category saved",
+    "personSaved": "Saved",
+    "paymentSaved": "Payment saved"
   }
 }

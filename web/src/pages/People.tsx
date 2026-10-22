@@ -21,6 +21,7 @@ import { send, type Book, type Contact } from '../lib/api'
 import { formatMoney } from '../lib/money'
 import { useContacts, useCurrencies } from '../lib/queries'
 import { PersonDialog } from './PersonDialog'
+import { RefreshButton } from '../components/RefreshButton'
 
 export function People({ book }: { book: Book }) {
   const { t } = useTranslation()
@@ -55,11 +56,15 @@ export function People({ book }: { book: Book }) {
   }
 
   return (
-    <Stack spacing={1.5}>
-      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', pt: 2 }}>
-        <Typography variant="h6">{t('people.title')}</Typography>
-        {canEdit && <Button startIcon={<AddIcon />} onClick={() => setDialog('new')}>{t('people.add')}</Button>}
+    <Stack spacing={2}>
+      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="h5">{t('nav.people')}</Typography>
+          <RefreshButton bookId={book.id} />
+        </Stack>
+        {canEdit && <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog('new')}>{t('people.add')}</Button>}
       </Stack>
+      <Typography color="text.secondary">{t('people.title')}</Typography>
       {notice.error ? <Alert severity="error">{errorText(notice.error)}</Alert> : null}
       {notice.info && <Alert severity="info">{notice.info}</Alert>}
       {contacts.data?.length === 0 && <Typography color="text.secondary">{t('people.empty')}</Typography>}

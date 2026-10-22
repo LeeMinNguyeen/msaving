@@ -3,7 +3,6 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
@@ -17,6 +16,7 @@ import { formatMoney } from '../lib/money'
 import { personName } from '../lib/people'
 import { useAccounts, useCategories, useCurrencies, useHistory } from '../lib/queries'
 import { useErrorText } from './errors'
+import { DialogFooter } from './DialogFooter'
 
 // Every saved version of a transaction, oldest first: created, each edit, deleted.
 export function HistoryDialog({ book, txnId, onClose }: { book: Book; txnId: string; onClose: () => void }) {
@@ -75,9 +75,9 @@ export function HistoryDialog({ book, txnId, onClose }: { book: Book; txnId: str
           ))}
         </Stack>
       </DialogContent>
-      <DialogActions>
+      <DialogFooter>
         <Button onClick={onClose}>{t('common.close')}</Button>
-      </DialogActions>
+      </DialogFooter>
     </Dialog>
   )
 }

@@ -1,7 +1,6 @@
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -19,6 +18,7 @@ import { useErrorText } from '../components/errors'
 import { TimezonePicker } from '../components/TimezonePicker'
 import { send, type Book } from '../lib/api'
 import { keys } from '../lib/queries'
+import { DialogFooter } from '../components/DialogFooter'
 
 // Settings and delete: owners only.
 export function BookSettings({ book }: { book: Book }) {
@@ -104,12 +104,12 @@ export function BookSettings({ book }: { book: Book }) {
             <TextField label={t('book.deleteConfirmLabel')} value={confirmName} onChange={(e) => setConfirmName(e.target.value)} />
           </Stack>
         </DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={() => setConfirming(false)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" loading={busy} disabled={confirmName !== book.name} onClick={remove}>
             {t('book.delete')}
           </Button>
-        </DialogActions>
+        </DialogFooter>
       </Dialog>
     </Stack>
   )
