@@ -395,7 +395,6 @@
     "profile": "Hồ sơ",
     "username": "Tên người dùng",
     "displayName": "Tên hiển thị",
-    "language": "Ngôn ngữ",
     "appearance": "Giao diện",
     "theme": "Sáng hay tối",
     "themeHint": "Trên thiết bị này. Nếu bạn không chọn, giao diện theo cài đặt của thiết bị.",
@@ -438,11 +437,15 @@
   },
   "join": {
     "title": "Tham gia",
-    "intro": "Nhập mã mời từ quản trị viên của máy chủ này, rồi chọn tên người dùng và mật khẩu.",
-    "introOpen": "Chọn tên người dùng và mật khẩu. Máy chủ này không bắt buộc mã mời.",
+    "intro": "Nhập mã mời từ quản trị viên của máy chủ này và chọn ngôn ngữ.",
+    "introOpen": "Chọn ngôn ngữ. Máy chủ này không bắt buộc mã mời.",
     "code": "Mã mời",
     "codeHint": "Dạng X7K2-9QPM. Tự điền khi bạn mở đường dẫn mời.",
-    "submit": "Tạo tài khoản"
+    "languageHint": "Cho các màn hình của ứng dụng. Bạn có thể đổi sau trong Hồ sơ và bảo mật.",
+    "next": "Tiếp tục",
+    "accountIntro": "Chọn tên người dùng và mật khẩu.",
+    "submit": "Tạo tài khoản",
+    "back": "Quay lại"
   },
   "setup": {
     "title": "Thiết lập máy chủ",

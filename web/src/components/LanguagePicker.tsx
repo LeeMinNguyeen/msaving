@@ -1,27 +1,17 @@
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import MenuItem from '@mui/material/MenuItem'
+import TextField from '@mui/material/TextField'
 import { useTranslation } from 'react-i18next'
 import { currentLanguage, languages, setLanguage, type Language } from '../i18n'
 
-export function LanguagePicker({ onChange }: { onChange?: (lang: Language) => void }) {
+// Each language in its own name. Without value and onChange it is the screen's language, remembered in this browser.
+export function LanguagePicker({ value, onChange = setLanguage, size, helperText }: {
+  value?: Language; onChange?: (lang: Language) => void; size?: 'small'; helperText?: string
+}) {
   const { t } = useTranslation()
   return (
-    <ToggleButtonGroup
-      size="small"
-      exclusive
-      value={currentLanguage()}
-      aria-label={t('language.label')}
-      onChange={(_, lang: Language | null) => {
-        if (!lang) return
-        setLanguage(lang)
-        onChange?.(lang)
-      }}
-    >
-      {languages.map((l) => (
-        <ToggleButton key={l} value={l}>
-          {t(`language.${l}`)}
-        </ToggleButton>
-      ))}
-    </ToggleButtonGroup>
+    <TextField select label={t('language.label')} value={value ?? currentLanguage()} size={size} helperText={helperText}
+      onChange={(e) => onChange(e.target.value as Language)} sx={size && { minWidth: 140 }}>
+      {languages.map((l) => <MenuItem key={l} value={l}>{t(`language.${l}`)}</MenuItem>)}
+    </TextField>
   )
 }

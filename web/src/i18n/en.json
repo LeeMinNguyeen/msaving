@@ -395,7 +395,6 @@
     "profile": "Profile",
     "username": "Username",
     "displayName": "Display name",
-    "language": "Language",
     "appearance": "Appearance",
     "theme": "Light or dark",
     "themeHint": "On this device. Unless you pick one, it follows the device's own setting.",
@@ -438,11 +437,15 @@
   },
   "join": {
     "title": "Join",
-    "intro": "Enter the invite code from this server's admin, then choose a username and password.",
-    "introOpen": "Choose a username and password. An invite code is optional on this server.",
+    "intro": "Enter the invite code from this server's admin and choose your language.",
+    "introOpen": "Choose your language. An invite code is optional on this server.",
     "code": "Invite code",
     "codeHint": "Like X7K2-9QPM. Filled in for you when you open the invite link.",
-    "submit": "Create account"
+    "languageHint": "For the app's screens. You can change it later in Profile and security.",
+    "next": "Next",
+    "accountIntro": "Choose a username and password.",
+    "submit": "Create account",
+    "back": "Back"
   },
   "setup": {
     "title": "Set up this server",

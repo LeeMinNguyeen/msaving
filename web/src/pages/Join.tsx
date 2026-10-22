@@ -5,37 +5,73 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link as RouterLink, useSearchParams } from 'react-router'
+import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { Centered } from '../components/Centered'
-import { send, upload, type Token } from '../lib/api'
+import { ApiError, send, upload, type Token } from '../lib/api'
 import { waitForServer } from '../lib/restart'
 import { FileField } from '../components/FileField'
+import { LanguagePicker } from '../components/LanguagePicker'
 import { useInstance } from '../lib/queries'
 import { newAccountBody, useSignedInForm } from '../auth/forms'
 import { FormError, NewAccountFields, PasswordFields, PublicHeader } from '../components/AccountForm'
 
 // Join with an invite (/join?code=X7K2-9QPM, from the admin's link or QR
-// code), or without one when the admin has opened sign-up.
+// code), or without one when the admin has opened sign-up. The code and the
+// language first, then the account in that language. The second step is a
+// history entry, so the phone's back button returns to the first.
 export function Join() {
   const { t } = useTranslation()
   const instance = useInstance()
   const [params] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [code, setCode] = useState(params.get('code') ?? '')
+  const [check, setCheck] = useState<{ busy?: boolean; error?: unknown }>({})
   const { submit, error, busy } = useSignedInForm()
   const open = instance.data?.signup === 'open'
+  const account = (location.state as { account?: boolean } | null)?.account === true
 
-  return (
-    <Centered>
-      <Stack component="form" spacing={2} onSubmit={(e) => submit(e, (form) =>
-        send<Token>('POST', '/v1/auth/sign-up', { ...newAccountBody(form), invite_code: code.trim() || null }))}>
-        <PublicHeader title={t('join.title')} />
+  async function next(e: FormEvent) {
+    e.preventDefault()
+    const c = code.trim()
+    setCheck({ busy: true })
+    try {
+      if (c && !(await send<{ valid: boolean }>('POST', '/v1/auth/invite-check', { code: c })).valid) {
+        throw new ApiError(403, 'invite_invalid')
+      }
+    } catch (err) {
+      setCheck({ error: err })
+      return
+    }
+    setCheck({})
+    navigate({ search: c ? `?code=${encodeURIComponent(c)}` : '' }, { state: { account: true } })
+  }
+
+  if (!account) return (
+    <Centered key="code">
+      <Stack component="form" spacing={2} onSubmit={next}>
+        <PublicHeader title={t('join.title')} languageSwitch={false} />
         <Typography color="text.secondary">{t(open ? 'join.introOpen' : 'join.intro')}</Typography>
         <TextField label={t('join.code')} value={code} onChange={(e) => setCode(e.target.value)} required={!open}
           helperText={t('join.codeHint')} slotProps={{ htmlInput: { autoCapitalize: 'characters', autoComplete: 'off' } }} />
+        <LanguagePicker helperText={t('join.languageHint')} />
+        <FormError error={check.error} />
+        <Button type="submit" variant="contained" size="large" loading={check.busy}>{t('join.next')}</Button>
+        <Button component={RouterLink} to="/sign-in">{t('auth.toSignIn')}</Button>
+      </Stack>
+    </Centered>
+  )
+
+  return (
+    <Centered key="account">
+      <Stack component="form" spacing={2} onSubmit={(e) => submit(e, (form) =>
+        send<Token>('POST', '/v1/auth/sign-up', { ...newAccountBody(form), invite_code: code.trim() || null }))}>
+        <PublicHeader title={t('join.title')} languageSwitch={false} />
+        <Typography color="text.secondary">{t('join.accountIntro')}</Typography>
         <NewAccountFields />
         <FormError error={error} />
         <Button type="submit" variant="contained" size="large" loading={busy}>{t('join.submit')}</Button>
-        <Button component={RouterLink} to="/sign-in">{t('auth.toSignIn')}</Button>
+        <Button onClick={() => navigate(-1)}>{t('join.back')}</Button>
       </Stack>
     </Centered>
   )

@@ -38,8 +38,9 @@ npm run lint && npm test && npm run build
 
 ## Screens
 
-Before sign-in: Sign in, Join (invite code from `/join?code=`), Reset password (`/reset?token=`), Set up this
-server (only while the server has no admin), all in English; all but Sign in have a language switch. Signed in: Create a book, Dashboard, Add/edit transaction,
+Before sign-in: Sign in, Join (two steps: the invite code from `/join?code=` and the language, then the account),
+Reset password (`/reset?token=`), Set up this server (only while the server has no admin); setup and reset have the
+language dropdown in their header, sign-in has none. Signed in: Create a book, Dashboard, Add/edit transaction,
 Transactions, Accounts (with people), Categories and budgets, Book settings, Profile and security (appearance,
 profile and language, password, two-step with recovery codes, signed-in devices, sign-out after inactivity, export,
 delete account), Server admin (admin only: server name, sign-up mode, updates, the daily jobs, invites with link and
@@ -54,8 +55,10 @@ layout until the mobile app ships.
 - **Money:** integers in minor units from the API; `Intl.NumberFormat` in the user's locale (`1.250.000 ₫` in
   Vietnamese, `1,250,000 ₫` in English). Amount fields parse by the same locale and the currency's decimals.
 - **Languages:** English default, Vietnamese second. One string file per language, same keys (the tests fail
-  otherwise). API error codes are translated under `errors.*`. User-typed text is never translated. Screens before
-  sign-in call `showLanguage('en')`, which doesn't store the choice; only `setLanguage` does.
+  otherwise). API error codes are translated under `errors.*`. User-typed text is never translated. Every screen
+  opens in the language this browser remembers (stored by `setLanguage`: the signed-in user's, kept after signing
+  out, or one picked before sign-in), English when none. Choosing a language is always the `LanguagePicker`
+  dropdown, each language in its own name.
 - **Concurrency:** send the `version` you loaded; on 409, reload and tell the user. Generate a transaction's id
   when the user taps Save and reuse it on retry.
 - **Freshness:** refetch on window focus and about every minute. Inside a book, `useBookChanges` (in the Shell) polls
