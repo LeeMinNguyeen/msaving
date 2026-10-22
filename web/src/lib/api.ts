@@ -141,6 +141,7 @@ export type Bill = {
   installments?: BillInstallment[] // card: this statement's installments
   fees?: { plan_id: string; transaction_id: string; payee: string | null; amount: number }[] // card: installment fees to record with the payment
   limit_used?: number | null // card: owed now, less what plans that don't count toward the limit haven't billed
+  statement_open?: boolean // card: the next statement so far
 }
 
 export type BillInstallment = { plan_id: string; transaction_id: string; payee: string | null; number: number; months: number; amount: number }
