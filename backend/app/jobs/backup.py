@@ -4,7 +4,7 @@ before an update applies new migrations.
 The dump is checked with pg_restore --list, then copied into BACKUP_DIR as .partial and renamed, so a run that fails
 never leaves a file that looks complete; only then are old dumps deleted.
 
-What is dumped: the schemas public (the whole app, with its policies and grants) and msaving (the applied
+What is dumped: the schemas public (the whole app, with its policies and grants) and waterflow (the applied
 migrations). Not the roles or their passwords, which live outside any one database.
 
 BACKUP_DATABASE_URL is the database owner: pg_dump must see every row, and the app's own logins can't bypass
@@ -15,7 +15,7 @@ at /). pg_dump (PG_DUMP, else PATH) must be the server's major version.
 Restore (by the operator; the setup guide has the same steps as docker
 commands). DUMP is the dump file, NEW_DB_URL an empty database on the same
 or a new server, as its owner. tests/test_backup.py runs the `$` lines.
-    1. Stop the server (docker compose stop msaving).
+    1. Stop the server (docker compose stop waterflow).
     2. What lives outside the dump: functions made later aren't executable by
        everyone (the baseline's lock-down), and the roles the app's grants
        name, if this server doesn't have them yet (a new server). Their logins
@@ -24,11 +24,11 @@ or a new server, as its owner. tests/test_backup.py runs the `$` lines.
        $ psql -v ON_ERROR_STOP=1 "$NEW_DB_URL" <<< "select format('create role %I nologin', r) from unnest(array['app_user', 'account_purger', 'fx_updater']) r where not exists (select 1 from pg_roles where rolname = r) \gexec"
     3. The app, its data and the list of applied migrations, leaving out the
        schema public itself, which every database already has:
-       $ pg_restore --list "$DUMP" | grep -v -E ' (SCHEMA|COMMENT) - (SCHEMA )?public ' > msaving.list
-       $ pg_restore --no-owner --single-transaction --exit-on-error --use-list=msaving.list --dbname="$NEW_DB_URL" "$DUMP"
+       $ pg_restore --list "$DUMP" | grep -v -E ' (SCHEMA|COMMENT) - (SCHEMA )?public ' > waterflow.list
+       $ pg_restore --no-owner --single-transaction --exit-on-error --use-list=waterflow.list --dbname="$NEW_DB_URL" "$DUMP"
     4. Start the server. Before anyone uses it, redo the purges made since the
        dump, which brought those accounts back:
-           docker compose exec msaving python -m app.admin repurge
+           docker compose exec waterflow python -m app.admin repurge
        It reads every purged id from PURGE_LOG (in the backups volume, outside
        the database, so the restore didn't roll it back) and purges again the
        accounts that are back.
@@ -50,9 +50,9 @@ from psycopg import Error as PsycopgError
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 # Each is dumped if it exists.
-SCHEMAS = ("public", "msaving")
+SCHEMAS = ("public", "waterflow")
 KEEP = timedelta(days=5, hours=12)        # about 6 days, counting the newest
-DUMP_NAME = re.compile(r"msaving-(\d{8}T\d{6}Z)\.dump(\.partial)?")
+DUMP_NAME = re.compile(r"(?:waterflow|msaving)-(\d{8}T\d{6}Z)\.dump(\.partial)?")    # msaving: the former name
 
 
 class BackupError(Exception):
@@ -121,13 +121,13 @@ def run_backup(database_url: str, backup_dir: str) -> tuple[str, dict[str, int],
         raise BackupError(f"BACKUP_DIR {backup_dir} is not a directory: is the volume mounted?")
     pg_dump, pg_restore = _tools()
     dsn, password = _split(database_url)
-    env = dict(os.environ, PGAPPNAME="msaving-backup")
+    env = dict(os.environ, PGAPPNAME="waterflow-backup")
     # TLS as the address says (?sslmode=require for a database across the internet), else libpq's default, as in the
     # rest of the server: forcing it fails on a plain local Postgres.
     if password:
         env["PGPASSWORD"] = password
     now = datetime.now(timezone.utc)
-    name = f"msaving-{now:%Y%m%dT%H%M%SZ}.dump"
+    name = f"waterflow-{now:%Y%m%dT%H%M%SZ}.dump"
     with tempfile.TemporaryDirectory() as tmp:
         local = os.path.join(tmp, name)
         _run([pg_dump, "--format=custom", "--no-password", *[f"--schema={s}" for s in SCHEMAS],

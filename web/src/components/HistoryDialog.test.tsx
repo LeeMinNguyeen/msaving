@@ -11,7 +11,7 @@ const version = (v: number, action: HistoryEntry['action'], amount: number): His
   category_id: null, payee: 'Pho', note: null, entries: [{ account_id: 'cash', amount, currency: 'VND' }],
 })
 
-describe('HistoryDialog (msaving#18)', () => {
+describe('HistoryDialog (waterflow#18)', () => {
   it('never shows the copy from the last opening: a spinner until the server answers', async () => {
     let history = [version(1, 'created', -45_000)]
     let delay = 0

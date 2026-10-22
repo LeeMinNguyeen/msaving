@@ -26,7 +26,7 @@ function Filter() {
   )
 }
 
-describe('DateField (msaving#27)', () => {
+describe('DateField (waterflow#27)', () => {
   it('shows a date day first in English, in a US-English browser', async () => {
     expect(navigator.language).toBe('en-US')
     const { container } = await renderApp(<DateField label="Date" value="2026-10-03" onChange={() => {}} />, { lang: 'en' })

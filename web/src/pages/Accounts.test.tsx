@@ -31,7 +31,7 @@ function server(accounts = all) {
   })
 }
 
-describe('Accounts grouped by kind (msaving#64)', () => {
+describe('Accounts grouped by kind (waterflow#64)', () => {
   beforeEach(() => desktop(true))
   afterEach(() => desktop(false))
 
@@ -59,7 +59,7 @@ describe('Accounts grouped by kind (msaving#64)', () => {
     expect(screen.getByText('Nợ mẹ')).toBeInTheDocument()
   })
 
-  it("leaves people's own accounts to People (msaving#85)", async () => {
+  it("leaves people's own accounts to People (waterflow#85)", async () => {
     server([...all, { ...account('minh', 'Minh', 'person', -150_000, -150_000), contact_id: 'minh' }])
     await renderApp(<Accounts book={book} />)
     await screen.findByText('Nợ mẹ')
@@ -67,7 +67,7 @@ describe('Accounts grouped by kind (msaving#64)', () => {
     expect(screen.getAllByRole('row').filter((r) => r.dataset.group).map((r) => r.dataset.group)).toEqual(['cash', 'checking', 'loan', 'lent'])
   })
 
-  it('no longer lists people: they have their own page (msaving#68)', async () => {
+  it('no longer lists people: they have their own page (waterflow#68)', async () => {
     server()
     await renderApp(<Accounts book={book} />)
     await screen.findByText('Nợ mẹ')
@@ -92,7 +92,7 @@ async function menuOf(row: HTMLElement) {
   return screen.findByRole('menu')
 }
 
-describe('pinning accounts to the Overview (msaving#74, msaving#88)', () => {
+describe('pinning accounts to the Overview (waterflow#74, waterflow#88)', () => {
   it("pins from the row's menu on a phone, with no other button beside the balance", async () => {
     const api = pinServer([])
     await renderApp(<Accounts book={book} />)

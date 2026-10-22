@@ -283,8 +283,8 @@ class TwoFactorSetup(BaseModel):
 @router.post("/auth/two-factor/setup")
 def two_factor_setup(db: Session = Depends(get_db)) -> TwoFactorSetup:
     """A new secret to show; nothing is saved until /enable gets a code from it."""
-    username = db.execute(text("select username from my_profile()")).scalar() or "msaving"
-    server = db.execute(text("select name from instance_info()")).scalar() or "MSaving"
+    username = db.execute(text("select username from my_profile()")).scalar() or "waterflow"
+    server = db.execute(text("select name from instance_info()")).scalar() or "Waterflow"
     secret = si.new_totp_secret()
     uri = si.totp_uri(secret, username, server)
     return TwoFactorSetup(secret=secret, uri=uri, qr=si.qr_svg(uri))

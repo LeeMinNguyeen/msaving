@@ -8,7 +8,7 @@ import vi from './vi.json'
 export const languages = ['en', 'vi'] as const
 export type Language = (typeof languages)[number]
 
-const KEY = 'msaving.language'
+const KEY = 'waterflow.language'
 const known = (v: string | null | undefined): Language => languages.find((l) => l === v) ?? 'en'
 
 function remembered(): Language {

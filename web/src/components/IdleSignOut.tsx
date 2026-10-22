@@ -10,7 +10,7 @@ import { idleNotice, idleState } from '../lib/idle'
 import { DialogFooter } from './DialogFooter'
 
 // Tabs of this browser tell each other about activity here; nothing is stored.
-const CHANNEL = 'msaving.activity'
+const CHANNEL = 'waterflow.activity'
 const ACTIVITY = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll'] as const
 const TELL_EVERY = 5_000 // ms: another tab hears about activity at most this often
 

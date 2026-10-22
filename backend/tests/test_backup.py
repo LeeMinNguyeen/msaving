@@ -96,7 +96,7 @@ def backup(tmp_path):
     r = run_job(libpq_url(SOURCE), bucket)
     assert r.returncode == 0, r.stderr
     files = os.listdir(bucket)
-    assert len(files) == 1 and files[0].startswith("msaving-") and files[0].endswith(".dump"), files
+    assert len(files) == 1 and files[0].startswith("waterflow-") and files[0].endswith(".dump"), files
     assert (bucket / files[0]).stat().st_mode & 0o777 == 0o600            # holds password hashes
     return bucket / files[0], r.stdout
 
@@ -140,15 +140,15 @@ def test_restore_commands_documented():
 
 def test_backup_restores_everything(source, target, tmp_path):
     dump, log = backup(tmp_path)
-    assert "in public" in log and "in msaving" in log
+    assert "in public" in log and "in waterflow" in log
     restore(dump, target, RESTORE, tmp_path)
     before, after = snapshot(source), snapshot(target)
     assert before["rows"]["users"] == before["rows"]["transactions"] == before["rows"]["entries"] == 1
     for part in before:
         assert after[part] == before[part], part
     # The list of applied migrations came back: the server won't run them again.
-    assert sql(target, "select version from msaving.migrations order by 1") == \
-        sql(source, "select version from msaving.migrations order by 1")
+    assert sql(target, "select version from waterflow.migrations order by 1") == \
+        sql(source, "select version from waterflow.migrations order by 1")
 
 
 def fake_pg_dump(tmp_path, body):
@@ -194,13 +194,15 @@ def test_old_dumps_are_deleted_after_a_good_one(source, tmp_path):
     bucket = tmp_path / "bucket"
     bucket.mkdir()
     five_days_ago = datetime.now(timezone.utc) - timedelta(days=5)
-    old, recent, other = "msaving-20200101T000000Z.dump", f"msaving-{five_days_ago:%Y%m%dT%H%M%SZ}.dump", "notes.txt"
-    for n in (old, old + ".partial", recent, other):
+    old, recent, other = "waterflow-20200101T000000Z.dump", f"waterflow-{five_days_ago:%Y%m%dT%H%M%SZ}.dump", "notes.txt"
+    old_name = "msaving-20200101T000000Z.dump"                              # made under the app's former name
+    for n in (old, old + ".partial", old_name, recent, other):
         (bucket / n).write_text("x")
     r = run_job(libpq_url(SOURCE), bucket)
     assert r.returncode == 0, r.stderr
     left = sorted(os.listdir(bucket))
-    assert old not in left and old + ".partial" not in left and recent in left and other in left and len(left) == 3
+    assert old not in left and old + ".partial" not in left and old_name not in left
+    assert recent in left and other in left and len(left) == 3
     # A failed run deletes nothing.
     (bucket / old).write_text("x")
     assert run_job(libpq_url("no_such_db"), bucket).returncode == 1 and old in os.listdir(bucket)
@@ -255,7 +257,7 @@ def test_restore_requested_from_the_web(live, tmp_path):
     status = json.loads((backups / "restore" / "status").read_text())
     assert status["status"] == "done" and status["at"]
     assert not (backups / "restore" / "request.dump").exists()
-    assert len(list(backups.glob("msaving-*.dump"))) == 1                 # what it replaced
+    assert len(list(backups.glob("waterflow-*.dump"))) == 1                 # what it replaced
     assert gone in (backups / "purged_accounts.jsonl").read_text()
     assert web_restore.restore_if_requested(libpq_url(name), str(backups)) is None
 
@@ -286,4 +288,29 @@ def test_a_file_that_is_no_backup_changes_nothing(live, tmp_path):
     backups = requested(tmp_path, b"not a dump at all")
     assert web_restore.restore_if_requested(libpq_url(name), str(backups)) == "failed"
     assert users(name) == ["backup_user"]
-    assert not list(backups.glob("msaving-*.dump"))
+    assert not list(backups.glob("waterflow-*.dump"))
+
+
+def test_a_backup_from_before_the_rename_restores(live, tmp_path):
+    """A backup made while the app was named MSaving keeps its migrations in the schema msaving: the web restore
+    takes it, and the next start renames the schema without applying any migration again."""
+    from app.jobs import migrate
+    from app.jobs import restore as web_restore
+    name, _ = live
+    old = f"backup_old_{uuid.uuid4().hex[:8]}"
+    sql(ADMIN_URL.database, f'create database "{old}" template "{name}"')
+    try:
+        sql(old, "alter schema waterflow rename to msaving",
+            "insert into users (id, username) values (gen_random_uuid(), 'from_old_backup')")
+        dump = tmp_path / "old.dump"
+        subprocess.run([shutil.which("pg_dump"), "--format=custom", "--schema=public", "--schema=msaving",
+                        f"--file={dump}", f"--dbname={libpq_url(old)}"], check=True, capture_output=True)
+    finally:
+        sql(ADMIN_URL.database, f'drop database "{old}" with (force)')
+    assert web_restore.dump_versions(dump) == web_restore.server_versions()
+    backups = requested(tmp_path, dump.read_bytes())
+    assert web_restore.restore_if_requested(libpq_url(name), str(backups)) == "done"
+    assert users(name) == ["backup_user", "from_old_backup"]
+    with psycopg.connect(libpq_url(name), autocommit=True) as conn:
+        assert migrate.pending(conn) == []
+    assert sql(name, "select to_regnamespace('msaving') is null, to_regnamespace('waterflow') is not null") == [(True, True)]

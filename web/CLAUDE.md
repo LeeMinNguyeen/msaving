@@ -1,14 +1,14 @@
 # CLAUDE.md: web
 
-The React web app for MSaving, served by the server itself (same origin as the API). Monorepo rules:
+The React web app for Waterflow, served by the server itself (same origin as the API). Monorepo rules:
 `../CLAUDE.md`. Workspace rules: `~/projects/msaving/CLAUDE.md`. How it works: the public docs
-(https://msaving.leminhnguyen.com/docs/); decisions and the screens: the private msaving-docs (MVP scope).
+(https://waterflow-app.net/docs/); decisions and the screens: the private waterflow-docs (MVP scope).
 
 ## Stack
 
 React, Vite, TypeScript, TanStack Query, React Router, i18next (react-i18next), Material UI (light, dark or the
 device's setting, each user's choice kept per browser: `components/AppTheme.tsx`), Vitest (with jest-dom matchers and Testing Library), oxlint. npm, Node 22.
-Not decided yet (pick a default, label it, record it in msaving-docs Decisions): form library (plain controlled inputs
+Not decided yet (pick a default, label it, record it in waterflow-docs Decisions): form library (plain controlled inputs
 and FormData so far).
 
 ## Layout and commands
@@ -32,7 +32,7 @@ src/
 ```bash
 npm install
 npm run dev                    # http://localhost:5173, /v1 proxied to the API on 127.0.0.1:8000 (backend/scripts/dev.sh)
-MSAVING_API=http://127.0.0.1:8080 npm run dev     # or against the compose stack
+WATERFLOW_API=http://127.0.0.1:8080 npm run dev     # or against the compose stack
 npm run lint && npm test && npm run build
 ```
 
@@ -69,7 +69,7 @@ layout until the mobile app ships.
   Emotion; QR codes are `data:` images from the API). No third-party scripts, fonts or analytics. Nothing in
   localStorage but the session token, the language and appearance choices, and remembered-device tokens.
 - **Menus (⋮) are words only,** no icons: an icon takes room a phone doesn't have.
-- **From the old app** (msaving-docs, The old app, private): accounts left out of net worth are greyed out but
+- **From the old app** (waterflow-docs, The old app, private): accounts left out of net worth are greyed out but
   clickable; category colours from a preset grid; "Add starter categories" on by default; the category picker
   on a transfer lists only transfer categories.
 
