@@ -102,6 +102,7 @@
     "notIncluded_one": "{{count}} not included",
     "notIncluded_other": "{{count}} not included",
     "fold": "Fold or unfold {{kind}}",
+    "actions": "Account actions",
     "pin": "Pin to the Overview",
     "unpin": "Unpin from the Overview"
   },

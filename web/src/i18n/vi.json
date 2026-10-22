@@ -102,6 +102,7 @@
     "notIncluded_one": "{{count}} tài khoản chưa tính",
     "notIncluded_other": "{{count}} tài khoản chưa tính",
     "fold": "Thu gọn hoặc mở {{kind}}",
+    "actions": "Tùy chọn tài khoản",
     "pin": "Ghim vào Tổng quan",
     "unpin": "Bỏ ghim khỏi Tổng quan"
   },
