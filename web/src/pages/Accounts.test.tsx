@@ -75,25 +75,69 @@ describe('Accounts grouped by kind (msaving#64)', () => {
   })
 })
 
-describe('pinning accounts to the Overview (msaving#74)', () => {
-  beforeEach(() => desktop(true))
-  afterEach(() => desktop(false))
+// A server that keeps the pins, so the list it returns after a pin shows it.
+function pinServer(pinned: string[]) {
+  const pins = new Set(pinned)
+  const api = server()
+  api.routes['GET /v1/books/b1/accounts'] = () => all.map((a) => ({ ...a, pinned: pins.has(a.id) }))
+  for (const a of all) {
+    api.routes[`PUT /v1/books/b1/accounts/${a.id}/pin`] = () => { pins.add(a.id) }
+    api.routes[`DELETE /v1/books/b1/accounts/${a.id}/pin`] = () => { pins.delete(a.id) }
+  }
+  return api
+}
 
-  it('pins and unpins from the list', async () => {
-    const api = server(all.map((a) => (a.id === 'mom' ? { ...a, pinned: true } : { ...a, pinned: false })))
+async function menuOf(row: HTMLElement) {
+  await userEvent.click(within(row).getByRole('button', { name: 'Account actions' }))
+  return screen.findByRole('menu')
+}
+
+describe('pinning accounts to the Overview (msaving#74, msaving#88)', () => {
+  it("pins from the row's menu on a phone, with no other button beside the balance", async () => {
+    const api = pinServer([])
     await renderApp(<Accounts book={book} />)
-    const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('tr')!
-    await userEvent.click(within(cash).getByRole('button', { name: 'Pin to the Overview' }))
-    const mom = screen.getByText('Nợ mẹ').closest('tr')!
-    await userEvent.click(within(mom).getByRole('button', { name: 'Unpin from the Overview' }))
-    expect(api.writes().map((c) => `${c.method} ${c.path}`)).toEqual([
-      'PUT /v1/books/b1/accounts/cash/pin', 'DELETE /v1/books/b1/accounts/mom/pin'])
+    const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('li')!
+    expect(within(cash).getAllByRole('button').filter((b) => !b.contains(screen.getByText('Cash', { selector: 'span' })))
+      .map((b) => b.getAttribute('aria-label'))).toEqual(['Account actions'])
+    await userEvent.click(within(await menuOf(cash)).getByRole('menuitem', { name: 'Pin to the Overview' }))
+    expect(api.writes().map((c) => `${c.method} ${c.path}`)).toEqual(['PUT /v1/books/b1/accounts/cash/pin'])
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(within(await menuOf(cash)).getByRole('menuitem', { name: 'Unpin from the Overview' })).toBeInTheDocument()
   })
 
-  it('lets a viewer pin too: a pin is their own view', async () => {
-    server()
-    await renderApp(<Accounts book={{ ...book, role: 'viewer' }} />)
-    const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('tr')!
-    expect(within(cash).getByRole('button', { name: 'Pin to the Overview' })).toBeInTheDocument()
+  it('keeps the menu to words, without icons', async () => {
+    pinServer(['cash'])
+    await renderApp(<Accounts book={book} />)
+    const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('li')!
+    const menu = await menuOf(cash)
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Unpin from the Overview', 'Edit account', 'Archive'])
+    expect(menu.querySelector('svg')).toBeNull()
+  })
+
+  describe('on desktop', () => {
+    beforeEach(() => desktop(true))
+    afterEach(() => desktop(false))
+
+    it('pins and unpins from the menu, which then offers the other one', async () => {
+      const api = pinServer(['mom'])
+      await renderApp(<Accounts book={book} />)
+      const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('tr')!
+      expect(within(cash).queryByRole('button', { name: 'Pin to the Overview' })).not.toBeInTheDocument()
+      await userEvent.click(within(await menuOf(cash)).getByRole('menuitem', { name: 'Pin to the Overview' }))
+      expect(within(await menuOf(cash)).getByRole('menuitem', { name: 'Unpin from the Overview' })).toBeInTheDocument()
+      await userEvent.keyboard('{Escape}')
+      const mom = screen.getByText('Nợ mẹ').closest('tr')!
+      await userEvent.click(within(await menuOf(mom)).getByRole('menuitem', { name: 'Unpin from the Overview' }))
+      expect(within(await menuOf(mom)).getByRole('menuitem', { name: 'Pin to the Overview' })).toBeInTheDocument()
+      expect(api.writes().map((c) => `${c.method} ${c.path}`)).toEqual([
+        'PUT /v1/books/b1/accounts/cash/pin', 'DELETE /v1/books/b1/accounts/mom/pin'])
+    })
+
+    it('lets a viewer pin too: a pin is their own view', async () => {
+      pinServer([])
+      await renderApp(<Accounts book={{ ...book, role: 'viewer' }} />)
+      const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('tr')!
+      expect(within(await menuOf(cash)).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Pin to the Overview'])
+    })
   })
 })
