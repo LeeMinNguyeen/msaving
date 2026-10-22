@@ -20,8 +20,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../components/errors'
+import { LanguagePicker } from '../components/LanguagePicker'
 import { TimezonePicker } from '../components/TimezonePicker'
-import { currentLanguage, languages, setLanguage, type Language } from '../i18n'
+import { currentLanguage, setLanguage, type Language } from '../i18n'
 import { api, download, send, type DeviceSession, type Me, type Profile as ProfileT } from '../lib/api'
 import { keys, useMe } from '../lib/queries'
 
@@ -105,9 +106,7 @@ function ProfileForm({ profile }: { profile: ProfileT }) {
         <TextField label={t('profile.username')} required value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())}
           helperText={t('welcome.usernameHint')} slotProps={{ htmlInput: { pattern: '[a-z0-9][a-z0-9_.]{2,29}', autoCapitalize: 'none' } }} />
         <TextField label={t('profile.displayName')} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-        <TextField select label={t('profile.language')} value={language} onChange={(e) => setLang(e.target.value as Language)}>
-          {languages.map((l) => <MenuItem key={l} value={l}>{t(`language.${l}`)}</MenuItem>)}
-        </TextField>
+        <LanguagePicker value={language} onChange={setLang} />
         <TimezonePicker label={t('profile.timezone')} value={timezone} onChange={setTimezone} />
         {status.error ? <Alert severity="error">{errorText(status.error)}</Alert> : null}
         {status.saved ? <Alert severity="success">{t('profile.saved')}</Alert> : null}

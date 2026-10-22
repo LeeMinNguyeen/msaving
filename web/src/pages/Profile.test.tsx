@@ -78,6 +78,22 @@ describe('signing out the other devices', () => {
   })
 })
 
+describe('the language', () => {
+  afterEach(() => localStorage.removeItem('msaving.language'))
+
+  it('is a dropdown of each language in its own name, saved with the profile', async () => {
+    const api = server([laptop])
+    await renderApp(<Profile />)
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Language' }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['English', 'Tiếng Việt'])
+    await userEvent.click(screen.getByRole('option', { name: 'Tiếng Việt' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()[0]).toMatchObject({ method: 'PATCH', path: '/v1/me', body: { language: 'vi' } }))
+    expect(await screen.findByRole('combobox', { name: 'Ngôn ngữ' })).toHaveTextContent('Tiếng Việt')
+    expect(localStorage.getItem('msaving.language')).toBe('vi')
+  })
+})
+
 describe('signing out after inactivity, the user\'s own choice (msaving#26)', () => {
   const setting = () => screen.findByRole('combobox', { name: 'Sign me out after inactivity' })
   const pick = async (option: string) => {

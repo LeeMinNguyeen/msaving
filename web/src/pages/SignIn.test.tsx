@@ -20,12 +20,12 @@ describe('the sign-in page', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('is in English, with no language switch', async () => {
+  it('is in the language this browser remembers, with no language switch', async () => {
     fakeApi({ 'GET /v1/instance': { name: 'Nhà', signup: 'invite', setup_needed: false } })
     session.set(null)
     await renderApp(<SignIn />, { lang: 'vi' })
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Tiếng Việt' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Đăng nhập' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
   it('says nothing of the kind otherwise', async () => {
