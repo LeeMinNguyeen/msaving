@@ -40,7 +40,7 @@ function authHeaders(init?: HeadersInit): Headers {
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = authHeaders(init.headers)
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
   const res = await reach(path, { ...init, headers })
   if (!res.ok) await fail(res)
@@ -66,6 +66,11 @@ export const send = <T>(method: string, path: string, body?: unknown) =>
 
 // Filled into a new transaction from the user's own recent ones (GET .../transactions/suggest).
 export type Suggestion = { account_id: string; category_id: string | null; payee: string | null }
+
+// Files and fields as multipart/form-data; the browser sets the boundary.
+export const upload = <T>(path: string, form: FormData) => api<T>(path, { method: 'POST', body: form })
+
+export type RestoreStatus = { status: 'requested' | 'running' | 'done' | 'failed'; at: string; detail: string | null }
 
 export type Language = 'vi' | 'en'
 

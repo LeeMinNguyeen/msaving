@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Account, Book, Transaction } from '../lib/api'
@@ -71,7 +71,7 @@ describe('filling in from my own history (msaving#65)', () => {
     await userEvent.type(await screen.findByLabelText(/^Amount/), '5000')
     expect(await screen.findByDisplayValue('Gửi xe')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /^Account/ })).toHaveTextContent('Bank')
-    expect(screen.getByRole('combobox', { name: 'Category' })).toHaveTextContent('Parking')
+    expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue('Parking')
     const asked = api.calls.filter((c) => c.path === '/v1/books/b1/transactions/suggest').at(-1)!
     expect(asked.url).toContain('type=expense')
     expect(asked.url).toContain('amount=5000')
@@ -84,9 +84,31 @@ describe('filling in from my own history (msaving#65)', () => {
     await userEvent.click(await screen.findByRole('option', { name: /Cash/ }))
     await userEvent.type(screen.getByLabelText('Payee'), 'Mine')
     await userEvent.type(screen.getByLabelText(/^Amount/), '5000')
-    expect(await screen.findByText('Parking', { selector: '[role="combobox"] *, [role="combobox"]' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue('Parking'))
     expect(screen.getByRole('combobox', { name: /^Account/ })).toHaveTextContent('Cash')
     expect(screen.getByLabelText('Payee')).toHaveValue('Mine')
+  })
+})
+
+describe('picking a category (msaving#67)', () => {
+  it('opens a parent to pick a sub-category, and saves it', async () => {
+    const api = fakeApi({
+      'GET /v1/currencies': currencies,
+      'GET /v1/books/b1/accounts': [cash],
+      'GET /v1/books/b1/categories': [
+        { id: 'needs', name: 'Thiết yếu', parent_id: null, kind: 'expense', color: null, archived_at: null, version: 1 },
+        { id: 'moving', name: 'Di chuyển', parent_id: 'needs', kind: 'expense', color: null, archived_at: null, version: 1 },
+      ],
+      'POST /v1/books/b1/transactions': ({ body }: { body: unknown }) => body,
+    })
+    await renderApp(<TxnDialog book={book} txn={null} onClose={() => {}} />)
+    await userEvent.type(await screen.findByLabelText(/^Amount/), '5000')
+    await userEvent.click(screen.getByRole('combobox', { name: 'Category' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Show the sub-categories of Thiết yếu' }))
+    await userEvent.click(within(screen.getByRole('listbox')).getByText('Di chuyển'))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    expect(api.writes()[0].body).toMatchObject({ category_id: 'moving' })
   })
 })
 

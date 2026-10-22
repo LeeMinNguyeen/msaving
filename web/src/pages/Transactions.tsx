@@ -27,6 +27,7 @@ import { useOpenTxn } from '../components/txnContext'
 import { currentLanguage } from '../i18n'
 import { txnTypes, type Account, type Book, type Transaction } from '../lib/api'
 import { categoryTree } from '../lib/categories'
+import { CategoryPicker } from '../components/CategoryPicker'
 import { formatMoney } from '../lib/money'
 import { useAccounts, useCategories, useCurrencies, useTransactions, type TxnFilters } from '../lib/queries'
 import { DateField } from '../components/DateField'
@@ -116,11 +117,8 @@ export function Transactions({ book }: { book: Book }) {
           <MenuItem value="">{t('filters.allAccounts')}</MenuItem>
           {(accounts.data ?? []).map((a) => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}
         </TextField>
-        <TextField select size="small" value={filters.category_id ?? ''} onChange={(e) => setFilter('category_id', e.target.value)} sx={{ flex: 1, minWidth: 160 }}
-          slotProps={{ select: { displayEmpty: true } }}>
-          <MenuItem value="">{t('filters.allCategories')}</MenuItem>
-          {tree.map(({ category, depth }) => <MenuItem key={category.id} value={category.id} sx={{ pl: 2 + depth * 2 }}>{category.name}</MenuItem>)}
-        </TextField>
+        <CategoryPicker key={`category-${filters.category_id ?? ''}`} size="small" ariaLabel={t('txn.category')} noneLabel={t('filters.allCategories')}
+          options={tree} value={filters.category_id ?? ''} onChange={(v) => setFilter('category_id', v)} sx={{ flex: 1, minWidth: 210 }} />
         <TextField select size="small" value={filters.type ?? ''} onChange={(e) => setFilter('type', e.target.value)} sx={{ flex: 1, minWidth: 140 }}
           slotProps={{ select: { displayEmpty: true } }}>
           <MenuItem value="">{t('filters.allTypes')}</MenuItem>
