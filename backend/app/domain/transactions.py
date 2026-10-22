@@ -72,7 +72,8 @@ def update_transaction(db: Session, t: TxnIn, expected_version: int) -> int:
     a change. Saving with nothing changed keeps the version. The entries are
     rewritten only when they changed, so a header edit or a save of nothing
     adds no entry rows to the audit log (nor moves the change marker for them);
-    the shape check still runs, on the header's type."""
+    the shape check still runs, on the header's type. A purchase that is no longer an expense on its installment
+    plan's card loses the plan."""
     saved = db.execute(text("select account_id, amount from entries where transaction_id = :id"), {"id": t.id}).all()
     entries_changed = sorted((r.account_id, r.amount) for r in saved) != sorted((e.account_id, e.amount) for e in t.entries)
     # The UPDATE locks the header row, so a second device or book member
@@ -92,6 +93,11 @@ def update_transaction(db: Session, t: TxnIn, expected_version: int) -> int:
     if entries_changed:
         db.execute(text("delete from entries where transaction_id = :id"), {"id": t.id})
         _insert_entries(db, t)
+    db.execute(text(
+        "delete from installment_plans p where p.transaction_id = :id and not exists ("
+        " select 1 from transactions t join entries e on e.transaction_id = t.id"
+        "  where t.id = p.transaction_id and t.type = 'expense' and e.account_id = p.account_id"
+        "    and (select count(*) from entries x where x.transaction_id = t.id) = 1)"), {"id": t.id})
     return row.version
 
 

@@ -8,6 +8,7 @@ import CategoryIcon from '@mui/icons-material/CategoryOutlined'
 import DashboardIcon from '@mui/icons-material/SpaceDashboardOutlined'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import LogoutIcon from '@mui/icons-material/Logout'
+import PeopleIcon from '@mui/icons-material/PeopleOutlined'
 import PersonIcon from '@mui/icons-material/PersonOutlined'
 import SettingsIcon from '@mui/icons-material/Settings'
 import AppBar from '@mui/material/AppBar'
@@ -104,6 +105,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
     { to: `/books/${book.id}`, label: t('nav.dashboard'), icon: <DashboardIcon /> },
     { to: `/books/${book.id}/transactions`, label: t('nav.transactions'), icon: <ReceiptLongIcon /> },
     { to: `/books/${book.id}/accounts`, label: t('accounts.title'), icon: <AccountBalanceWalletIcon /> },
+    { to: `/books/${book.id}/people`, label: t('nav.people'), icon: <PeopleIcon />, phoneMore: true },
     { to: `/books/${book.id}/categories`, label: t('nav.categories'), icon: <CategoryIcon /> },
     { to: `/books/${book.id}/settings`, label: t('book.settings'), icon: <SettingsIcon /> },
     ...(me.data?.profile.is_admin ? [{ to: `/books/${book.id}/admin`, label: t('nav.admin'), icon: <AdminPanelSettingsIcon /> }] : []),
@@ -164,7 +166,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
         </Box>
       </Drawer>
       <Box component="main" sx={{ flex: 1, minWidth: 0, px: 4, py: 3 }}>
-        <Box sx={{ maxWidth: 1100 }}>
+        <Box>
           <UpdatingNotice />
           <BookInvites />
           {children}
@@ -174,7 +176,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
   )
 }
 
-type Page = { to: string; label: string; icon: ReactNode }
+type Page = { to: string; label: string; icon: ReactNode; phoneMore?: boolean }
 const NAV_HEIGHT = 56
 
 // Phones: the book's name on top opens a list of books; the main pages sit in
@@ -187,8 +189,9 @@ function PhoneFrame({ book, pages, canAdd, onAdd, admin, children }: {
   const { pathname } = useLocation()
   const books = useBooks()
   const [sheet, setSheet] = useState<'books' | 'more' | null>(null)
-  const main = pages.slice(0, 4) // dashboard, transactions, accounts, categories
+  const main = pages.filter((p) => !p.phoneMore).slice(0, 4) // dashboard, transactions, accounts, categories
   const more: Page[] = [
+    ...pages.filter((p) => p.phoneMore),
     { to: `/books/${book.id}/settings`, label: t('book.settings'), icon: <SettingsIcon /> },
     ...(admin ? [{ to: `/books/${book.id}/admin`, label: t('nav.admin'), icon: <AdminPanelSettingsIcon /> }] : []),
     { to: `/books/${book.id}/profile`, label: t('nav.profile'), icon: <PersonIcon /> },

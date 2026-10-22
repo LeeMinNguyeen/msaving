@@ -1,4 +1,4 @@
-import { interestKinds, last4Kinds, liabilityKinds, type AccountKind } from './api'
+import { accountKinds, interestKinds, last4Kinds, liabilityKinds, type Account, type AccountKind } from './api'
 
 // As the API wants them: the details that don't belong to the kind are sent as
 // null, so changing an account's kind clears them.
@@ -40,4 +40,18 @@ export const ledgerBalance = (kind: AccountKind, typed: number) => (liabilityKin
 // in its edit dialog.
 export function adjustmentFor(kind: AccountKind, typed: number, balanceNow: number): number {
   return ledgerBalance(kind, typed) - balanceNow
+}
+
+export type AccountGroup = { kind: AccountKind; accounts: Account[]; total: number; notIncluded: number }
+
+// One group per kind, in the order of accountKinds; archived accounts show but don't count in the total.
+export function groupByKind(accounts: Account[]): AccountGroup[] {
+  return accountKinds.flatMap((kind) => {
+    const mine = accounts.filter((a) => a.kind === kind)
+    if (!mine.length) return []
+    const counted = mine.filter((a) => !a.archived_at)
+    const total = counted.reduce((sum, a) => sum + (a.converted_balance ?? 0), 0)
+    const notIncluded = counted.filter((a) => a.converted_balance == null).length
+    return [{ kind, accounts: mine, total, notIncluded }]
+  })
 }

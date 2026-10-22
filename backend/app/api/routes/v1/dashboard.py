@@ -51,6 +51,7 @@ class AccountRow(BaseModel):
     balance: int                         # in the account's own currency
     converted_balance: int | None        # in the book's currency at today's rate; None = no rate
     in_net_worth: bool
+    pinned: bool
 
 
 class PersonRow(BaseModel):

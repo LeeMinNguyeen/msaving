@@ -6,7 +6,6 @@ import Button from '@mui/material/Button'
 import ButtonBase from '@mui/material/ButtonBase'
 import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import MenuItem from '@mui/material/MenuItem'
@@ -25,6 +24,8 @@ import { formatMoney } from '../lib/money'
 import { useBudgets, useCurrencies } from '../lib/queries'
 import { newId } from '../lib/uuid'
 import { CategoryPicker } from '../components/CategoryPicker'
+import { DialogFooter } from '../components/DialogFooter'
+import { useToast } from '../lib/toast'
 
 // The old app's preset grid (CategoryFormScreen).
 const COLORS = ['#64748b', '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#06b6d4',
@@ -44,6 +45,7 @@ type Props = {
 // out and its budgets; Edit turns the fields on.
 export function CategoryDialog({ book, all, category, parent, editing: startEditing = false, onTransactions, onClose }: Props) {
   const { t } = useTranslation()
+  const toast = useToast()
   const errorText = useErrorText()
   const qc = useQueryClient()
   const budgets = useBudgets(book.id)
@@ -93,6 +95,7 @@ export function CategoryDialog({ book, all, category, parent, editing: startEdit
       } else {
         await send('POST', `/v1/books/${book.id}/categories`, { id: id.current, name: name.trim(), kind, parent_id: parentId || null, color: color || null })
       }
+      toast(t('toast.categorySaved'))
       onClose()
     } catch (err) {
       setError(err)
@@ -144,7 +147,7 @@ export function CategoryDialog({ book, all, category, parent, editing: startEdit
             {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <DialogFooter>
           {category && !editing && onTransactions && (
             <Button startIcon={<ReceiptLongIcon />} onClick={() => onTransactions(category)}>{t('common.viewTransactions')}</Button>
           )}
@@ -161,7 +164,7 @@ export function CategoryDialog({ book, all, category, parent, editing: startEdit
               {canEdit && <Button key="edit" variant="contained" onClick={() => setEditing(true)}>{t('common.edit')}</Button>}
             </>
           )}
-        </DialogActions>
+        </DialogFooter>
       </form>
     </Dialog>
   )
