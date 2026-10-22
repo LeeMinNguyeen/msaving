@@ -1,12 +1,7 @@
 import AddIcon from '@mui/icons-material/Add'
-import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
-import PushPinIcon from '@mui/icons-material/PushPin'
-import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined'
-import UnarchiveOutlinedIcon from '@mui/icons-material/UnarchiveOutlined'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -237,19 +232,16 @@ export function Accounts({ book }: { book: Book }) {
       <Menu anchorEl={menu?.el} open={!!menu?.el && !!menuAccount} onClose={closeMenu}>
         {menuAccount && [
           <MenuItem key="pin" onClick={() => setPinned(menuAccount, !menuAccount.pinned)}>
-            <ListItemIcon>{menuAccount.pinned ? <PushPinIcon fontSize="small" /> : <PushPinOutlinedIcon fontSize="small" />}</ListItemIcon>
-            <ListItemText>{t(menuAccount.pinned ? 'accounts.unpin' : 'accounts.pin')}</ListItemText>
+            {t(menuAccount.pinned ? 'accounts.unpin' : 'accounts.pin')}
           </MenuItem>,
           canEdit && (
             <MenuItem key="edit" onClick={() => { setDialog({ account: menuAccount, editing: true }); closeMenu() }}>
-              <ListItemIcon><EditOutlinedIcon fontSize="small" /></ListItemIcon>
-              <ListItemText>{t('accounts.edit')}</ListItemText>
+              {t('accounts.edit')}
             </MenuItem>
           ),
           canEdit && (
             <MenuItem key="archive" onClick={() => setArchived(menuAccount, !menuAccount.archived_at)}>
-              <ListItemIcon>{menuAccount.archived_at ? <UnarchiveOutlinedIcon fontSize="small" /> : <ArchiveOutlinedIcon fontSize="small" />}</ListItemIcon>
-              <ListItemText>{t(menuAccount.archived_at ? 'accounts.unarchive' : 'accounts.archive')}</ListItemText>
+              {t(menuAccount.archived_at ? 'accounts.unarchive' : 'accounts.archive')}
             </MenuItem>
           ),
         ]}
