@@ -79,7 +79,8 @@
       "loan": "Khoản vay",
       "lent": "Tiền cho vay",
       "other_asset": "Tài sản khác",
-      "other_liability": "Khoản nợ khác"
+      "other_liability": "Khoản nợ khác",
+      "person": "Người"
     },
     "details": "Chi tiết tài khoản",
     "currentBalance": "Số dư hiện tại",
@@ -195,7 +196,8 @@
     "restore_invalid": "Tệp này không phải bản sao lưu MSaving.",
     "restore_too_new": "Bản sao lưu này từ phiên bản MSaving mới hơn: hãy cập nhật máy chủ này trước.",
     "restore_too_large": "Tệp quá lớn: tối đa 100 MB.",
-    "installment_exists": "Khoản mua này đã có kế hoạch trả góp."
+    "installment_exists": "Khoản mua này đã có kế hoạch trả góp.",
+    "person_account": "Đây là tài khoản riêng của một người: hãy sửa ở mục Vay mượn."
   },
   "nav": {
     "transactions": "Giao dịch",
@@ -249,7 +251,8 @@
     "needTwoAccounts": "Chuyển khoản cần ít nhất hai tài khoản.",
     "sameAccount": "Chọn hai tài khoản khác nhau.",
     "createdBy": "Tạo bởi {{name}}, sửa lần cuối bởi {{editor}}",
-    "otherType": "Loại khác"
+    "otherType": "Loại khác",
+    "people": "Người"
   },
   "filters": {
     "allAccounts": "Mọi tài khoản",
@@ -310,7 +313,8 @@
     "unarchive": "Mở lại",
     "delete": "Xóa",
     "archivedInstead": "Người này đang gắn với một tài khoản nên được đóng thay vì xóa.",
-    "lendHint": "Cho vay hoặc nhận trả là một giao dịch chuyển khoản giữa tài khoản này và tài khoản của bạn."
+    "lendHint": "Cho vay hoặc nhận trả là một giao dịch chuyển khoản giữa tài khoản này và tài khoản của bạn.",
+    "howTo": "Mỗi người cũng là một tài khoản: cho họ vay là chuyển khoản từ một tài khoản của bạn sang họ, họ trả lại là chuyển khoản từ họ về. Khoản họ trả giúp bạn là một khoản chi trên tài khoản của họ."
   },
   "dash": {
     "title": "Tổng quan",

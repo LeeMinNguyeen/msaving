@@ -866,6 +866,48 @@ def test_people_and_lending(client):
     assert [(p["name"], p["owed_to_you"], p["you_owe"]) for p in dash["people"]] == [("Tom", 1_500_000, 0)]
 
 
+def test_people_as_accounts(client):
+    """R-LEND-2: adding a person adds their account, in the currency picked (the book's by default); it's changed
+    through the person, not as an account; deleting a person with nothing recorded deletes it, otherwise both are
+    archived."""
+    import csv
+    import io
+    import zipfile
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}"
+    minh = client.post(f"{base}/contacts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": "Minh"}).json()
+    bob = client.post(f"{base}/contacts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": "Bob", "currency": "USD"}).json()
+    assert (minh["currency"], bob["currency"]) == ("VND", "USD")
+    own = {a["id"]: a for a in client.get(f"{base}/accounts", headers=auth(u)).json()}
+    assert (own[minh["id"]]["kind"], own[minh["id"]]["name"], own[minh["id"]]["contact_id"]) == ("person", "Minh", minh["id"])
+    assert own[bob["id"]]["currency"] == "USD"
+
+    r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": "Sneaky", "kind": "person"})
+    assert r.status_code == 422
+    person = own[minh["id"]]
+    for body in ({"name": "Other"}, {"archived": True}, {"kind": "cash"}):
+        r = client.patch(f"{base}/accounts/{minh['id']}", headers=auth(u), json={"version": person["version"], **body})
+        assert (r.status_code, r.json()) == (409, {"detail": "person_account"}), body
+
+    r = client.post(f"{base}/transactions", headers=auth(u), json={"id": str(uuid.uuid4()), "type": "transfer",
+                    "occurred_on": "2026-10-02", "entries": [{"account_id": accts["Cash"], "amount": -200_000},
+                                                             {"account_id": minh["id"], "amount": 200_000}]})
+    assert r.status_code == 201, r.text
+    people = {c["name"]: c for c in client.get(f"{base}/contacts", headers=auth(u)).json()}
+    assert people["Minh"]["balances"] == [{"currency": "VND", "owed_to_you": 200_000, "you_owe": 0}]
+
+    assert client.delete(f"{base}/contacts/{bob['id']}?version=1", headers=auth(u)).json() == {"deleted": True, "archived": False}
+    assert bob["id"] not in {a["id"] for a in client.get(f"{base}/accounts?include_archived=true", headers=auth(u)).json()}
+    assert client.delete(f"{base}/contacts/{minh['id']}?version=1", headers=auth(u)).json() == {"deleted": False, "archived": True}
+    archived = {a["id"]: a for a in client.get(f"{base}/accounts?include_archived=true", headers=auth(u)).json()}
+    assert archived[minh["id"]]["archived_at"] is not None
+
+    z = zipfile.ZipFile(io.BytesIO(client.get("/v1/me/export", headers=auth(u)).content))
+    rows = {r["Account"]: r for r in csv.DictReader(io.StringIO(z.read("accounts.csv").decode("utf-8-sig")))}
+    assert (rows["Minh"]["Type"], rows["Minh"]["Person"]) == ("person", "Minh")
+
+
 def test_edits_to_amounts_or_accounts_alone_are_versions(client, database):
     """Changing only an amount or an account is an edit like any other: a new version (so a
     second browser still gets 409) and its own line in the history. Saving with nothing changed is neither,

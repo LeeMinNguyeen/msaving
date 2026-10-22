@@ -79,7 +79,8 @@
       "loan": "Loan",
       "lent": "Money lent",
       "other_asset": "Other asset",
-      "other_liability": "Other liability"
+      "other_liability": "Other liability",
+      "person": "Person"
     },
     "details": "Account details",
     "currentBalance": "Current balance",
@@ -195,7 +196,8 @@
     "restore_invalid": "That file isn't an MSaving backup.",
     "restore_too_new": "That backup is from a newer version of MSaving: update this server first.",
     "restore_too_large": "That file is too large: 100 MB at most.",
-    "installment_exists": "This purchase already has an installment plan."
+    "installment_exists": "This purchase already has an installment plan.",
+    "person_account": "This is a person's own account: change it on People."
   },
   "nav": {
     "transactions": "Transactions",
@@ -249,7 +251,8 @@
     "needTwoAccounts": "A transfer needs at least two accounts.",
     "sameAccount": "Pick two different accounts.",
     "createdBy": "Added by {{name}}, last edited by {{editor}}",
-    "otherType": "Other type"
+    "otherType": "Other type",
+    "people": "People"
   },
   "filters": {
     "allAccounts": "All accounts",
@@ -310,7 +313,8 @@
     "unarchive": "Unarchive",
     "delete": "Delete",
     "archivedInstead": "This person is linked to an account, so they were archived instead of deleted.",
-    "lendHint": "Lending or getting paid back is a transfer between this account and one of yours."
+    "lendHint": "Lending or getting paid back is a transfer between this account and one of yours.",
+    "howTo": "Each person is also an account: lending to them is a transfer from one of your accounts to them, and their paying you back a transfer from them. A purchase they paid for you is an expense on them."
   },
   "dash": {
     "title": "Overview",

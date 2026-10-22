@@ -59,6 +59,14 @@ describe('the Overview lists (msaving#73, msaving#74)', () => {
     expect(accounts.queryByText('Pin accounts on Accounts to choose these.')).not.toBeInTheDocument()
   })
 
+  it("leaves people's own accounts out (msaving#85)", async () => {
+    dashServer({ accounts: [{ ...row(1), name: 'Minh', kind: 'person' as const }, row(2)] })
+    await renderApp(<Dashboard book={book} />)
+    const accounts = await cardOf('Accounts')
+    expect(accounts.getByText('Account 2')).toBeInTheDocument()
+    expect(accounts.queryByText('Minh')).not.toBeInTheDocument()
+  })
+
   it('shows the first 5 when none is pinned, and says how to choose', async () => {
     dashServer({ accounts: [1, 2, 3, 4, 5, 6, 7].map((i) => row(i)) })
     await renderApp(<Dashboard book={book} />)

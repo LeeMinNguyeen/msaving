@@ -108,9 +108,10 @@ export function Dashboard({ book }: { book: Book }) {
     openTxn(await api<Transaction>(`/v1/books/${book.id}/transactions/${id}`))
   }
 
-  const empty = d.accounts.length === 0
-  const pinned = d.accounts.filter((a) => a.pinned)
-  const shownAccounts = (pinned.length ? pinned : d.accounts).slice(0, 5)
+  const own = d.accounts.filter((a) => a.kind !== 'person')
+  const empty = own.length === 0
+  const pinned = own.filter((a) => a.pinned)
+  const shownAccounts = (pinned.length ? pinned : own).slice(0, 5)
   // The open exchange rate source's terms ask for this credit wherever its rates are used.
   const converts = d.accounts.some((a) => a.currency !== book.base_currency)
   const credit = converts ? RATE_CREDITS[d.rates_source ?? ''] : undefined

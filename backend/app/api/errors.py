@@ -16,6 +16,7 @@ CODES = {
     "owner_required": 409, "currency_locked": 409, "txn_shape": 422, "category_kind": 422,
     "budget_expense_only": 422, "no_rate": 409, "setup_invalid": 403, "invite_invalid": 403,
     "invite_required": 403, "reset_invalid": 403, "admin_only": 403, "admin_self": 409, "not_found": 404, "invalid_timezone": 422,
+    "person_account": 409,
 }
 UNIQUE = {
     "users_username_key": "username_taken",

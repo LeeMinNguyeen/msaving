@@ -23,6 +23,7 @@ from app.domain.transactions import Entry, TxnIn, create_transaction
 router = APIRouter(prefix="/books/{book_id}/accounts")
 
 Kind = Literal["cash", "checking", "savings", "investment", "credit_card", "loan", "lent", "other_asset", "other_liability"]
+AnyKind = Kind | Literal["person"]                                  # a person's own account comes with the person
 Last4 = Annotated[str, StringConstraints(pattern=r"^[0-9]{4}$")]   # never a full card or account number
 OPENING = uuid.UUID("4f1c2b8e-6a53-4c1e-9d0b-0b9a51f0c7a2")
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
@@ -81,7 +82,7 @@ def opening_balance_id(account_id: UUID) -> UUID:
 class Account(BaseModel):
     id: UUID
     name: str
-    kind: Kind
+    kind: AnyKind
     currency: str
     last4: str | None
     in_net_worth: bool
@@ -170,6 +171,8 @@ class UpdateAccount(Details):
 def update_account(book_id: UUID, account_id: UUID, body: UpdateAccount, db: Session = Depends(get_db)) -> Account:
     require_role(get_book(db, book_id), "owner", "editor")
     current = get_account(db, book_id, account_id)
+    if current.kind == "person":
+        raise HTTPException(409, "person_account")
     details = body.values(body.kind or current.kind, only_sent=True)
     n = db.execute(text("update accounts set name = coalesce(:n, name), kind = coalesce(cast(:k as account_kind), kind),"
                         + "".join(f" {f} = :{f}," for f in details) +

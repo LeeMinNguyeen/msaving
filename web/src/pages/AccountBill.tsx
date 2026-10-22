@@ -141,7 +141,7 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
   // Accounts in the same currency (a payment between currencies stays an ordinary transfer), what's owned first;
   // the account of the last payment is chosen.
   const choices = (accounts.data ?? [])
-    .filter((a) => a.id !== account.id && a.currency === account.currency)
+    .filter((a) => a.id !== account.id && a.currency === account.currency && a.kind !== 'person')
     .sort((a, b) => Number(liabilityKinds.includes(a.kind)) - Number(liabilityKinds.includes(b.kind)))
   const payFrom = from ?? (choices.find((a) => a.id === bill.pay_from) ?? choices[0])?.id ?? ''
   const parsed = parseAmount(amount, minorUnit, lang)
