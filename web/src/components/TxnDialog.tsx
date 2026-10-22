@@ -25,6 +25,7 @@ import { personName } from '../lib/people'
 import { fromPlan, noPlan, validMonths, type PlanForm } from '../lib/installments'
 import { useAccounts, useCategories, useCurrencies, useInstallments, useInvalidateBook } from '../lib/queries'
 import { AmountField } from './AmountField'
+import { CategoryPicker } from './CategoryPicker'
 import { DateField } from './DateField'
 import { TimeField } from './TimeField'
 import { useErrorText } from './errors'
@@ -304,17 +305,8 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
             />
           )}
           {kind && (
-            <TextField select label={t('txn.category')} value={form.category} onChange={(e) => set({ category: e.target.value })}>
-              <MenuItem value="">
-                <em>{t('txn.noCategory')}</em>
-              </MenuItem>
-              {options.map(({ category, depth, path }) => (
-                <MenuItem key={category.id} value={category.id} sx={{ pl: 2 + depth * 2 }}>
-                  <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: category.color ?? 'action.disabled', mr: 1, flexShrink: 0 }} />
-                  {depth ? category.name : path}
-                </MenuItem>
-              ))}
-            </TextField>
+            <CategoryPicker label={t('txn.category')} noneLabel={t('txn.noCategory')} options={options} value={form.category}
+              onChange={(category) => set({ category })} />
           )}
           {card && !readOnly && (!txn || installments.isFetched) && (
             <InstallmentFields card={card} plan={plan} onChange={setPlan} purchaseDate={form.date}

@@ -276,7 +276,9 @@
     "archivedInstead": "This category has transactions, so it was archived instead of deleted.",
     "empty": "No categories yet.",
     "details": "Category details",
-    "budgets": "Budgets"
+    "budgets": "Budgets",
+    "showSubs": "Show the sub-categories of {{name}}",
+    "hideSubs": "Hide the sub-categories of {{name}}"
   },
   "people": {
     "deletedUser": "Deleted user",
