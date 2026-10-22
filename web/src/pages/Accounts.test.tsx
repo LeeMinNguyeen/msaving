@@ -21,11 +21,13 @@ const all = [
   account('lent', 'Lent to Lan', 'lent', 100_000, 100_000),
 ]
 
-function server() {
+function server(accounts = all) {
   return fakeApi({
     'GET /v1/currencies': [...currencies, { code: 'KWD', minor_unit: 3, name: 'Kuwaiti dinar' }],
-    'GET /v1/books/b1/accounts': all,
+    'GET /v1/books/b1/accounts': accounts,
     'GET /v1/books/b1/contacts': [],
+    'PUT /v1/books/b1/accounts/cash/pin': undefined,
+    'DELETE /v1/books/b1/accounts/mom/pin': undefined,
   })
 }
 
@@ -62,5 +64,28 @@ describe('Accounts grouped by kind (msaving#64)', () => {
     await renderApp(<Accounts book={book} />)
     await screen.findByText('Nợ mẹ')
     expect(screen.queryByText('People you lend to or borrow from')).not.toBeInTheDocument()
+  })
+})
+
+describe('pinning accounts to the Overview (msaving#74)', () => {
+  beforeEach(() => desktop(true))
+  afterEach(() => desktop(false))
+
+  it('pins and unpins from the list', async () => {
+    const api = server(all.map((a) => (a.id === 'mom' ? { ...a, pinned: true } : { ...a, pinned: false })))
+    await renderApp(<Accounts book={book} />)
+    const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('tr')!
+    await userEvent.click(within(cash).getByRole('button', { name: 'Pin to the Overview' }))
+    const mom = screen.getByText('Nợ mẹ').closest('tr')!
+    await userEvent.click(within(mom).getByRole('button', { name: 'Unpin from the Overview' }))
+    expect(api.writes().map((c) => `${c.method} ${c.path}`)).toEqual([
+      'PUT /v1/books/b1/accounts/cash/pin', 'DELETE /v1/books/b1/accounts/mom/pin'])
+  })
+
+  it('lets a viewer pin too: a pin is their own view', async () => {
+    server()
+    await renderApp(<Accounts book={{ ...book, role: 'viewer' }} />)
+    const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('tr')!
+    expect(within(cash).getByRole('button', { name: 'Pin to the Overview' })).toBeInTheDocument()
   })
 })

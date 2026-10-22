@@ -166,7 +166,7 @@ function Frame({ book, children, onAdd }: { book: Book; children: ReactNode; onA
         </Box>
       </Drawer>
       <Box component="main" sx={{ flex: 1, minWidth: 0, px: 4, py: 3 }}>
-        <Box sx={{ maxWidth: 1100 }}>
+        <Box>
           <UpdatingNotice />
           <BookInvites />
           {children}

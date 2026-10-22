@@ -2,6 +2,8 @@ import AddIcon from '@mui/icons-material/Add'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
+import PushPinIcon from '@mui/icons-material/PushPin'
+import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -72,6 +74,12 @@ export function Accounts({ book }: { book: Book }) {
       {folded.has(kind) ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
     </IconButton>
   )
+  const pinButton = (a: Account) => (
+    <IconButton size="small" aria-label={t(a.pinned ? 'accounts.unpin' : 'accounts.pin')} aria-pressed={!!a.pinned}
+      color={a.pinned ? 'primary' : 'default'} onClick={() => setPinned(a, !a.pinned)}>
+      {a.pinned ? <PushPinIcon fontSize="small" /> : <PushPinOutlinedIcon fontSize="small" />}
+    </IconButton>
+  )
   const groupTotal = (g: AccountGroup) => (
     <>
       <Typography variant="subtitle2" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }} color={g.total < 0 ? 'error' : undefined}>
@@ -80,6 +88,17 @@ export function Accounts({ book }: { book: Book }) {
       {g.notIncluded > 0 && <Typography variant="caption" color="text.secondary">{t('accounts.notIncluded', { count: g.notIncluded })}</Typography>}
     </>
   )
+
+  async function setPinned(account: Account, pinned: boolean) {
+    setError(null)
+    try {
+      await send(pinned ? 'PUT' : 'DELETE', `/v1/books/${book.id}/accounts/${account.id}/pin`)
+    } catch (err) {
+      setError(err)
+    }
+    await qc.invalidateQueries({ queryKey: ['books', book.id, 'accounts'] })
+    await qc.invalidateQueries({ queryKey: ['books', book.id, 'dashboard'] })
+  }
 
   async function setArchived(account: Account, archived: boolean) {
     setMenu(null)
@@ -118,6 +137,7 @@ export function Accounts({ book }: { book: Book }) {
                 <TableCell>{t('accounts.currency')}</TableCell>
                 <TableCell align="right">{t('accounts.balance')}</TableCell>
                 <TableCell padding="checkbox" />
+                <TableCell padding="checkbox" />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -131,6 +151,7 @@ export function Accounts({ book }: { book: Book }) {
                       </Stack>
                     </TableCell>
                     <TableCell align="right" sx={{ py: 0.5 }}>{groupTotal(g)}</TableCell>
+                    <TableCell padding="checkbox" />
                     <TableCell padding="checkbox" />
                   </TableRow>
                   {!folded.has(g.kind) && g.accounts.map((a) => (
@@ -153,6 +174,7 @@ export function Accounts({ book }: { book: Book }) {
                       <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', color: a.balance < 0 ? 'error.main' : undefined }}>
                         {money(a)}
                       </TableCell>
+                      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>{pinButton(a)}</TableCell>
                       <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                         {canEdit && (
                           <IconButton aria-label={t('accounts.edit')} onClick={(e) => setMenu({ el: e.currentTarget, account: a })}>
@@ -186,11 +208,14 @@ export function Accounts({ book }: { book: Book }) {
                   divider
                   disablePadding
                   secondaryAction={
-                    canEdit && (
-                      <IconButton edge="end" aria-label={t('accounts.edit')} onClick={(e) => setMenu({ el: e.currentTarget, account: a })}>
-                        <MoreVertIcon />
-                      </IconButton>
-                    )
+                    <Stack direction="row">
+                      {pinButton(a)}
+                      {canEdit && (
+                        <IconButton edge="end" aria-label={t('accounts.edit')} onClick={(e) => setMenu({ el: e.currentTarget, account: a })}>
+                          <MoreVertIcon />
+                        </IconButton>
+                      )}
+                    </Stack>
                   }
                 >
                   {/* Left out of net worth: greyed out but still clickable */}
