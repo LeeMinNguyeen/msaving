@@ -307,8 +307,9 @@ def test_monthly_bills(client, database):
     assert (b.amount, b.paid, b.remaining, b.owed_now) == (1_500_000, 420_000, 1_080_000, 1_130_000)
     assert b.pay_from == uuid.UUID(accts["Bank"])
     txn("transfer", "2026-10-09", (accts["Bank"], -1_080_000), (card, 1_080_000))
-    assert bill(card, d(2026, 10, 20)).remaining == 0
-    assert bill(card, d(2026, 9, 25)).period_end == d(2026, 8, 25)
+    b = bill(card, d(2026, 10, 20))                                     # paid: the next statement so far
+    assert (b.statement_open, b.period_end, b.amount, b.remaining) == (True, d(2026, 10, 25), 50_000, 50_000)
+    assert bill(card, d(2026, 9, 25)).period_end == d(2026, 9, 25)      # the statement day itself is still open
 
     # A 0 % installment contract: 12,000,000 over 12 months, a 240,000 fee with the first payment.
     phone = account("loan", -12_000_000, "2026-10-01", installment=1_000_000, payment_due_day=15, installment_fee=240_000)
@@ -352,6 +353,81 @@ def test_monthly_bills(client, database):
         r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": uuid.uuid4().hex[:8],
                         "kind": kind, **details})
         assert r.status_code == 422, (kind, details)
+
+
+def test_open_statement(client, database):
+    """R-ACC-9: a card shows last month's statement while it has something to pay, then the next statement so far,
+    with only what's new in it: spending up to its date and the installments and fees it will bill, less any
+    payment beyond last month's statement. Once last month's is paid off, or had nothing to pay, only the open one
+    shows; when that one closes unpaid, it's the one due."""
+    from datetime import date as d
+    from types import SimpleNamespace
+
+    from sqlalchemy.orm import Session
+
+    from app.domain.bills import bill_for, bills_for
+    u = signed_up(client)
+    bid, accts = new_book_with_accounts(client, u)
+    base = f"/v1/books/{bid}"
+
+    def account(**details):
+        r = client.post(f"{base}/accounts", headers=auth(u), json={"id": str(uuid.uuid4()), "name": uuid.uuid4().hex[:8],
+                        "kind": "credit_card", "opening_balance": 0, "opened_on": "2026-08-01", "statement_day": 1,
+                        "payment_due_day": 15, **details})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    def txn(type_, day, *entries, payee=None):
+        txn_id = str(uuid.uuid4())
+        r = client.post(f"{base}/transactions", headers=auth(u), json={"id": txn_id, "type": type_, "occurred_on": day,
+                        "payee": payee, "entries": [{"account_id": a, "amount": m} for a, m in entries]})
+        assert r.status_code == 201, r.text
+        return txn_id
+
+    def bills(account_id, today, one=False):
+        a = SimpleNamespace(**next(x for x in client.get(f"{base}/accounts", headers=auth(u)).json() if x["id"] == account_id))
+        a.id = uuid.UUID(a.id)
+        with Session(database) as s:
+            return bill_for(s, a, today) if one else bills_for(s, a, today)
+
+    def summary(b):
+        return (b.statement_open, b.period_start, b.period_end, b.due_on, b.amount, b.remaining)
+
+    # Statements on the 1st, due on the 15th. September's 300,000 isn't paid yet; in October, a laptop in six
+    # installments with a 60,000 fee split into them, and a coffee.
+    card = account(credit_limit=10_000_000)
+    txn("expense", "2026-09-20", (card, -300_000))
+    laptop = txn("expense", "2026-10-05", (card, -4_390_793), payee="Laptop")
+    txn("expense", "2026-10-21", (card, -120_000))
+    r = client.post(f"{base}/installments", headers=auth(u), json={"id": str(uuid.uuid4()), "transaction_id": laptop,
+                    "months": 6, "fee": 60_000, "fee_split": True})
+    assert r.status_code == 201 and r.json()["first_statement"] == "2026-11-01"
+    due, upcoming = bills(card, d(2026, 10, 22))
+    assert summary(due) == (False, d(2026, 9, 2), d(2026, 10, 1), d(2026, 10, 15), 300_000, 300_000)
+    assert summary(upcoming) == (True, d(2026, 10, 2), d(2026, 11, 1), d(2026, 11, 15), 861_798, 861_798)
+    assert [(i["number"], i["amount"]) for i in upcoming.installments] == [(1, 731_798)]
+    assert ([f["amount"] for f in upcoming.fees], upcoming.fee, upcoming.paid) == ([10_000], 10_000, 0)
+    assert not bills(card, d(2026, 10, 22), one=True).statement_open           # the one due comes first
+
+    # Paid off: only the open statement. Paying more brings it down.
+    txn("transfer", "2026-10-10", (accts["Bank"], -300_000), (card, 300_000))
+    [only] = bills(card, d(2026, 10, 22))
+    assert summary(only) == (True, d(2026, 10, 2), d(2026, 11, 1), d(2026, 11, 15), 861_798, 861_798)
+    assert only.owed_now == 4_510_793
+    txn("transfer", "2026-10-22", (accts["Bank"], -100_000), (card, 100_000))
+    assert [b.amount for b in bills(card, d(2026, 10, 22))] == [761_798]
+
+    # Nothing on the last statement: the open one only. Once it closes unpaid, it's due, and the next has nothing yet.
+    fresh = account()
+    txn("expense", "2026-10-21", (fresh, -50_000))
+    assert [summary(b) for b in bills(fresh, d(2026, 10, 22))] == [(True, d(2026, 10, 2), d(2026, 11, 1), d(2026, 11, 15), 50_000, 50_000)]
+    assert [(b.statement_open, b.amount) for b in bills(fresh, d(2026, 11, 2))] == [(False, 50_000), (True, 0)]
+
+    # The API: the list, and the one due on its own.
+    r = client.get(f"{base}/accounts/{card}/bills", headers=auth(u))
+    assert r.status_code == 200 and all(b["statement_open"] for b in r.json())
+    assert client.get(f"{base}/accounts/{accts['Cash']}/bills", headers=auth(u)).json() == []
+    assert client.get(f"{base}/accounts/{card}/bills", headers=auth(signed_up(client))).status_code == 404
 
 
 def test_installment_plans(client, database):
@@ -412,8 +488,9 @@ def test_installment_plans(client, database):
     assert fee["amount"] == 120_000
     txn("expense", "2026-10-02", (card, -120_000), txn_id=fee["transaction_id"])           # what Pay records
     txn("transfer", "2026-10-02", (accts["Bank"], -1_420_000), (card, 1_420_000))
-    b = bill(card, d(2026, 10, 3))
-    assert (b.amount, b.fee, b.fees, b.remaining) == (1_300_000, 0, [], 0)                 # the fee once
+    b = bill(card, d(2026, 10, 3))                                     # paid: October's statement so far
+    assert (b.statement_open, b.amount, b.fee, b.fees) == (True, 1_000_000, 0, [])          # the fee once
+    assert [i["number"] for i in b.installments] == [2]
 
     # October: the second installment only; the balance still says what's owed.
     b = bill(card, d(2026, 11, 1))
@@ -423,7 +500,6 @@ def test_installment_plans(client, database):
     r = client.patch(f"{base}/installments/{p['id']}", headers=auth(u), json={"version": 1, "counts_toward_limit": False})
     assert r.status_code == 200 and r.json()["version"] == 2
     assert bill(card, d(2026, 11, 1)).limit_used == 1_000_000          # the 4,000,000 not billed yet doesn't count
-    txn("transfer", "2026-11-05", (accts["Bank"], -1_000_000), (card, 1_000_000))
 
     # A phone bought on the 30th, converted on 2 November: its first installment is on the November statement,
     # and its fee is split into the three.
@@ -431,6 +507,7 @@ def test_installment_plans(client, database):
     r = plan(phone, months=3, converted_on="2026-11-02", fee=100_000, fee_split=True)
     assert r.status_code == 201 and r.json()["first_statement"] == "2026-11-25"
     assert bill(card, d(2026, 11, 3)).amount == 1_000_000              # not on the October statement
+    txn("transfer", "2026-11-05", (accts["Bank"], -1_000_000), (card, 1_000_000))
     b = bill(card, d(2026, 11, 26))
     assert b.amount == 2_033_333
     assert sorted((i["months"], i["number"], i["amount"]) for i in b.installments) == [(3, 1, 1_000_000), (6, 3, 1_000_000)]

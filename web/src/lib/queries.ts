@@ -29,10 +29,10 @@ export function useCurrencies() {
 }
 
 // Under the book's accounts, so it's fetched again whenever they are.
-export function useBill(bookId: string, accountId: string, enabled: boolean) {
+export function useBills(bookId: string, accountId: string, enabled: boolean) {
   return useQuery({
-    queryKey: ['books', bookId, 'accounts', 'bill', accountId],
-    queryFn: () => api<Bill | null>(`/v1/books/${bookId}/accounts/${accountId}/bill`),
+    queryKey: ['books', bookId, 'accounts', 'bills', accountId],
+    queryFn: () => api<Bill[]>(`/v1/books/${bookId}/accounts/${accountId}/bills`),
     enabled,
   })
 }

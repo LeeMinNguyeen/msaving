@@ -3,6 +3,8 @@
 A credit card's bill is its statement balance, as a bank counts it: what the card owed at the end of its last
 statement date (that day's transactions included; a month without that day uses its last day), earlier unpaid
 amounts included, minus all the money in since. It's due on the first repayment day after the statement date.
+Next to it is the next statement so far, with only what's new in it: what it would ask for if it closed today, less
+what the last one still asks for. Once the last one is paid off, or had nothing to pay, only the next one shows.
 
 A purchase on a card paid in installments stays one expense for its full amount; the bill leaves out the part of
 it no statement has billed yet. Each statement bills one installment per plan (the last takes what's left, and a plan
@@ -129,6 +131,7 @@ class Bill:
     installments: list[dict] = field(default_factory=list)   # card: this statement's, {plan_id, transaction_id, payee, number, months, amount}
     fees: list[dict] = field(default_factory=list)           # card: installment fees to record, {plan_id, transaction_id, payee, amount}
     limit_used: int | None = None                            # card: owed now, less what plans that don't count haven't billed
+    statement_open: bool = False                             # card: the next statement so far
 
 
 def _sum(db: Session, sql: str, **params) -> int:
@@ -149,47 +152,79 @@ def _last_payer(db: Session, account_id: UUID) -> UUID | None:
         " order by t.occurred_on desc, t.occurred_time desc, t.created_at desc limit 1"), {"a": account_id}).scalar()
 
 
+@dataclass
+class _Statement:
+    amount: int
+    fee: int
+    installments: list[dict]
+    fees: list[dict]
+    not_counted: int
+
+
+def _card_statement(db: Session, a: UUID, day: int, closes: date, today: date) -> _Statement:
+    """The statement that closes on `closes`, the one before it having closed a month earlier."""
+    before = last_statement(closes, day)
+    owed = max(0, -_sum(db, "t.occurred_on <= :d", a=a, d=closes))
+    unbilled = not_counted = 0
+    lines, fees = [], []
+    for p in db.execute(text(PLANS + " where p.account_id = :a"), {"a": a}).mappings():
+        plan = SimpleNamespace(**p)
+        if plan.occurred_on > closes:
+            if not plan.counts_toward_limit and plan.occurred_on <= today:
+                not_counted += plan.amount
+            continue
+        shares = parts(plan.amount, plan.months)
+        done, done_before = billed(plan, day, closes), billed(plan, day, before)
+        left = plan.amount - sum(shares[:done])
+        unbilled += left
+        if not plan.counts_toward_limit:
+            not_counted += left
+        if done > done_before:
+            lines.append({"plan_id": plan.id, "transaction_id": plan.transaction_id, "payee": plan.payee,
+                          "number": done, "months": plan.months, "amount": sum(shares[done_before:done])})
+        if plan.fee:
+            fee_parts = parts(plan.fee, plan.months) if plan.fee_split else [plan.fee]
+            for number in range(1, min(done, len(fee_parts)) + 1):
+                fee_id = installment_fee_transaction_id(plan.id, number)
+                if not _exists(db, fee_id):
+                    fees.append({"plan_id": plan.id, "transaction_id": fee_id, "payee": plan.payee, "amount": fee_parts[number - 1]})
+    fee = sum(f["amount"] for f in fees)
+    return _Statement(max(0, owed - unbilled) + fee, fee, lines, fees, not_counted)
+
+
 def bill_for(db: Session, account, today: date) -> Bill | None:
-    """`today` is the book's date. None when the account has no bill: not a card or a loan, or missing a card's
-    statement and repayment days or a loan's installment and payment day."""
+    """The first of `bills_for`, the one due now; None when there's none."""
+    bills = bills_for(db, account, today)
+    return bills[0] if bills else None
+
+
+def bills_for(db: Session, account, today: date) -> list[Bill]:
+    """`today` is the book's date. A card's last statement while it has something to pay, then the next one so far;
+    a loan's installment. Empty when the account has no bill: not a card or a loan, or missing a card's statement and
+    repayment days or a loan's installment and payment day."""
     a = account.id
     owed_now = max(0, -account.balance)
     if account.kind == "credit_card" and account.statement_day and account.payment_due_day:
         day = account.statement_day
         closed = last_statement(today, day)
-        before = last_statement(closed, day)
-        owed = max(0, -_sum(db, "t.occurred_on <= :d", a=a, d=closed))
+        s = _card_statement(db, a, day, closed, today)
         paid = _sum(db, "e.amount > 0 and t.occurred_on > :d", a=a, d=closed)
-        unbilled = not_counted = 0
-        lines, fees = [], []
-        for p in db.execute(text(PLANS + " where p.account_id = :a"), {"a": a}).mappings():
-            plan = SimpleNamespace(**p)
-            if plan.occurred_on > closed:
-                if not plan.counts_toward_limit and plan.occurred_on <= today:
-                    not_counted += plan.amount
-                continue
-            shares = parts(plan.amount, plan.months)
-            done, done_before = billed(plan, day, closed), billed(plan, day, before)
-            left = plan.amount - sum(shares[:done])
-            unbilled += left
-            if not plan.counts_toward_limit:
-                not_counted += left
-            if done > done_before:
-                lines.append({"plan_id": plan.id, "transaction_id": plan.transaction_id, "payee": plan.payee,
-                              "number": done, "months": plan.months, "amount": sum(shares[done_before:done])})
-            if plan.fee:
-                fee_parts = parts(plan.fee, plan.months) if plan.fee_split else [plan.fee]
-                for number in range(1, min(done, len(fee_parts)) + 1):
-                    fee_id = installment_fee_transaction_id(plan.id, number)
-                    if not _exists(db, fee_id):
-                        fees.append({"plan_id": plan.id, "transaction_id": fee_id, "payee": plan.payee, "amount": fee_parts[number - 1]})
-        fee = sum(f["amount"] for f in fees)
-        amount = max(0, owed - unbilled) + fee
-        return Bill(kind="card", period_start=before + timedelta(days=1), period_end=closed,
-                    due_on=first_after(closed, account.payment_due_day), amount=amount, paid=paid,
-                    remaining=max(0, amount - paid), owed_now=owed_now, interest=0, interest_transaction_id=None, fee=fee,
-                    fee_transaction_id=None, pay_from=_last_payer(db, a), installments=lines, fees=fees,
-                    limit_used=max(0, owed_now - not_counted))
+        left = max(0, s.amount - paid)
+        common = {"kind": "card", "owed_now": owed_now, "interest": 0, "interest_transaction_id": None, "fee_transaction_id": None,
+                  "pay_from": _last_payer(db, a), "limit_used": max(0, owed_now - s.not_counted)}
+        upcoming = first_after(closed, day)
+        n = _card_statement(db, a, day, upcoming, today)
+        listed = {f["transaction_id"] for f in s.fees} if left else set()
+        fees = [f for f in n.fees if f["transaction_id"] not in listed]
+        amount = max(0, n.amount - left)
+        nxt = Bill(period_start=closed + timedelta(days=1), period_end=upcoming, due_on=first_after(upcoming, account.payment_due_day),
+                   amount=amount, paid=0, remaining=amount, fee=min(amount, sum(f["amount"] for f in fees)),
+                   installments=n.installments, fees=fees, statement_open=True, **common)
+        if not left:
+            return [nxt]
+        return [Bill(period_start=last_statement(closed, day) + timedelta(days=1), period_end=closed,
+                     due_on=first_after(closed, account.payment_due_day), amount=s.amount, paid=paid, remaining=left,
+                     fee=s.fee, installments=s.installments, fees=s.fees, **common), nxt]
     if account.kind == "loan" and account.installment and account.payment_due_day:
         due = next_on_or_after(today, account.payment_due_day)
         before = _month_before(due, account.payment_due_day)
@@ -202,8 +237,8 @@ def bill_for(db: Session, account, today: date) -> Bill | None:
         fee = (account.installment_fee or 0) if owed_before and not _exists(db, fee_id) else 0
         to_record = 0 if _exists(db, interest_id) else min(interest, installment)
         amount = installment + fee
-        return Bill(kind="loan", period_start=before + timedelta(days=1), period_end=due, due_on=due, amount=amount,
-                    paid=paid, remaining=max(0, amount - paid), owed_now=owed_now, interest=to_record,
-                    interest_transaction_id=interest_id if to_record else None, fee=fee,
-                    fee_transaction_id=fee_id if fee else None, pay_from=_last_payer(db, a))
-    return None
+        return [Bill(kind="loan", period_start=before + timedelta(days=1), period_end=due, due_on=due, amount=amount,
+                     paid=paid, remaining=max(0, amount - paid), owed_now=owed_now, interest=to_record,
+                     interest_transaction_id=interest_id if to_record else None, fee=fee,
+                     fee_transaction_id=fee_id if fee else None, pay_from=_last_payer(db, a))]
+    return []

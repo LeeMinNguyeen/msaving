@@ -24,7 +24,7 @@ import { currentLanguage } from '../i18n'
 import { liabilityKinds, send, type Account, type Bill, type Book, type InstallmentPlan } from '../lib/api'
 import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
-import { useAccounts, useBill, useInstallments, useInvalidateBook } from '../lib/queries'
+import { useAccounts, useBills, useInstallments, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
 import { DialogFooter } from '../components/DialogFooter'
 import { useToast } from '../lib/toast'
@@ -32,23 +32,44 @@ import { useToast } from '../lib/toast'
 const dateIn = (locale: string, options: Intl.DateTimeFormatOptions) => (iso: string) =>
   new Intl.DateTimeFormat(locale, options).format(new Date(`${iso}T00:00:00`))
 
-// The server works out the bill (backend/app/domain/bills.py).
+const dayBefore = (iso: string) => {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+// The server works out the bills (backend/app/domain/bills.py): a card's last statement while it has something to
+// pay, then the next one so far; a loan's installment.
 export function BillPanel({ book, account, minorUnit, canPay }: { book: Book; account: Account; minorUnit: number; canPay: boolean }) {
   const { t } = useTranslation()
-  const lang = currentLanguage()
-  const bill = useBill(book.id, account.id, true)
-  const [paying, setPaying] = useState(false)
-  if (!bill.isSuccess) return null
-  const b = bill.data
-  if (!b) return canPay ? <Alert severity="info">{t(account.kind === 'loan' ? 'bill.needsLoan' : 'bill.needsCard')}</Alert> : null
+  const bills = useBills(book.id, account.id, true)
+  if (!bills.isSuccess) return null
+  if (!bills.data.length) return canPay ? <Alert severity="info">{t(account.kind === 'loan' ? 'bill.needsLoan' : 'bill.needsCard')}</Alert> : null
+  return (
+    <Stack spacing={2}>
+      {bills.data.map((b, i) => (
+        <BillCard key={b.period_end} book={book} account={account} bill={b} minorUnit={minorUnit} canPay={canPay}
+          alone={bills.data.length === 1} last={i === bills.data.length - 1} />
+      ))}
+    </Stack>
+  )
+}
 
+function BillCard({ book, account, bill: b, minorUnit, canPay, alone, last }: {
+  book: Book; account: Account; bill: Bill; minorUnit: number; canPay: boolean; alone: boolean; last: boolean
+}) {
+  const { t } = useTranslation()
+  const lang = currentLanguage()
+  const [paying, setPaying] = useState(false)
   const locale = lang === 'vi' ? 'vi-VN' : 'en-GB'
   const day = dateIn(locale, { dateStyle: 'medium' })
   const short = dateIn(locale, { day: 'numeric', month: 'short' })
   const money = (v: number) => formatMoney(v, account.currency, minorUnit, lang)
   const daysLeft = Math.round((Date.parse(b.due_on) - Date.parse(todayIn(book.timezone))) / 86_400_000)
+  const open = b.kind === 'card' && !!b.statement_open
   const status: { color: 'success' | 'error' | 'warning' | 'default'; label: string } =
-    b.remaining === 0 ? { color: 'success', label: t('bill.settled') }
+    open ? { color: 'default', label: t('bill.open') }
+      : b.remaining === 0 ? { color: 'success', label: t('bill.settled') }
       : daysLeft < 0 ? { color: 'error', label: t('bill.overdue') }
         : { color: daysLeft <= 3 ? 'warning' : 'default', label: daysLeft === 0 ? t('bill.dueToday') : t('bill.daysLeft', { days: daysLeft }) }
   const row = (label: string, value: ReactNode) => (
@@ -63,29 +84,31 @@ export function BillPanel({ book, account, minorUnit, canPay }: { book: Book; ac
       <Stack spacing={1}>
         <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-            {b.kind === 'card' ? t('bill.cardTitle', { from: short(b.period_start), to: short(b.period_end) }) : t('bill.loanTitle')}
+            {b.kind === 'card' ? t(open ? 'bill.openTitle' : 'bill.cardTitle', { from: short(b.period_start), to: short(b.period_end) })
+              : t('bill.loanTitle')}
           </Typography>
           <Chip size="small" color={status.color} label={status.label} />
         </Stack>
+        {open && alone && <Typography variant="body2" color="text.secondary">{t('bill.lastSettled', { date: short(dayBefore(b.period_start)) })}</Typography>}
         {b.kind === 'card'
-          ? row(t('bill.statementBalance'), money(b.amount - b.fee))
+          ? row(t(open ? 'bill.soFar' : 'bill.statementBalance'), money(b.amount - b.fee))
           : row(t('bill.installment'), <>{money(b.amount - b.fee)}{b.interest > 0 && <Typography component="span" variant="caption"
             color="text.secondary" sx={{ display: 'block' }}>{t('bill.ofWhichInterest', { amount: money(b.interest) })}</Typography>}</>)}
         {(b.installments ?? []).map((i) => (
           <Box key={i.plan_id}>{row(t('bill.installmentLine', { payee: i.payee ?? t('plan.purchase'), number: i.number, months: i.months }), money(i.amount))}</Box>
         ))}
         {b.fee > 0 && row(t(b.kind === 'card' ? 'bill.installmentFees' : 'bill.fee'), money(b.fee))}
-        {row(t(b.kind === 'card' ? 'bill.paidSince' : 'bill.paid'), money(b.paid))}
+        {open ? row(t('bill.statementDate'), day(b.period_end)) : row(t(b.kind === 'card' ? 'bill.paidSince' : 'bill.paid'), money(b.paid))}
         {row(t('bill.due'), day(b.due_on))}
         <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
           <div>
-            <Typography variant="body2" color="text.secondary">{t('bill.remaining')}</Typography>
+            <Typography variant="body2" color="text.secondary">{t(open ? 'bill.toPaySoFar' : 'bill.remaining')}</Typography>
             <Typography variant="h6">{money(b.remaining)}</Typography>
           </div>
-          {canPay && b.remaining > 0 && <Button variant="contained" onClick={() => setPaying(true)}>{t('bill.pay')}</Button>}
+          {canPay && <Button variant="contained" onClick={() => setPaying(true)}>{t('bill.pay')}</Button>}
         </Stack>
-        {b.kind === 'card' && row(t('bill.owedNow'), money(b.owed_now))}
-        {b.kind === 'card' && account.credit_limit !== null && b.limit_used != null &&
+        {b.kind === 'card' && last && row(t('bill.owedNow'), money(b.owed_now))}
+        {b.kind === 'card' && last && account.credit_limit !== null && b.limit_used != null &&
           row(t('bill.limitUsed'), t('bill.limitOf', { used: money(b.limit_used), limit: money(account.credit_limit) }))}
       </Stack>
       {paying && <PayBillDialog book={book} account={account} bill={b} minorUnit={minorUnit} onClose={() => setPaying(false)} />}
@@ -108,7 +131,7 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
   const accounts = useAccounts(book.id, false)
   const transferId = useRef(newId())
   const [from, setFrom] = useState<string | null>(null)
-  const [amount, setAmount] = useState(() => amountText(bill.remaining, minorUnit, lang))
+  const [amount, setAmount] = useState(() => bill.remaining > 0 ? amountText(bill.remaining, minorUnit, lang) : '')
   const [date, setDate] = useState(() => todayIn(book.timezone))
   const [time, setTime] = useState(() => timeIn(book.timezone))
   const [badDate, setBadDate] = useState(false)
@@ -221,12 +244,11 @@ export function InstallmentsPanel({ book, account, minorUnit, canEdit }: { book:
       <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }}>{t('plan.title')}</Typography>
       <List dense disablePadding>
         {mine.map((p) => (
-          <ListItem key={p.id} disableGutters secondaryAction={canEdit && !p.ended_on && (
-            <Button size="small" onClick={() => setEnding(p)}>{t('plan.endEarly')}</Button>
-          )}>
+          <ListItem key={p.id} disableGutters sx={{ gap: 1 }}>
             <ListItemText primary={p.payee ?? t('plan.purchaseOn', { date: day(p.occurred_on) })}
               secondary={p.ended_on ? t('plan.endsNext', { left: money(p.left_to_bill) })
                 : t('plan.progress', { billed: p.billed, months: p.months, installment: money(p.installment), left: money(p.left_to_bill) })} />
+            {canEdit && !p.ended_on && <Button size="small" sx={{ flexShrink: 0 }} onClick={() => setEnding(p)}>{t('plan.endEarly')}</Button>}
           </ListItem>
         ))}
       </List>

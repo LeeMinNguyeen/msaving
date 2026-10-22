@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.api.models import CurrencyCode, Name
 from app.api.routes.v1.books import get_book, require_role
-from app.domain.bills import Bill, bill_for
+from app.domain.bills import Bill, bill_for, bills_for
 from app.domain.transactions import Entry, TxnIn, create_transaction
 
 router = APIRouter(prefix="/books/{book_id}/accounts")
@@ -210,3 +210,9 @@ def account_bill(book_id: UUID, account_id: UUID, db: Session = Depends(get_db))
     """Null for an account with no bill: not a card or a loan, or missing what a bill needs."""
     book = get_book(db, book_id)
     return bill_for(db, get_account(db, book_id, account_id), datetime.now(ZoneInfo(book.timezone)).date())
+
+
+@router.get("/{account_id}/bills")
+def account_bills(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> list[Bill]:
+    book = get_book(db, book_id)
+    return bills_for(db, get_account(db, book_id, account_id), datetime.now(ZoneInfo(book.timezone)).date())
