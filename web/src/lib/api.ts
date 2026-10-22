@@ -115,7 +115,8 @@ export type BookInvite = { book_id: string; book_name: string; role: Role; invit
 export const accountKinds = [
   'cash', 'checking', 'savings', 'investment', 'credit_card', 'loan', 'lent', 'other_asset', 'other_liability',
 ] as const
-export type AccountKind = (typeof accountKinds)[number]
+// 'person': a person's own account, which comes with the person (People), not one of the kinds to add.
+export type AccountKind = (typeof accountKinds)[number] | 'person'
 // Liabilities have negative balances: what's owed is entered as a positive amount.
 export const liabilityKinds: readonly AccountKind[] = ['credit_card', 'loan', 'other_liability']
 // Which kinds have card or account numbers, an interest rate, the credit card
@@ -269,6 +270,7 @@ export type Contact = {
   note: string | null
   archived_at: string | null
   version: number
+  currency: string | null // of their own account, which has the person's id
   balances: { currency: string; owed_to_you: number; you_owe: number }[]
 }
 // Only these account kinds can be tied to a person.

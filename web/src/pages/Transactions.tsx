@@ -115,7 +115,9 @@ export function Transactions({ book }: { book: Book }) {
         <TextField select size="small" value={filters.account_id ?? ''} onChange={(e) => setFilter('account_id', e.target.value)} sx={{ flex: 1, minWidth: 160 }}
           slotProps={{ select: { displayEmpty: true } }}>
           <MenuItem value="">{t('filters.allAccounts')}</MenuItem>
-          {(accounts.data ?? []).map((a) => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}
+          {(accounts.data ?? []).filter((a) => a.kind !== 'person').map((a) => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}
+          {(accounts.data ?? []).some((a) => a.kind === 'person') && <ListSubheader>{t('txn.people')}</ListSubheader>}
+          {(accounts.data ?? []).filter((a) => a.kind === 'person').map((a) => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}
         </TextField>
         <CategoryPicker key={`category-${filters.category_id ?? ''}`} size="small" ariaLabel={t('txn.category')} noneLabel={t('filters.allCategories')}
           options={tree} value={filters.category_id ?? ''} onChange={(v) => setFilter('category_id', v)} sx={{ flex: 1, minWidth: 210 }} />

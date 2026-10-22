@@ -6,6 +6,7 @@ import Button from '@mui/material/Button'
 import Dialog from '@mui/material/Dialog'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import ListSubheader from '@mui/material/ListSubheader'
 import MenuItem from '@mui/material/MenuItem'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
@@ -241,6 +242,12 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
   const readOnly = book.role === 'viewer'
   const openingBalance = form.type === 'opening_balance'
   const accountLabel = (a: Account) => `${a.name} · ${formatMoney(a.balance, a.currency, minor(a.id), lang)}`
+  const people = open.filter((a) => a.kind === 'person')
+  const accountOptions = [
+    ...open.filter((a) => a.kind !== 'person').map((a) => <MenuItem key={a.id} value={a.id}>{accountLabel(a)}</MenuItem>),
+    ...(people.length ? [<ListSubheader key="people">{t('txn.people')}</ListSubheader>] : []),
+    ...people.map((a) => <MenuItem key={a.id} value={a.id}>{accountLabel(a)}</MenuItem>),
+  ]
 
   return (
     <Dialog open onClose={onClose} fullScreen={fullScreen} fullWidth maxWidth="sm"
@@ -304,11 +311,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
             onChange={(e) => choose('account', e.target.value)}
             disabled={openingBalance}
           >
-            {open.map((a) => (
-              <MenuItem key={a.id} value={a.id}>
-                {accountLabel(a)}
-              </MenuItem>
-            ))}
+            {accountOptions}
           </TextField>
           {transfer && (
             <TextField
@@ -320,11 +323,7 @@ function TxnForm({ book, txn: initial, defaults, onClose, minorOf }: Props & { m
               error={!!form.toAccount && form.toAccount === account}
               helperText={form.toAccount && form.toAccount === account ? t('txn.sameAccount') : undefined}
             >
-              {open.map((a) => (
-                <MenuItem key={a.id} value={a.id}>
-                  {accountLabel(a)}
-                </MenuItem>
-              ))}
+              {accountOptions}
             </TextField>
           )}
           {crossCurrency && (

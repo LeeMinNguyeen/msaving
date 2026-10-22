@@ -98,7 +98,7 @@ VI = {
     "opening balance": "số dư đầu kỳ", "adjustment": "điều chỉnh",
     "cash": "tiền mặt", "checking": "tài khoản thanh toán", "savings": "tiết kiệm", "investment": "đầu tư",
     "credit card": "thẻ tín dụng", "loan": "khoản vay", "lent": "cho vay", "other asset": "tài sản khác",
-    "other liability": "khoản nợ khác",
+    "other liability": "khoản nợ khác", "person": "người",
     "owner": "chủ sở hữu", "editor": "người chỉnh sửa", "viewer": "người xem", "invited": "chưa chấp nhận",
     "daily": "hằng ngày", "weekly": "hằng tuần", "monthly": "hằng tháng", "quarterly": "hằng quý",
     "yearly": "hằng năm",

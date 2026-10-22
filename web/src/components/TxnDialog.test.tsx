@@ -28,6 +28,28 @@ function server() {
   })
 }
 
+describe('people in the account pickers (msaving#85)', () => {
+  it('lists people after the accounts, under "People", and saves a transfer to one', async () => {
+    const minh: Account = { ...cash, id: 'minh', name: 'Minh', kind: 'person', contact_id: 'minh', balance: 0 }
+    const api = fakeApi({
+      'GET /v1/currencies': currencies,
+      'GET /v1/books/b1/accounts': [minh, cash],
+      'GET /v1/books/b1/categories': [],
+      'POST /v1/books/b1/transactions': ({ body }: { body: unknown }) => body,
+    })
+    await renderApp(<TxnDialog book={book} txn={null} defaults={{ account: 'cash' }} onClose={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Transfer' }))
+    await userEvent.type(screen.getByLabelText(/^Amount/), '500000')
+    await userEvent.click(screen.getByRole('combobox', { name: /^To account/ }))
+    const list = screen.getByRole('listbox')
+    expect([...list.children].map((li) => li.textContent?.split(' · ')[0])).toEqual(['Cash', 'People', 'Minh'])
+    await userEvent.click(within(list).getByRole('option', { name: /Minh/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    expect(api.writes()[0].body).toMatchObject({ type: 'transfer', entries: [{ account_id: 'cash', amount: -500_000 }, { account_id: 'minh', amount: 500_000 }] })
+  })
+})
+
 describe('the time of a transaction', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })

@@ -59,6 +59,14 @@ describe('Accounts grouped by kind (msaving#64)', () => {
     expect(screen.getByText('Nợ mẹ')).toBeInTheDocument()
   })
 
+  it("leaves people's own accounts to People (msaving#85)", async () => {
+    server([...all, { ...account('minh', 'Minh', 'person', -150_000, -150_000), contact_id: 'minh' }])
+    await renderApp(<Accounts book={book} />)
+    await screen.findByText('Nợ mẹ')
+    expect(screen.queryByText('Minh')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('row').filter((r) => r.dataset.group).map((r) => r.dataset.group)).toEqual(['cash', 'checking', 'loan', 'lent'])
+  })
+
   it('no longer lists people: they have their own page (msaving#68)', async () => {
     server()
     await renderApp(<Accounts book={book} />)

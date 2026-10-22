@@ -62,7 +62,8 @@ export function Accounts({ book }: { book: Book }) {
   const transactions = (a: Account) => navigate(`/books/${book.id}/transactions?account_id=${a.id}`)
 
   const money = (a: Account) => formatMoney(a.balance, a.currency, currencies.data?.get(a.currency)?.minor_unit ?? 2, currentLanguage())
-  const groups = groupByKind(accounts.data ?? [])
+  const mine = accounts.data?.filter((a) => a.kind !== 'person')
+  const groups = groupByKind(mine ?? [])
   const toggle = (kind: AccountKind) => setFolded((f) => {
     const next = new Set(f)
     if (!next.delete(kind)) next.add(kind)
@@ -126,8 +127,8 @@ export function Accounts({ book }: { book: Book }) {
       </Stack>
       {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
       {accounts.isError && !accounts.data ? <Alert severity="error">{errorText(accounts.error)}</Alert> : null}
-      {accounts.data?.length === 0 && <Typography color="text.secondary">{t('accounts.empty')}</Typography>}
-      {desktop && accounts.data && accounts.data.length > 0 && (
+      {mine?.length === 0 && <Typography color="text.secondary">{t('accounts.empty')}</Typography>}
+      {desktop && mine && mine.length > 0 && (
         <Paper variant="outlined">
           <Table>
             <TableHead>
@@ -190,7 +191,7 @@ export function Accounts({ book }: { book: Book }) {
           </Table>
         </Paper>
       )}
-      {!desktop && accounts.data && accounts.data.length > 0 && (
+      {!desktop && mine && mine.length > 0 && (
         <Paper variant="outlined">
           <List disablePadding>
             {groups.map((g) => (
