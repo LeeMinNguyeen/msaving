@@ -105,6 +105,15 @@ describe('pinning accounts to the Overview (msaving#74, msaving#88)', () => {
     expect(within(await menuOf(cash)).getByRole('menuitem', { name: 'Unpin from the Overview' })).toBeInTheDocument()
   })
 
+  it('keeps the menu to words, without icons', async () => {
+    pinServer(['cash'])
+    await renderApp(<Accounts book={book} />)
+    const cash = (await screen.findByText('Cash', { selector: 'span' })).closest('li')!
+    const menu = await menuOf(cash)
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Unpin from the Overview', 'Edit account', 'Archive'])
+    expect(menu.querySelector('svg')).toBeNull()
+  })
+
   describe('on desktop', () => {
     beforeEach(() => desktop(true))
     afterEach(() => desktop(false))
