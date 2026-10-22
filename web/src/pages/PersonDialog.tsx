@@ -1,7 +1,6 @@
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Stack from '@mui/material/Stack'
@@ -12,10 +11,13 @@ import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../components/errors'
 import { send, type Book, type Contact } from '../lib/api'
 import { newId } from '../lib/uuid'
+import { DialogFooter } from '../components/DialogFooter'
+import { useToast } from '../lib/toast'
 
 // Only a name and a note are kept.
 export function PersonDialog({ book, person, onClose }: { book: Book; person: Contact | null; onClose: () => void }) {
   const { t } = useTranslation()
+  const toast = useToast()
   const errorText = useErrorText()
   const qc = useQueryClient()
   const id = useRef(person?.id ?? newId())
@@ -31,6 +33,7 @@ export function PersonDialog({ book, person, onClose }: { book: Book; person: Co
     try {
       if (person) await send('PATCH', `/v1/books/${book.id}/contacts/${person.id}`, { version: person.version, name: name.trim(), note: note.trim() })
       else await send('POST', `/v1/books/${book.id}/contacts`, { id: id.current, name: name.trim(), note: note.trim() || null })
+      toast(t('toast.personSaved'))
       onClose()
     } catch (err) {
       setError(err)
@@ -51,10 +54,10 @@ export function PersonDialog({ book, person, onClose }: { book: Book; person: Co
             {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="contained" loading={busy} disabled={!name.trim()}>{t('accounts.save')}</Button>
-        </DialogActions>
+        </DialogFooter>
       </form>
     </Dialog>
   )

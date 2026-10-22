@@ -713,7 +713,8 @@ def test_csv_export():
         z = zipfile.ZipFile(io.BytesIO(build_export(s)))
     names = set(z.namelist())
     assert names == {"README.txt", "profile.csv", "books.csv", "accounts.csv", "transactions.csv", "categories.csv",
-                     "budgets.csv", "people.csv", "exchange_rates.csv", "edit_history.csv", "my_activity.csv"}
+                     "budgets.csv", "installments.csv", "people.csv", "exchange_rates.csv", "edit_history.csv",
+                     "my_activity.csv"}
 
     def read(name):
         return list(csv.DictReader(io.StringIO(z.read(name).decode("utf-8-sig"))))

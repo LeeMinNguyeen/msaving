@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -97,13 +97,16 @@ class Account(BaseModel):
     archived_at: datetime | None
     version: int
     balance: int
+    converted_balance: int | None    # in the book's currency at today's rate; None without a rate
+    pinned: bool                     # on this user's Overview
 
 
 ACCOUNT = ("select a.id, a.name, a.kind::text as kind, a.currency, a.last4, a.in_net_worth, a.contact_id, a.archived_at, a.version,"
            "       a.note, a.credit_limit, a.annual_fee, a.statement_day, a.payment_due_day, a.installment, a.installment_fee,"
            "       a.interest_rate_bp,"
-           "       b.balance"
+           "       b.balance, bc.converted_balance, exists (select 1 from account_pins p where p.account_id = a.id) as pinned"
            "  from accounts a join account_balances b on b.account_id = a.id"
+           "  left join book_balances_converted bc on bc.account_id = a.id"
            " where a.book_id = :book")
 
 
@@ -183,6 +186,23 @@ def update_account(book_id: UUID, account_id: UUID, body: UpdateAccount, db: Ses
         raise HTTPException(409, "conflict")
     db.commit()
     return get_account(db, book_id, account_id)
+
+
+@router.put("/{account_id}/pin", status_code=204)
+def pin_account(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> Response:
+    get_account(db, book_id, account_id)
+    db.execute(text("insert into account_pins (account_id, book_id) values (:a, :b) on conflict do nothing"),
+               {"a": account_id, "b": book_id})
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/{account_id}/pin", status_code=204)
+def unpin_account(book_id: UUID, account_id: UUID, db: Session = Depends(get_db)) -> Response:
+    get_account(db, book_id, account_id)
+    db.execute(text("delete from account_pins where account_id = :a"), {"a": account_id})
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/{account_id}/bill")

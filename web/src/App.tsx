@@ -15,6 +15,7 @@ import { AccountClosing } from './pages/AccountClosing'
 import { Admin } from './pages/Admin'
 import { Profile } from './pages/Profile'
 import { Accounts } from './pages/Accounts'
+import { People } from './pages/People'
 import { BookSettings } from './pages/BookSettings'
 import { Categories } from './pages/Categories'
 import { CreateBook } from './pages/CreateBook'
@@ -73,7 +74,7 @@ function Home() {
   return <Navigate to={first ? `/books/${first.id}` : '/books/new'} replace />
 }
 
-type Page = 'dashboard' | 'transactions' | 'accounts' | 'categories' | 'settings' | 'profile' | 'admin'
+type Page = 'dashboard' | 'transactions' | 'accounts' | 'people' | 'categories' | 'settings' | 'profile' | 'admin'
 
 function InBook({ page }: { page: Page }) {
   const { bookId } = useParams()
@@ -86,6 +87,7 @@ function InBook({ page }: { page: Page }) {
     dashboard: <Dashboard book={book} />,
     transactions: <Transactions book={book} />,
     accounts: <Accounts book={book} />,
+    people: <People book={book} />,
     categories: <Categories book={book} />,
     settings: <BookSettings key={book.version} book={book} />,
     profile: <Profile />,
@@ -118,6 +120,7 @@ const router = createBrowserRouter([
       { path: '/books/:bookId', element: <InBook page="dashboard" /> },
       { path: '/books/:bookId/transactions', element: <InBook page="transactions" /> },
       { path: '/books/:bookId/accounts', element: <InBook page="accounts" /> },
+      { path: '/books/:bookId/people', element: <InBook page="people" /> },
       { path: '/books/:bookId/categories', element: <InBook page="categories" /> },
       { path: '/books/:bookId/profile', element: <InBook page="profile" /> },
       { path: '/books/:bookId/settings', element: <InBook page="settings" /> },

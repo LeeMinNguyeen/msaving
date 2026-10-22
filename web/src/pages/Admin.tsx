@@ -3,7 +3,6 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -31,6 +30,7 @@ import { session } from '../auth/session'
 import { FileField } from '../components/FileField'
 import { useInstance, useMe } from '../lib/queries'
 import { updating, useUpdating, type UpdateInfo } from '../lib/updating'
+import { DialogFooter } from '../components/DialogFooter'
 
 type AdminUser = {
   id: string; username: string; display_name: string | null; is_admin: boolean; created_at: string
@@ -76,10 +76,10 @@ function ShowOnce({ title, body, link, qr, code, onClose }: {
           <TextField fullWidth value={link} slotProps={{ htmlInput: { readOnly: true } }} onFocus={(e) => e.target.select()} />
         </Stack>
       </DialogContent>
-      <DialogActions>
+      <DialogFooter>
         <Button onClick={() => navigator.clipboard?.writeText(link)}>{t('common.copy')}</Button>
         <Button variant="contained" onClick={onClose}>{t('common.done')}</Button>
-      </DialogActions>
+      </DialogFooter>
     </Dialog>
   )
 }
@@ -309,10 +309,10 @@ function Updates() {
       <Dialog open={confirm} onClose={() => setConfirm(false)} fullWidth maxWidth="xs">
         <DialogTitle>{t('admin.updateNow')}</DialogTitle>
         <DialogContent><DialogContentText>{t('admin.updateConfirm', { version: d.latest_version })}</DialogContentText></DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={() => setConfirm(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={start}>{t('admin.updateNow')}</Button>
-        </DialogActions>
+        </DialogFooter>
       </Dialog>
     </Section>
   )

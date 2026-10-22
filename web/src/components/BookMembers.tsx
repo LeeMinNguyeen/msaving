@@ -2,7 +2,6 @@ import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -24,6 +23,7 @@ import { send, type Book, type Member, type Role } from '../lib/api'
 import { personName } from '../lib/people'
 import { keys, useMembers } from '../lib/queries'
 import { useErrorText } from './errors'
+import { DialogFooter } from './DialogFooter'
 
 const ROLES: Role[] = ['owner', 'editor', 'viewer']
 
@@ -138,12 +138,12 @@ export function BookMembers({ book }: { book: Book }) {
               : t('members.removeBody', { name: personName(removing?.name ?? '', t), book: book.name })}
           </DialogContentText>
         </DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={() => setRemoving(null)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={() => removing && remove(removing)}>
             {removing?.me ? t('members.leave') : t('members.remove')}
           </Button>
-        </DialogActions>
+        </DialogFooter>
       </Dialog>
     </Stack>
   )
