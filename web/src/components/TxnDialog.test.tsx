@@ -129,3 +129,27 @@ describe('paying a card purchase in installments (msaving#71)', () => {
     expect(screen.getByText("Saving removes this purchase's installment plan.")).toBeInTheDocument()
   })
 })
+
+describe('after saving', () => {
+  it('closes and says it was saved', async () => {
+    server()
+    const onClose = vi.fn()
+    await renderApp(<TxnDialog book={book} txn={null} onClose={onClose} />)
+    await userEvent.type(await screen.findByLabelText(/^Amount/), '45000')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Transaction saved')).toBeInTheDocument()
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('stays open with the error when the save fails', async () => {
+    const api = server()
+    api.routes['POST /v1/books/b1/transactions'] = new Response(JSON.stringify({ detail: 'invalid' }), { status: 422 })
+    const onClose = vi.fn()
+    await renderApp(<TxnDialog book={book} txn={null} onClose={onClose} />)
+    await userEvent.type(await screen.findByLabelText(/^Amount/), '45000')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.queryByText('Transaction saved')).not.toBeInTheDocument()
+  })
+})

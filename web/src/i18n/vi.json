@@ -556,5 +556,14 @@
     "endEarly": "Tất toán sớm",
     "endEarlyTitle": "Tất toán sớm khoản trả góp này?",
     "endEarlyText": "Toàn bộ phần còn lại sẽ được tính vào kỳ sao kê tới."
+  },
+  "toast": {
+    "budgetAdded": "Đã thêm ngân sách",
+    "txnSaved": "Đã lưu giao dịch",
+    "txnDeleted": "Đã xóa giao dịch",
+    "accountSaved": "Đã lưu tài khoản",
+    "categorySaved": "Đã lưu danh mục",
+    "personSaved": "Đã lưu",
+    "paymentSaved": "Đã lưu khoản thanh toán"
   }
 }

@@ -3,7 +3,6 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -27,6 +26,8 @@ import { timeIn, todayIn } from '../lib/labels'
 import { amountText, formatMoney, parseAmount } from '../lib/money'
 import { useAccounts, useBill, useInstallments, useInvalidateBook } from '../lib/queries'
 import { newId } from '../lib/uuid'
+import { DialogFooter } from '../components/DialogFooter'
+import { useToast } from '../lib/toast'
 
 const dateIn = (locale: string, options: Intl.DateTimeFormatOptions) => (iso: string) =>
   new Intl.DateTimeFormat(locale, options).format(new Date(`${iso}T00:00:00`))
@@ -100,6 +101,7 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
   book: Book; account: Account; bill: Bill; minorUnit: number; onClose: () => void
 }) {
   const { t } = useTranslation()
+  const toast = useToast()
   const errorText = useErrorText()
   const lang = currentLanguage()
   const invalidate = useInvalidateBook()
@@ -144,6 +146,7 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
       }
       await post(transferId.current, 'transfer', [{ account_id: payFrom, amount: -parsed }, { account_id: account.id, amount: parsed }],
         bill.kind === 'card' ? t('bill.cardNote', { date: day(bill.period_end) }) : t('bill.loanNote', { date: day(bill.due_on) }))
+      toast(t('toast.paymentSaved'))
       onClose()
     } catch (err) {
       setError(err)
@@ -176,10 +179,10 @@ function PayBillDialog({ book, account, bill, minorUnit, onClose }: {
           {error ? <Alert severity="error">{errorText(error)}</Alert> : null}
         </Stack>
       </DialogContent>
-      <DialogActions>
+      <DialogFooter>
         <Button onClick={onClose}>{t('common.cancel')}</Button>
         <Button variant="contained" loading={busy} disabled={!valid} onClick={confirm}>{t('bill.confirm')}</Button>
-      </DialogActions>
+      </DialogFooter>
     </Dialog>
   )
 }
@@ -234,10 +237,10 @@ export function InstallmentsPanel({ book, account, minorUnit, canEdit }: { book:
           <DialogContentText>{t('plan.endEarlyText')}</DialogContentText>
           {error ? <Alert severity="error" sx={{ mt: 2 }}>{errorText(error)}</Alert> : null}
         </DialogContent>
-        <DialogActions>
+        <DialogFooter>
           <Button onClick={() => setEnding(null)}>{t('common.cancel')}</Button>
           <Button variant="contained" loading={busy} onClick={() => ending && endEarly(ending)}>{t('plan.endEarly')}</Button>
-        </DialogActions>
+        </DialogFooter>
       </Dialog>
     </Paper>
   )

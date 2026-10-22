@@ -45,6 +45,17 @@ describe('groupWhileTyping', () => {
     expect(groupWhileTyping('-1250', 'en')).toBe('-1,250')
     expect(groupWhileTyping('12a', 'en')).toBe('12a')
   })
+
+  it('drops leading zeros but keeps a zero before the decimals', () => {
+    expect(groupWhileTyping('099999', 'en')).toBe('99,999')
+    expect(groupWhileTyping('09', 'vi')).toBe('9')
+    expect(groupWhileTyping('000', 'en')).toBe('0')
+    expect(groupWhileTyping('0', 'en')).toBe('0')
+    expect(groupWhileTyping('0.5', 'en')).toBe('0.5')
+    expect(groupWhileTyping('0,5', 'vi')).toBe('0,5')
+    expect(groupWhileTyping('-05', 'en')).toBe('-5')
+    expect(groupWhileTyping('0.050', 'en')).toBe('0.050')
+  })
 })
 
 describe('amountText', () => {

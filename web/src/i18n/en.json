@@ -556,5 +556,14 @@
     "endEarly": "End early",
     "endEarlyTitle": "End this plan early?",
     "endEarlyText": "Everything left is billed on the next statement."
+  },
+  "toast": {
+    "budgetAdded": "Budget added",
+    "txnSaved": "Transaction saved",
+    "txnDeleted": "Transaction deleted",
+    "accountSaved": "Account saved",
+    "categorySaved": "Category saved",
+    "personSaved": "Saved",
+    "paymentSaved": "Payment saved"
   }
 }

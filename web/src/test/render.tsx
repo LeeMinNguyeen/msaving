@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { AppTheme } from '../components/AppTheme'
 import { DatesProvider } from '../components/DatesProvider'
+import { ToastProvider } from '../components/ToastProvider'
 import i18n from '../i18n'
 
 export const testClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -29,11 +30,13 @@ export async function renderApp(ui: ReactElement, opts: { route?: string; histor
     <AppTheme>
       <QueryClientProvider client={client}>
         <DatesProvider>
-          <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
-            <Routes>
-              <Route path="*" element={<>{children}<Where /></>} />
-            </Routes>
-          </MemoryRouter>
+          <ToastProvider>
+            <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
+              <Routes>
+                <Route path="*" element={<>{children}<Where /></>} />
+              </Routes>
+            </MemoryRouter>
+          </ToastProvider>
         </DatesProvider>
       </QueryClientProvider>
     </AppTheme>
